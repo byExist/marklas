@@ -6,23 +6,23 @@ from typing import Any, Literal, NotRequired, TypedDict
 # ── Marks ──────────────────────────────────────────────────────────────
 
 
-class StrongMark(TypedDict):
+class Strong(TypedDict):
     type: Literal["strong"]
 
 
-class EmMark(TypedDict):
+class Em(TypedDict):
     type: Literal["em"]
 
 
-class StrikeMark(TypedDict):
+class Strike(TypedDict):
     type: Literal["strike"]
 
 
-class CodeMark(TypedDict):
+class Code(TypedDict):
     type: Literal["code"]
 
 
-class LinkAttrs(TypedDict):
+class _LinkAttrs(TypedDict):
     href: str
     title: NotRequired[str]
     id: NotRequired[str]
@@ -30,69 +30,69 @@ class LinkAttrs(TypedDict):
     occurrenceKey: NotRequired[str]
 
 
-class LinkMark(TypedDict):
+class Link(TypedDict):
     type: Literal["link"]
-    attrs: LinkAttrs
+    attrs: _LinkAttrs
 
 
-class UnderlineMark(TypedDict):
+class Underline(TypedDict):
     type: Literal["underline"]
 
 
-class TextColorAttrs(TypedDict):
+class _TextColorAttrs(TypedDict):
     color: str
 
 
-class TextColorMark(TypedDict):
+class TextColor(TypedDict):
     type: Literal["textColor"]
-    attrs: TextColorAttrs
+    attrs: _TextColorAttrs
 
 
-class SubSupAttrs(TypedDict):
+class _SubSupAttrs(TypedDict):
     type: Literal["sub", "sup"]
 
 
-class SubSupMark(TypedDict):
+class SubSup(TypedDict):
     type: Literal["subsup"]
-    attrs: SubSupAttrs
+    attrs: _SubSupAttrs
 
 
-class BackgroundColorAttrs(TypedDict):
+class _BackgroundColorAttrs(TypedDict):
     color: str
 
 
-class BackgroundColorMark(TypedDict):
+class BackgroundColor(TypedDict):
     type: Literal["backgroundColor"]
-    attrs: BackgroundColorAttrs
+    attrs: _BackgroundColorAttrs
 
 
 type Mark = (
-    StrongMark
-    | EmMark
-    | StrikeMark
-    | CodeMark
-    | LinkMark
-    | UnderlineMark
-    | TextColorMark
-    | SubSupMark
-    | BackgroundColorMark
+    Strong
+    | Em
+    | Strike
+    | Code
+    | Link
+    | Underline
+    | TextColor
+    | SubSup
+    | BackgroundColor
 )
 
 
 # ── Inline Nodes ───────────────────────────────────────────────────────
 
 
-class TextNode(TypedDict):
+class Text(TypedDict):
     type: Literal["text"]
     text: str
     marks: NotRequired[list[Mark]]
 
 
-class HardBreakNode(TypedDict):
+class HardBreak(TypedDict):
     type: Literal["hardBreak"]
 
 
-class MentionAttrs(TypedDict):
+class _MentionAttrs(TypedDict):
     id: str
     text: NotRequired[str]
     localId: NotRequired[str]
@@ -100,180 +100,223 @@ class MentionAttrs(TypedDict):
     accessLevel: NotRequired[str]
 
 
-class MentionNode(TypedDict):
+class Mention(TypedDict):
     type: Literal["mention"]
-    attrs: MentionAttrs
+    attrs: _MentionAttrs
 
 
-class EmojiAttrs(TypedDict):
+class _EmojiAttrs(TypedDict):
     shortName: str
     id: NotRequired[str]
     text: NotRequired[str]
     localId: NotRequired[str]
 
 
-class EmojiNode(TypedDict):
+class Emoji(TypedDict):
     type: Literal["emoji"]
-    attrs: EmojiAttrs
+    attrs: _EmojiAttrs
 
 
-class DateAttrs(TypedDict):
+class _DateAttrs(TypedDict):
     timestamp: str
     localId: NotRequired[str]
 
 
-class DateNode(TypedDict):
+class Date(TypedDict):
     type: Literal["date"]
-    attrs: DateAttrs
+    attrs: _DateAttrs
 
 
-class StatusAttrs(TypedDict):
+class _StatusAttrs(TypedDict):
     text: str
     color: str
     style: NotRequired[str]
     localId: NotRequired[str]
 
 
-class StatusNode(TypedDict):
+class Status(TypedDict):
     type: Literal["status"]
-    attrs: StatusAttrs
+    attrs: _StatusAttrs
 
 
-class InlineCardAttrs(TypedDict, total=False):
+class _InlineCardAttrs(TypedDict, total=False):
     url: str
     data: dict[str, Any]
 
 
-class InlineCardNode(TypedDict):
+class InlineCard(TypedDict):
     type: Literal["inlineCard"]
-    attrs: InlineCardAttrs
+    attrs: _InlineCardAttrs
 
 
-type InlineNode = (
-    TextNode
-    | HardBreakNode
-    | MentionNode
-    | EmojiNode
-    | DateNode
-    | StatusNode
-    | InlineCardNode
+class _PlaceholderAttrs(TypedDict):
+    text: str
+    localId: NotRequired[str]
+
+
+class Placeholder(TypedDict):
+    type: Literal["placeholder"]
+    attrs: _PlaceholderAttrs
+
+
+class _ExtensionAttrs(TypedDict):
+    extensionType: str
+    extensionKey: str
+    parameters: NotRequired[Any]
+    text: NotRequired[str]
+    layout: NotRequired[str]
+    localId: NotRequired[str]
+
+
+class InlineExtension(TypedDict):
+    type: Literal["inlineExtension"]
+    attrs: _ExtensionAttrs
+
+
+class _MediaInlineAttrs(TypedDict):
+    id: str
+    collection: str
+    type: NotRequired[str]
+    alt: NotRequired[str]
+    occurrenceKey: NotRequired[str]
+    width: NotRequired[int]
+    height: NotRequired[int]
+    localId: NotRequired[str]
+
+
+class MediaInline(TypedDict):
+    type: Literal["mediaInline"]
+    attrs: _MediaInlineAttrs
+
+
+type Inline = (
+    Text
+    | HardBreak
+    | Mention
+    | Emoji
+    | Date
+    | Status
+    | InlineCard
+    | Placeholder
+    | InlineExtension
+    | MediaInline
 )
 
 
 # ── Block Nodes ────────────────────────────────────────────────────────
 
 
-class LocalIdAttrs(TypedDict, total=False):
+class _LocalIdAttrs(TypedDict, total=False):
     localId: str
 
 
-class ParagraphNode(TypedDict):
+class Paragraph(TypedDict):
     type: Literal["paragraph"]
-    content: list[InlineNode]
-    attrs: NotRequired[LocalIdAttrs]
+    content: list[Inline]
+    attrs: NotRequired[_LocalIdAttrs]
 
 
-class HeadingAttrs(TypedDict):
+class _HeadingAttrs(TypedDict):
     level: int
     localId: NotRequired[str]
 
 
-class HeadingNode(TypedDict):
+class Heading(TypedDict):
     type: Literal["heading"]
-    attrs: HeadingAttrs
-    content: list[InlineNode]
+    attrs: _HeadingAttrs
+    content: list[Inline]
 
 
-class CodeBlockAttrs(TypedDict, total=False):
+class _CodeBlockAttrs(TypedDict, total=False):
     language: str
     localId: str
 
 
-class CodeBlockNode(TypedDict):
+class CodeBlock(TypedDict):
     type: Literal["codeBlock"]
-    content: list[InlineNode]
-    attrs: NotRequired[CodeBlockAttrs]
+    content: list[Inline]
+    attrs: NotRequired[_CodeBlockAttrs]
 
 
-class BlockquoteNode(TypedDict):
+class Blockquote(TypedDict):
     type: Literal["blockquote"]
-    content: list[BlockNode]
-    attrs: NotRequired[LocalIdAttrs]
+    content: list[Block]
+    attrs: NotRequired[_LocalIdAttrs]
 
 
-class ListItemNode(TypedDict):
+class ListItem(TypedDict):
     type: Literal["listItem"]
-    content: list[BlockNode]
-    attrs: NotRequired[LocalIdAttrs]
+    content: list[Block]
+    attrs: NotRequired[_LocalIdAttrs]
 
 
-class BulletListNode(TypedDict):
+class BulletList(TypedDict):
     type: Literal["bulletList"]
-    content: list[ListItemNode]
-    attrs: NotRequired[LocalIdAttrs]
+    content: list[ListItem]
+    attrs: NotRequired[_LocalIdAttrs]
 
 
-class OrderedListAttrs(TypedDict, total=False):
+class _OrderedListAttrs(TypedDict, total=False):
     order: int
     localId: str
 
 
-class OrderedListNode(TypedDict):
+class OrderedList(TypedDict):
     type: Literal["orderedList"]
-    content: list[ListItemNode]
-    attrs: NotRequired[OrderedListAttrs]
+    content: list[ListItem]
+    attrs: NotRequired[_OrderedListAttrs]
 
 
-class TaskItemAttrs(TypedDict):
+class _TaskItemAttrs(TypedDict):
     localId: str
     state: str
 
 
-class TaskItemNode(TypedDict):
+class TaskItem(TypedDict):
     type: Literal["taskItem"]
-    attrs: TaskItemAttrs
-    content: list[InlineNode]
+    attrs: _TaskItemAttrs
+    content: list[Inline]
 
 
-class TaskListAttrs(TypedDict):
+class _TaskListAttrs(TypedDict):
     localId: str
 
 
-class TaskListNode(TypedDict):
+class TaskList(TypedDict):
     type: Literal["taskList"]
-    attrs: TaskListAttrs
-    content: list[TaskItemNode]
+    attrs: _TaskListAttrs
+    content: list[TaskItem]
 
 
-class RuleNode(TypedDict):
+class Rule(TypedDict):
     type: Literal["rule"]
 
 
-class TableCellAttrs(TypedDict, total=False):
+class _TableCellAttrs(TypedDict, total=False):
     colspan: int
     rowspan: int
     background: str
     colwidth: list[int]
 
 
-class TableCellNode(TypedDict):
+class TableCell(TypedDict):
     type: Literal["tableCell"]
-    content: list[BlockNode]
-    attrs: NotRequired[TableCellAttrs]
+    content: list[Block]
+    attrs: NotRequired[_TableCellAttrs]
 
 
-class TableHeaderNode(TypedDict):
+class TableHeader(TypedDict):
     type: Literal["tableHeader"]
-    content: list[BlockNode]
-    attrs: NotRequired[TableCellAttrs]
+    content: list[Block]
+    attrs: NotRequired[_TableCellAttrs]
 
 
-class TableRowNode(TypedDict):
+class TableRow(TypedDict):
     type: Literal["tableRow"]
-    content: list[TableCellNode | TableHeaderNode]
+    content: list[TableCell | TableHeader]
 
 
-class TableAttrs(TypedDict, total=False):
+class _TableAttrs(TypedDict, total=False):
     layout: str
     isNumberColumnEnabled: bool
     localId: str
@@ -281,13 +324,13 @@ class TableAttrs(TypedDict, total=False):
     displayMode: str
 
 
-class TableNode(TypedDict):
+class Table(TypedDict):
     type: Literal["table"]
-    content: list[TableRowNode]
-    attrs: NotRequired[TableAttrs]
+    content: list[TableRow]
+    attrs: NotRequired[_TableAttrs]
 
 
-class MediaAttrs(TypedDict):
+class _MediaAttrs(TypedDict):
     type: str
     url: NotRequired[str]
     id: NotRequired[str]
@@ -298,30 +341,30 @@ class MediaAttrs(TypedDict):
     localId: NotRequired[str]
 
 
-class MediaNode(TypedDict):
+class Media(TypedDict):
     type: Literal["media"]
-    attrs: MediaAttrs
+    attrs: _MediaAttrs
 
 
-class MediaSingleAttrs(TypedDict, total=False):
+class _MediaSingleAttrs(TypedDict, total=False):
     layout: str
     width: float
     widthType: str
     localId: str
 
 
-class MediaSingleNode(TypedDict):
+class MediaSingle(TypedDict):
     type: Literal["mediaSingle"]
-    content: list[MediaNode]
-    attrs: NotRequired[MediaSingleAttrs]
+    content: list[Media]
+    attrs: NotRequired[_MediaSingleAttrs]
 
 
-class MediaGroupNode(TypedDict):
+class MediaGroup(TypedDict):
     type: Literal["mediaGroup"]
-    content: list[MediaNode]
+    content: list[Media]
 
 
-class PanelAttrs(TypedDict):
+class _PanelAttrs(TypedDict):
     panelType: str
     localId: NotRequired[str]
     panelColor: NotRequired[str]
@@ -330,84 +373,84 @@ class PanelAttrs(TypedDict):
     panelIconText: NotRequired[str]
 
 
-class PanelNode(TypedDict):
+class Panel(TypedDict):
     type: Literal["panel"]
-    attrs: PanelAttrs
-    content: list[BlockNode]
+    attrs: _PanelAttrs
+    content: list[Block]
 
 
-class ExpandAttrs(TypedDict, total=False):
+class _ExpandAttrs(TypedDict, total=False):
     title: str
     localId: str
 
 
-class ExpandNode(TypedDict):
+class Expand(TypedDict):
     type: Literal["expand"]
-    content: list[BlockNode]
-    attrs: NotRequired[ExpandAttrs]
+    content: list[Block]
+    attrs: NotRequired[_ExpandAttrs]
 
 
-class NestedExpandAttrs(TypedDict, total=False):
+class _NestedExpandAttrs(TypedDict, total=False):
     title: str
     localId: str
 
 
-class NestedExpandNode(TypedDict):
+class NestedExpand(TypedDict):
     type: Literal["nestedExpand"]
-    content: list[BlockNode]
-    attrs: NotRequired[NestedExpandAttrs]
+    content: list[Block]
+    attrs: NotRequired[_NestedExpandAttrs]
 
 
-class LayoutColumnAttrs(TypedDict):
+class _LayoutColumnAttrs(TypedDict):
     width: float
     localId: NotRequired[str]
 
 
-class LayoutColumnNode(TypedDict):
+class LayoutColumn(TypedDict):
     type: Literal["layoutColumn"]
-    attrs: LayoutColumnAttrs
-    content: list[BlockNode]
+    attrs: _LayoutColumnAttrs
+    content: list[Block]
 
 
-class LayoutSectionNode(TypedDict):
+class LayoutSection(TypedDict):
     type: Literal["layoutSection"]
-    content: list[LayoutColumnNode]
-    attrs: NotRequired[LocalIdAttrs]
+    content: list[LayoutColumn]
+    attrs: NotRequired[_LocalIdAttrs]
 
 
-class DecisionItemAttrs(TypedDict):
+class _DecisionItemAttrs(TypedDict):
     localId: str
     state: str
 
 
-class DecisionItemNode(TypedDict):
+class DecisionItem(TypedDict):
     type: Literal["decisionItem"]
-    attrs: DecisionItemAttrs
-    content: list[InlineNode]
+    attrs: _DecisionItemAttrs
+    content: list[Inline]
 
 
-class DecisionListAttrs(TypedDict):
+class _DecisionListAttrs(TypedDict):
     localId: str
 
 
-class DecisionListNode(TypedDict):
+class DecisionList(TypedDict):
     type: Literal["decisionList"]
-    attrs: DecisionListAttrs
-    content: list[DecisionItemNode]
+    attrs: _DecisionListAttrs
+    content: list[DecisionItem]
 
 
-class BlockCardAttrs(TypedDict, total=False):
+class _BlockCardAttrs(TypedDict, total=False):
     url: str
     data: dict[str, Any]
     localId: str
 
 
-class BlockCardNode(TypedDict):
+class BlockCard(TypedDict):
     type: Literal["blockCard"]
-    attrs: NotRequired[BlockCardAttrs]
+    attrs: NotRequired[_BlockCardAttrs]
 
 
-class EmbedCardAttrs(TypedDict):
+class _EmbedCardAttrs(TypedDict):
     url: str
     layout: str
     originalWidth: NotRequired[int]
@@ -416,37 +459,68 @@ class EmbedCardAttrs(TypedDict):
     localId: NotRequired[str]
 
 
-class EmbedCardNode(TypedDict):
+class EmbedCard(TypedDict):
     type: Literal["embedCard"]
-    attrs: EmbedCardAttrs
+    attrs: _EmbedCardAttrs
 
 
-type BlockNode = (
-    ParagraphNode
-    | HeadingNode
-    | CodeBlockNode
-    | BlockquoteNode
-    | BulletListNode
-    | OrderedListNode
-    | TaskListNode
-    | RuleNode
-    | TableNode
-    | MediaSingleNode
-    | MediaGroupNode
-    | PanelNode
-    | ExpandNode
-    | NestedExpandNode
-    | LayoutSectionNode
-    | DecisionListNode
-    | BlockCardNode
-    | EmbedCardNode
+class Extension(TypedDict):
+    type: Literal["extension"]
+    attrs: _ExtensionAttrs
+
+
+class BodiedExtension(TypedDict):
+    type: Literal["bodiedExtension"]
+    attrs: _ExtensionAttrs
+    content: list[Block]
+
+
+class _SyncBlockAttrs(TypedDict):
+    resourceId: str
+    localId: str
+
+
+class SyncBlock(TypedDict):
+    type: Literal["syncBlock"]
+    attrs: _SyncBlockAttrs
+
+
+class BodiedSyncBlock(TypedDict):
+    type: Literal["bodiedSyncBlock"]
+    attrs: _SyncBlockAttrs
+    content: list[Block]
+
+
+type Block = (
+    Paragraph
+    | Heading
+    | CodeBlock
+    | Blockquote
+    | BulletList
+    | OrderedList
+    | TaskList
+    | Rule
+    | Table
+    | MediaSingle
+    | MediaGroup
+    | Panel
+    | Expand
+    | NestedExpand
+    | LayoutSection
+    | DecisionList
+    | BlockCard
+    | EmbedCard
+    | Extension
+    | BodiedExtension
+    | SyncBlock
+    | BodiedSyncBlock
 )
 
 
 # ── Document ───────────────────────────────────────────────────────────
 
 
-class DocNode(TypedDict):
+class Doc(TypedDict):
     type: Literal["doc"]
     version: int
-    content: list[BlockNode]
+    content: list[Block]

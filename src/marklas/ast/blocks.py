@@ -4,60 +4,60 @@ from dataclasses import dataclass, field
 from typing import Literal
 
 from marklas.ast.base import Node
-from marklas.ast.inlines import InlineNode
+from marklas.ast.inlines import Inline
 
 
 @dataclass
-class BlockNode(Node):
+class Block(Node):
     pass
 
 
 @dataclass
 class Document(Node):
-    children: list[BlockNode]
+    children: list[Block]
 
 
 @dataclass
-class Paragraph(BlockNode):
-    children: list[InlineNode]
+class Paragraph(Block):
+    children: list[Inline]
 
 
 @dataclass
-class Heading(BlockNode):
+class Heading(Block):
     level: Literal[1, 2, 3, 4, 5, 6]
-    children: list[InlineNode]
+    children: list[Inline]
 
 
 @dataclass
-class CodeBlock(BlockNode):
+class CodeBlock(Block):
     code: str
     language: str | None = None
 
 
 @dataclass
-class BlockQuote(BlockNode):
-    children: list[BlockNode]
+class BlockQuote(Block):
+    children: list[Block]
 
 
 @dataclass
-class ThematicBreak(BlockNode):
+class ThematicBreak(Block):
     pass
 
 
 @dataclass
-class ListItem(BlockNode):
-    children: list[BlockNode]
+class ListItem(Block):
+    children: list[Block]
     checked: bool | None = None
 
 
 @dataclass
-class BulletList(BlockNode):
+class BulletList(Block):
     items: list[ListItem]
     tight: bool = True
 
 
 @dataclass
-class OrderedList(BlockNode):
+class OrderedList(Block):
     items: list[ListItem]
     start: int = 1
     tight: bool = True
@@ -65,11 +65,13 @@ class OrderedList(BlockNode):
 
 @dataclass
 class TableCell(Node):
-    children: list[InlineNode]
+    children: list[Inline]
 
 
 @dataclass
-class Table(BlockNode):
+class Table(Block):
     head: list[TableCell]
     body: list[list[TableCell]]
-    alignments: list[Literal["left", "center", "right"] | None] = field(default_factory=list[Literal["left", "center", "right"] | None])
+    alignments: list[Literal["left", "center", "right"] | None] = field(
+        default_factory=list[Literal["left", "center", "right"] | None]
+    )

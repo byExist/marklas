@@ -6,54 +6,54 @@ from marklas.ast.base import Node
 
 
 @dataclass
-class InlineNode(Node):
+class Inline(Node):
     pass
 
 
 @dataclass
-class Text(InlineNode):
+class Text(Inline):
     text: str
 
 
 @dataclass
-class Strong(InlineNode):
-    children: list[InlineNode]
+class Strong(Inline):
+    children: list[Inline]
 
 
 @dataclass
-class Emphasis(InlineNode):
-    children: list[InlineNode]
+class Emphasis(Inline):
+    children: list[Inline]
 
 
 @dataclass
-class Strikethrough(InlineNode):
-    children: list[InlineNode]
+class Strikethrough(Inline):
+    children: list[Inline]
 
 
 @dataclass
-class Link(InlineNode):
+class Link(Inline):
     url: str
-    children: list[InlineNode]
+    children: list[Inline]
     title: str | None = None
 
 
 @dataclass
-class Image(InlineNode):
+class Image(Inline):
     url: str
     alt: str = ""
     title: str | None = None
 
 
 @dataclass
-class CodeSpan(InlineNode):
+class CodeSpan(Inline):
     code: str
 
 
 @dataclass
-class HardBreak(InlineNode):
+class HardBreak(Inline):
     pass
 
 
 @dataclass
-class SoftBreak(InlineNode):
+class SoftBreak(Inline):
     pass
