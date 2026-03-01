@@ -3,18 +3,18 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Literal, cast
 
-from marklas import adf
+from marklas import schema
 from marklas.ast import blocks, inlines
 
 
-def parse(doc: adf.Doc) -> blocks.Document:
+def parse(doc: schema.Doc) -> blocks.Document:
     return blocks.Document(children=_parse_blocks(doc["content"]))
 
 
 # ── Block dispatch ────────────────────────────────────────────────────
 
 
-def _parse_blocks(nodes: list[adf.Block]) -> list[blocks.Block]:
+def _parse_blocks(nodes: list[schema.Block]) -> list[blocks.Block]:
     result: list[blocks.Block] = []
     for node in nodes:
         parsed = _parse_block(node)
@@ -27,46 +27,46 @@ def _parse_blocks(nodes: list[adf.Block]) -> list[blocks.Block]:
 
 
 def _parse_block(
-    node: adf.Block,
+    node: schema.Block,
 ) -> blocks.Block | list[blocks.Block] | None:
     t = node["type"]
     match t:
         case "paragraph":
-            return _parse_paragraph(cast(adf.Paragraph, node))
+            return _parse_paragraph(cast(schema.Paragraph, node))
         case "heading":
-            return _parse_heading(cast(adf.Heading, node))
+            return _parse_heading(cast(schema.Heading, node))
         case "codeBlock":
-            return _parse_code_block(cast(adf.CodeBlock, node))
+            return _parse_code_block(cast(schema.CodeBlock, node))
         case "blockquote":
-            return _parse_blockquote(cast(adf.Blockquote, node))
+            return _parse_blockquote(cast(schema.Blockquote, node))
         case "bulletList":
-            return _parse_bullet_list(cast(adf.BulletList, node))
+            return _parse_bullet_list(cast(schema.BulletList, node))
         case "orderedList":
-            return _parse_ordered_list(cast(adf.OrderedList, node))
+            return _parse_ordered_list(cast(schema.OrderedList, node))
         case "taskList":
-            return _parse_task_list(cast(adf.TaskList, node))
+            return _parse_task_list(cast(schema.TaskList, node))
         case "decisionList":
-            return _parse_decision_list(cast(adf.DecisionList, node))
+            return _parse_decision_list(cast(schema.DecisionList, node))
         case "rule":
             return blocks.ThematicBreak()
         case "table":
-            return _parse_table(cast(adf.Table, node))
+            return _parse_table(cast(schema.Table, node))
         case "mediaSingle":
-            return _parse_media_single(cast(adf.MediaSingle, node))
+            return _parse_media_single(cast(schema.MediaSingle, node))
         case "mediaGroup":
-            return _parse_media_group(cast(adf.MediaGroup, node))
+            return _parse_media_group(cast(schema.MediaGroup, node))
         case "panel":
-            return _parse_panel(cast(adf.Panel, node))
+            return _parse_panel(cast(schema.Panel, node))
         case "expand":
-            return _parse_expand(cast(adf.Expand, node))
+            return _parse_expand(cast(schema.Expand, node))
         case "nestedExpand":
-            return _parse_expand(cast(adf.Expand, node))
+            return _parse_expand(cast(schema.Expand, node))
         case "layoutSection":
-            return _parse_layout_section(cast(adf.LayoutSection, node))
+            return _parse_layout_section(cast(schema.LayoutSection, node))
         case "blockCard":
-            return _parse_block_card(cast(adf.BlockCard, node))
+            return _parse_block_card(cast(schema.BlockCard, node))
         case "embedCard":
-            return _parse_embed_card(cast(adf.EmbedCard, node))
+            return _parse_embed_card(cast(schema.EmbedCard, node))
         case _:
             return blocks.Paragraph(children=[inlines.Text(text=f"[{t}]")])
 
@@ -74,31 +74,31 @@ def _parse_block(
 # ── Block parsers ─────────────────────────────────────────────────────
 
 
-def _parse_paragraph(node: adf.Paragraph) -> blocks.Paragraph:
+def _parse_paragraph(node: schema.Paragraph) -> blocks.Paragraph:
     return blocks.Paragraph(children=_parse_inlines(node["content"]))
 
 
-def _parse_heading(node: adf.Heading) -> blocks.Heading:
+def _parse_heading(node: schema.Heading) -> blocks.Heading:
     level = cast(Literal[1, 2, 3, 4, 5, 6], node["attrs"]["level"])
     return blocks.Heading(level=level, children=_parse_inlines(node["content"]))
 
 
-def _parse_code_block(node: adf.CodeBlock) -> blocks.CodeBlock:
+def _parse_code_block(node: schema.CodeBlock) -> blocks.CodeBlock:
     attrs = node.get("attrs")
     language = attrs.get("language") if attrs else None
     code = "".join(c["text"] for c in node["content"] if c["type"] == "text")
     return blocks.CodeBlock(code=code, language=language)
 
 
-def _parse_blockquote(node: adf.Blockquote) -> blocks.BlockQuote:
+def _parse_blockquote(node: schema.Blockquote) -> blocks.BlockQuote:
     return blocks.BlockQuote(children=_parse_blocks(node["content"]))
 
 
-def _parse_bullet_list(node: adf.BulletList) -> blocks.BulletList:
+def _parse_bullet_list(node: schema.BulletList) -> blocks.BulletList:
     return blocks.BulletList(items=[_parse_list_item(item) for item in node["content"]])
 
 
-def _parse_ordered_list(node: adf.OrderedList) -> blocks.OrderedList:
+def _parse_ordered_list(node: schema.OrderedList) -> blocks.OrderedList:
     attrs = node.get("attrs")
     start = attrs.get("order", 1) if attrs else 1
     return blocks.OrderedList(
@@ -107,11 +107,11 @@ def _parse_ordered_list(node: adf.OrderedList) -> blocks.OrderedList:
     )
 
 
-def _parse_list_item(node: adf.ListItem) -> blocks.ListItem:
+def _parse_list_item(node: schema.ListItem) -> blocks.ListItem:
     return blocks.ListItem(children=_parse_blocks(node["content"]))
 
 
-def _parse_task_list(node: adf.TaskList) -> blocks.BulletList:
+def _parse_task_list(node: schema.TaskList) -> blocks.BulletList:
     items: list[blocks.ListItem] = []
     for item in node["content"]:
         checked = item["attrs"]["state"] == "DONE"
@@ -125,7 +125,7 @@ def _parse_task_list(node: adf.TaskList) -> blocks.BulletList:
     return blocks.BulletList(items=items)
 
 
-def _parse_decision_list(node: adf.DecisionList) -> blocks.BulletList:
+def _parse_decision_list(node: schema.DecisionList) -> blocks.BulletList:
     items: list[blocks.ListItem] = []
     for item in node["content"]:
         checked = item["attrs"]["state"] == "DECIDED"
@@ -139,7 +139,7 @@ def _parse_decision_list(node: adf.DecisionList) -> blocks.BulletList:
     return blocks.BulletList(items=items)
 
 
-def _parse_table(node: adf.Table) -> blocks.Table:
+def _parse_table(node: schema.Table) -> blocks.Table:
     head: list[blocks.TableCell] = []
     body: list[list[blocks.TableCell]] = []
     for i, row in enumerate(node["content"]):
@@ -152,16 +152,16 @@ def _parse_table(node: adf.Table) -> blocks.Table:
 
 
 def _parse_table_cell(
-    node: adf.TableCell | adf.TableHeader,
+    node: schema.TableCell | schema.TableHeader,
 ) -> blocks.TableCell:
     result: list[inlines.Inline] = []
     for block in node["content"]:
         if block["type"] == "paragraph":
-            result.extend(_parse_inlines(cast(adf.Paragraph, block)["content"]))
+            result.extend(_parse_inlines(cast(schema.Paragraph, block)["content"]))
     return blocks.TableCell(children=result)
 
 
-def _parse_media_single(node: adf.MediaSingle) -> blocks.Paragraph:
+def _parse_media_single(node: schema.MediaSingle) -> blocks.Paragraph:
     for media in node["content"]:
         inline = _media_to_inline(media)
         if inline is not None:
@@ -169,7 +169,7 @@ def _parse_media_single(node: adf.MediaSingle) -> blocks.Paragraph:
     return blocks.Paragraph(children=[])
 
 
-def _parse_media_group(node: adf.MediaGroup) -> blocks.Paragraph:
+def _parse_media_group(node: schema.MediaGroup) -> blocks.Paragraph:
     result: list[inlines.Inline] = []
     for media in node["content"]:
         inline = _media_to_inline(media)
@@ -178,7 +178,7 @@ def _parse_media_group(node: adf.MediaGroup) -> blocks.Paragraph:
     return blocks.Paragraph(children=result)
 
 
-def _media_to_inline(media: adf.Media) -> inlines.Inline | None:
+def _media_to_inline(media: schema.Media) -> inlines.Inline | None:
     attrs = media["attrs"]
     media_type = attrs["type"]
     if media_type == "external":
@@ -189,11 +189,11 @@ def _media_to_inline(media: adf.Media) -> inlines.Inline | None:
     return inlines.Text(text=f"[Image: {alt}]") if alt else None
 
 
-def _parse_panel(node: adf.Panel) -> blocks.BlockQuote:
+def _parse_panel(node: schema.Panel) -> blocks.BlockQuote:
     return blocks.BlockQuote(children=_parse_blocks(node["content"]))
 
 
-def _parse_expand(node: adf.Expand) -> blocks.BlockQuote:
+def _parse_expand(node: schema.Expand) -> blocks.BlockQuote:
     attrs = node.get("attrs")
     title = attrs.get("title") if attrs else None
     children = _parse_blocks(node["content"])
@@ -202,14 +202,14 @@ def _parse_expand(node: adf.Expand) -> blocks.BlockQuote:
     return blocks.BlockQuote(children=children)
 
 
-def _parse_layout_section(node: adf.LayoutSection) -> list[blocks.Block]:
+def _parse_layout_section(node: schema.LayoutSection) -> list[blocks.Block]:
     result: list[blocks.Block] = []
     for column in node["content"]:
         result.extend(_parse_blocks(column["content"]))
     return result
 
 
-def _parse_block_card(node: adf.BlockCard) -> blocks.Paragraph:
+def _parse_block_card(node: schema.BlockCard) -> blocks.Paragraph:
     attrs = node.get("attrs")
     url = attrs.get("url") if attrs else None
     if url:
@@ -219,7 +219,7 @@ def _parse_block_card(node: adf.BlockCard) -> blocks.Paragraph:
     return blocks.Paragraph(children=[])
 
 
-def _parse_embed_card(node: adf.EmbedCard) -> blocks.Paragraph | None:
+def _parse_embed_card(node: schema.EmbedCard) -> blocks.Paragraph | None:
     url = node["attrs"]["url"]
     if not url:
         return None
@@ -231,30 +231,30 @@ def _parse_embed_card(node: adf.EmbedCard) -> blocks.Paragraph | None:
 # ── Inline dispatch ───────────────────────────────────────────────────
 
 
-def _parse_inlines(nodes: list[adf.Inline]) -> list[inlines.Inline]:
+def _parse_inlines(nodes: list[schema.Inline]) -> list[inlines.Inline]:
     result: list[inlines.Inline] = []
     for node in nodes:
         result.extend(_parse_inline(node))
     return result
 
 
-def _parse_inline(node: adf.Inline) -> list[inlines.Inline]:
+def _parse_inline(node: schema.Inline) -> list[inlines.Inline]:
     t = node["type"]
     match t:
         case "text":
-            return _parse_text(cast(adf.Text, node))
+            return _parse_text(cast(schema.Text, node))
         case "hardBreak":
             return [inlines.HardBreak()]
         case "mention":
-            return _parse_mention(cast(adf.Mention, node))
+            return _parse_mention(cast(schema.Mention, node))
         case "emoji":
-            return _parse_emoji(cast(adf.Emoji, node))
+            return _parse_emoji(cast(schema.Emoji, node))
         case "date":
-            return _parse_date(cast(adf.Date, node))
+            return _parse_date(cast(schema.Date, node))
         case "status":
-            return _parse_status(cast(adf.Status, node))
+            return _parse_status(cast(schema.Status, node))
         case "inlineCard":
-            return _parse_inline_card(cast(adf.InlineCard, node))
+            return _parse_inline_card(cast(schema.InlineCard, node))
         case _:
             return [inlines.Text(text=f"[{t}]")]
 
@@ -262,7 +262,7 @@ def _parse_inline(node: adf.Inline) -> list[inlines.Inline]:
 # ── Inline parsers ────────────────────────────────────────────────────
 
 
-def _parse_text(node: adf.Text) -> list[inlines.Inline]:
+def _parse_text(node: schema.Text) -> list[inlines.Inline]:
     text = node["text"]
     if not text:
         return []
@@ -272,29 +272,29 @@ def _parse_text(node: adf.Text) -> list[inlines.Inline]:
     return _apply_marks(text, marks)
 
 
-def _parse_mention(node: adf.Mention) -> list[inlines.Inline]:
+def _parse_mention(node: schema.Mention) -> list[inlines.Inline]:
     attrs = node["attrs"]
     text = attrs.get("text") or f"@{attrs['id']}"
     return [inlines.CodeSpan(code=text)]
 
 
-def _parse_emoji(node: adf.Emoji) -> list[inlines.Inline]:
+def _parse_emoji(node: schema.Emoji) -> list[inlines.Inline]:
     attrs = node["attrs"]
     text = attrs.get("text") or f":{attrs['shortName']}:"
     return [inlines.Text(text=text)]
 
 
-def _parse_date(node: adf.Date) -> list[inlines.Inline]:
+def _parse_date(node: schema.Date) -> list[inlines.Inline]:
     timestamp = node["attrs"]["timestamp"]
     dt = datetime.fromtimestamp(int(timestamp) / 1000, tz=UTC)
     return [inlines.CodeSpan(code=dt.strftime("%Y-%m-%d"))]
 
 
-def _parse_status(node: adf.Status) -> list[inlines.Inline]:
+def _parse_status(node: schema.Status) -> list[inlines.Inline]:
     return [inlines.CodeSpan(code=node["attrs"]["text"])]
 
 
-def _parse_inline_card(node: adf.InlineCard) -> list[inlines.Inline]:
+def _parse_inline_card(node: schema.InlineCard) -> list[inlines.Inline]:
     url = node["attrs"].get("url")
     if not url:
         return []
@@ -308,13 +308,13 @@ _MARK_ORDER = {"code": 0, "link": 1, "strong": 2, "em": 3, "strike": 4}
 _IGNORED_MARKS = {"underline", "textColor", "backgroundColor", "subsup"}
 
 
-def _apply_marks(text: str, marks: list[adf.Mark]) -> list[inlines.Inline]:
+def _apply_marks(text: str, marks: list[schema.Mark]) -> list[inlines.Inline]:
     supported = [m for m in marks if m.get("type") not in _IGNORED_MARKS]
     supported.sort(key=lambda m: _MARK_ORDER.get(m.get("type", ""), 99))
     return _wrap_marks(text, supported, 0)
 
 
-def _wrap_marks(text: str, marks: list[adf.Mark], index: int) -> list[inlines.Inline]:
+def _wrap_marks(text: str, marks: list[schema.Mark], index: int) -> list[inlines.Inline]:
     if index >= len(marks):
         return [inlines.Text(text=text)]
 
