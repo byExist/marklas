@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from typing import Any
 from uuid import uuid4
 
 from marklas import schema
@@ -17,13 +18,14 @@ def _sort_marks(marks: list[schema.Mark]) -> list[schema.Mark]:
 # ── Public API ───────────────────────────────────────────────────────
 
 
-def render(doc: blocks.Document) -> schema.Doc:
+def render(doc: blocks.Document) -> dict[str, Any]:
     content: list[schema.Block] = []
     for child in doc.children:
         block = _render_block(child)
         if block is not None:
             content.append(block)
-    return schema.Doc(type="doc", version=1, content=content)
+    result: dict[str, Any] = {"type": "doc", "version": 1, "content": content}
+    return result
 
 
 # ── Block dispatch ───────────────────────────────────────────────────
