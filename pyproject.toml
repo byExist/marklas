@@ -7,13 +7,11 @@ authors = [
     { name = "byExist", email = "jongbeom.kwon@gmail.com" }
 ]
 requires-python = ">=3.13"
-dependencies = [
-    "black[dev]>=26.1.0",
-    "mistune>=3.2",
-]
+dependencies = ["mistune>=3.2"]
 
 [project.optional-dependencies]
 dev = [
+    "black>=26.1.0",
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
 ]

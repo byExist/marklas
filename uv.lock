@@ -133,19 +133,19 @@ name = "marklas"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
-    { name = "black" },
     { name = "mistune" },
 ]
 
 [package.optional-dependencies]
 dev = [
+    { name = "black" },
     { name = "pytest" },
     { name = "pytest-cov" },
 ]
 
 [package.metadata]
 requires-dist = [
-    { name = "black", extras = ["dev"], specifier = ">=26.1.0" },
+    { name = "black", marker = "extra == 'dev'", specifier = ">=26.1.0" },
     { name = "mistune", specifier = ">=3.2" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
     { name = "pytest-cov", marker = "extra == 'dev'", specifier = ">=4.1.0" },
