@@ -7,7 +7,7 @@ authors = [
     { name = "byExist", email = "jongbeom.kwon@gmail.com" }
 ]
 requires-python = ">=3.13"
-dependencies = []
+dependencies = ["mistune>=3.2"]
 
 [project.optional-dependencies]
 dev = [
