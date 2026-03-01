@@ -343,6 +343,88 @@ def test_table_no_header():
     assert len(result.body) == 1
 
 
+def test_table_cell_non_paragraph_placeholder():
+    doc = parse(
+        {
+            "type": "doc",
+            "version": 1,
+            "content": [
+                {
+                    "type": "table",
+                    "content": [
+                        {
+                            "type": "tableRow",
+                            "content": [
+                                {
+                                    "type": "tableHeader",
+                                    "content": [
+                                        {
+                                            "type": "paragraph",
+                                            "content": [
+                                                {"type": "text", "text": "Col"}
+                                            ],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                        {
+                            "type": "tableRow",
+                            "content": [
+                                {
+                                    "type": "tableCell",
+                                    "content": [
+                                        {
+                                            "type": "paragraph",
+                                            "content": [
+                                                {"type": "text", "text": "before"}
+                                            ],
+                                        },
+                                        {
+                                            "type": "codeBlock",
+                                            "content": [
+                                                {"type": "text", "text": "print(1)"}
+                                            ],
+                                            "attrs": {"language": "python"},
+                                        },
+                                        {
+                                            "type": "bulletList",
+                                            "content": [
+                                                {
+                                                    "type": "listItem",
+                                                    "content": [
+                                                        {
+                                                            "type": "paragraph",
+                                                            "content": [
+                                                                {
+                                                                    "type": "text",
+                                                                    "text": "item",
+                                                                }
+                                                            ],
+                                                        },
+                                                    ],
+                                                },
+                                            ],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        }
+    )
+    table = doc.children[0]
+    assert isinstance(table, blocks.Table)
+    cell = table.body[0][0]
+    assert cell.children == [
+        inlines.Text(text="before"),
+        inlines.Text(text="[codeBlock]"),
+        inlines.Text(text="[bulletList]"),
+    ]
+
+
 def test_task_list():
     doc = parse(
         {

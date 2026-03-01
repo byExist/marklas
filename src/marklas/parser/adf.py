@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from typing import Literal, cast
+from typing import Any, Literal, cast
 
 from marklas import schema
 from marklas.ast import blocks, inlines
 
 
-def parse(doc: schema.Doc) -> blocks.Document:
+def parse(doc: dict[str, Any]) -> blocks.Document:
     return blocks.Document(children=_parse_blocks(doc["content"]))
 
 
@@ -158,6 +158,8 @@ def _parse_table_cell(
     for block in node["content"]:
         if block["type"] == "paragraph":
             result.extend(_parse_inlines(cast(schema.Paragraph, block)["content"]))
+        else:
+            result.append(inlines.Text(text=f"[{block['type']}]"))
     return blocks.TableCell(children=result)
 
 

@@ -1,74 +1,6 @@
-# marklas
+# Conversion Rules
 
-Bidirectional conversion library between GFM (GitHub Flavored Markdown) and ADF (Atlassian Document Format).
-
-Converts between Markdown and ADF via an intermediate AST representation.
-
-```
-ADF ──parser──▶ AST ──renderer──▶ Markdown
-Markdown ──parser──▶ AST ──renderer──▶ ADF
-```
-
-## Installation
-
-```bash
-pip install marklas
-```
-
-## Usage
-
-### Markdown → ADF
-
-```python
-from marklas.parser.md import parse
-from marklas.renderer.adf import render
-
-doc = parse("**Hello** world")
-adf = render(doc)
-# {
-#   "type": "doc",
-#   "version": 1,
-#   "content": [
-#     {
-#       "type": "paragraph",
-#       "content": [
-#         {"type": "text", "text": "Hello", "marks": [{"type": "strong"}]},
-#         {"type": "text", "text": " world"}
-#       ]
-#     }
-#   ]
-# }
-```
-
-### ADF → Markdown
-
-```python
-from typing import Any
-
-from marklas.parser.adf import parse
-from marklas.renderer.md import render
-
-adf: dict[str, Any] = {
-    "type": "doc",
-    "version": 1,
-    "content": [
-        {
-            "type": "paragraph",
-            "content": [
-                {"type": "text", "text": "Hello", "marks": [{"type": "strong"}]},
-                {"type": "text", "text": " world"},
-            ],
-        }
-    ],
-}
-doc = parse(adf)
-md = render(doc)
-# "**Hello** world\n"
-```
-
-## Conversion Rules
-
-### Block
+## Block Elements
 
 | ADF                                        | AST                                              | Markdown                      |
 | ------------------------------------------ | ------------------------------------------------ | ----------------------------- |
@@ -91,7 +23,7 @@ md = render(doc)
 | `blockCard` (url)                          | `Paragraph > Link(url)`                          | `[url](url)`                  |
 | `embedCard` (url)                          | `Paragraph > Link(url)`                          | `[url](url)`                  |
 
-### Inline
+## Inline Elements
 
 | ADF                    | AST                           | Markdown            |
 | ---------------------- | ----------------------------- | ------------------- |
@@ -110,18 +42,54 @@ md = render(doc)
 | `inlineCard` (url)     | `Link(url)`                   | `[url](url)`        |
 | —                      | `Image(url, alt, title?)`     | `![alt](url)`       |
 
-### Not Supported
+## Mark Handling
 
-- ADF marks: `underline`, `textColor`, `backgroundColor`, `subsup` (silently ignored)
-- ADF blocks: `extension`, `bodiedExtension`, `syncBlock`, `bodiedSyncBlock` (rendered as `[type]` placeholder)
-- ADF inlines: `placeholder`, `inlineExtension`, `mediaInline` (rendered as `[type]` placeholder)
-- ADF table: `colspan`, `rowspan`, `background`, `colwidth` attributes ignored; non-paragraph content inside cells is rendered as `[type]` placeholder
-- Markdown: raw HTML (block and inline, silently ignored)
+### ADF -> AST (mark flattening -> nesting)
 
-## Development
+ADF는 mark를 flat array로 표현하고, AST는 중첩 노드로 표현한다.
 
-```bash
-uv sync --extra dev
-uv run pytest -v
-uv run black src/ tests/
 ```
+ADF: { "text": "bold italic", "marks": [{"type": "strong"}, {"type": "em"}] }
+AST: Strong(children=[Emphasis(children=[Text("bold italic")])])
+```
+
+- mark 적용 우선순위 (바깥 → 안쪽): `code` > `link` > `strong` > `em` > `strike`
+- `code` mark이 있으면 나머지 mark 무시하고 `CodeSpan`으로 변환
+- 무시되는 mark: `underline`, `textColor`, `backgroundColor`, `subsup`
+
+### AST -> ADF (nesting -> mark flattening)
+
+AST의 중첩 인라인 노드를 ADF의 flat text + marks로 변환한다.
+
+```
+AST: Strong(children=[Emphasis(children=[Text("hello")])])
+ADF: { "text": "hello", "marks": [{"type": "strong"}, {"type": "em"}] }
+```
+
+- ADF mark 정렬 순서: `link` > `strong` > `em` > `strike` > `code`
+
+## Special Cases
+
+### Paragraph with single Image (AST -> ADF)
+
+`Paragraph`에 `Image` 하나만 있으면 `mediaSingle`로 변환한다.
+여러 인라인과 섞여 있는 `Image`는 `link` mark + alt 텍스트로 fallback한다.
+
+### taskList / decisionList (ADF -> AST)
+
+둘 다 `BulletList > ListItem(checked=bool)`로 변환된다.
+
+- `taskItem.state == "DONE"` → `checked=True`
+- `decisionItem.state == "DECIDED"` → `checked=True`
+
+### BulletList with checked items (AST -> ADF)
+
+`ListItem.checked`가 `None`이 아닌 항목이 있으면 `taskList`로 변환한다.
+
+### Code fence escaping (AST -> MD)
+
+코드 내용에 ` ``` `이 포함되면 ` ` ````로 fence를 확장한다.
+
+### Code span escaping (AST -> MD)
+
+코드 내용에 `` ` ``이 포함되면 ` `` code `` `로 감싼다.
