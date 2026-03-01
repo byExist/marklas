@@ -1,13 +1,15 @@
-# marklas
+<h1 align="center">Marklas</h1>
 
-Bidirectional conversion library between GFM (GitHub Flavored Markdown) and ADF (Atlassian Document Format).
+<p align="center">
+  <a href="https://github.com/byExist/marklas/actions/workflows/ci.yml"><img src="https://github.com/byExist/marklas/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://pypi.org/project/marklas/"><img src="https://img.shields.io/pypi/v/marklas" alt="PyPI"></a>
+  <a href="https://pypi.org/project/marklas/"><img src="https://img.shields.io/pypi/pyversions/marklas" alt="Python"></a>
+  <a href="https://github.com/byExist/marklas/blob/master/LICENSE"><img src="https://img.shields.io/pypi/l/marklas" alt="License"></a>
+</p>
 
-Converts between Markdown and ADF via an intermediate AST representation.
-
-```
-ADF ──parser──▶ AST ──renderer──▶ Markdown
-Markdown ──parser──▶ AST ──renderer──▶ ADF
-```
+<p align="center">
+  <b>Markdown</b> ⇄ <b>AST</b> ⇄ <b>ADF</b>
+</p>
 
 ## Installation
 
@@ -25,6 +27,7 @@ from marklas.renderer.adf import render
 
 doc = parse("**Hello** world")
 adf = render(doc)
+
 # {
 #   "type": "doc",
 #   "version": 1,
@@ -63,6 +66,7 @@ adf: dict[str, Any] = {
 }
 doc = parse(adf)
 md = render(doc)
+
 # "**Hello** world\n"
 ```
 
