@@ -140,15 +140,51 @@ def _parse_decision_list(node: schema.DecisionList) -> blocks.BulletList:
 
 
 def _parse_table(node: schema.Table) -> blocks.Table:
-    head: list[blocks.TableCell] = []
-    body: list[list[blocks.TableCell]] = []
-    for i, row in enumerate(node["content"]):
-        cells = row["content"]
-        if i == 0 and cells and cells[0]["type"] == "tableHeader":
-            head = [_parse_table_cell(c) for c in cells]
-        else:
-            body.append([_parse_table_cell(c) for c in cells])
-    return blocks.Table(head=head, body=body)
+    rows = node["content"]
+    if not rows:
+        return blocks.Table(head=[], body=[])
+
+    # Build a 2D grid to resolve colspan/rowspan into flat cells.
+    num_rows = len(rows)
+    num_cols = 0
+    for row in rows:
+        cols = 0
+        for cell in row["content"]:
+            attrs = cell.get("attrs", {})
+            cols += attrs.get("colspan", 1)
+        num_cols = max(num_cols, cols)
+
+    _EMPTY = blocks.TableCell(children=[])
+    grid: list[list[blocks.TableCell]] = [
+        [_EMPTY] * num_cols for _ in range(num_rows)
+    ]
+    occupied: list[list[bool]] = [
+        [False] * num_cols for _ in range(num_rows)
+    ]
+
+    for r, row in enumerate(rows):
+        col = 0
+        for cell in row["content"]:
+            while col < num_cols and occupied[r][col]:
+                col += 1
+            if col >= num_cols:
+                break
+            attrs = cell.get("attrs", {})
+            cs = attrs.get("colspan", 1)
+            rs = attrs.get("rowspan", 1)
+            parsed = _parse_table_cell(cell)
+            grid[r][col] = parsed
+            for dr in range(rs):
+                for dc in range(cs):
+                    if r + dr < num_rows and col + dc < num_cols:
+                        occupied[r + dr][col + dc] = True
+            col += cs
+
+    cells_row0 = rows[0]["content"]
+    is_header = bool(cells_row0 and cells_row0[0]["type"] == "tableHeader")
+    if is_header:
+        return blocks.Table(head=grid[0], body=grid[1:])
+    return blocks.Table(head=[], body=grid)
 
 
 def _parse_table_cell(

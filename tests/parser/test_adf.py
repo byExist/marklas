@@ -1,3 +1,5 @@
+from typing import Any
+
 from marklas.ast import blocks, inlines
 from marklas.parser.adf import parse
 
@@ -423,6 +425,119 @@ def test_table_cell_non_paragraph_placeholder():
         inlines.Text(text="[codeBlock]"),
         inlines.Text(text="[bulletList]"),
     ]
+
+
+def _make_cell(text: str, type: str = "tableCell", **attrs: int) -> dict[str, Any]:
+    cell: dict[str, Any] = {
+        "type": type,
+        "content": [
+            {"type": "paragraph", "content": [{"type": "text", "text": text}]}
+        ],
+    }
+    if attrs:
+        cell["attrs"] = attrs
+    return cell
+
+
+def _make_table(*rows: list[dict[str, Any]]) -> dict[str, Any]:
+    return {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "table",
+                "content": [
+                    {"type": "tableRow", "content": cells} for cells in rows
+                ],
+            }
+        ],
+    }
+
+
+def test_table_colspan():
+    doc = parse(
+        _make_table(
+            [
+                _make_cell("H1", "tableHeader"),
+                _make_cell("H2", "tableHeader"),
+                _make_cell("H3", "tableHeader"),
+            ],
+            [
+                _make_cell("A", colspan=2),
+                _make_cell("B"),
+            ],
+        )
+    )
+    table = doc.children[0]
+    assert isinstance(table, blocks.Table)
+    assert len(table.head) == 3
+    assert len(table.body) == 1
+    row = table.body[0]
+    assert len(row) == 3
+    assert row[0].children == [inlines.Text(text="A")]
+    assert row[1].children == []
+    assert row[2].children == [inlines.Text(text="B")]
+
+
+def test_table_rowspan():
+    doc = parse(
+        _make_table(
+            [
+                _make_cell("H1", "tableHeader"),
+                _make_cell("H2", "tableHeader"),
+            ],
+            [
+                _make_cell("A", rowspan=2),
+                _make_cell("B"),
+            ],
+            [
+                _make_cell("C"),
+            ],
+        )
+    )
+    table = doc.children[0]
+    assert isinstance(table, blocks.Table)
+    assert len(table.body) == 2
+    row0 = table.body[0]
+    assert len(row0) == 2
+    assert row0[0].children == [inlines.Text(text="A")]
+    assert row0[1].children == [inlines.Text(text="B")]
+    row1 = table.body[1]
+    assert len(row1) == 2
+    assert row1[0].children == []
+    assert row1[1].children == [inlines.Text(text="C")]
+
+
+def test_table_colspan_and_rowspan():
+    doc = parse(
+        _make_table(
+            [
+                _make_cell("H1", "tableHeader"),
+                _make_cell("H2", "tableHeader"),
+                _make_cell("H3", "tableHeader"),
+            ],
+            [
+                _make_cell("A", colspan=2, rowspan=2),
+                _make_cell("B"),
+            ],
+            [
+                _make_cell("C"),
+            ],
+        )
+    )
+    table = doc.children[0]
+    assert isinstance(table, blocks.Table)
+    assert len(table.body) == 2
+    row0 = table.body[0]
+    assert len(row0) == 3
+    assert row0[0].children == [inlines.Text(text="A")]
+    assert row0[1].children == []
+    assert row0[2].children == [inlines.Text(text="B")]
+    row1 = table.body[1]
+    assert len(row1) == 3
+    assert row1[0].children == []
+    assert row1[1].children == []
+    assert row1[2].children == [inlines.Text(text="C")]
 
 
 def test_task_list():

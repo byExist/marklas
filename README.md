@@ -117,7 +117,8 @@ md = render(doc)
 | ADF marks: `underline`, `textColor`, `backgroundColor`, `subsup`       | silently ignored     |
 | ADF blocks: `extension`, `bodiedExtension`, `syncBlock`, `bodiedSyncBlock` | `[type]` placeholder |
 | ADF inlines: `placeholder`, `inlineExtension`, `mediaInline`           | `[type]` placeholder |
-| ADF table: `colspan`, `rowspan`, `background`, `colwidth`              | attributes ignored   |
+| ADF table: `colspan`, `rowspan`                                        | expanded with empty cells |
+| ADF table: `background`, `colwidth`                                    | attributes ignored   |
 | ADF table: non-paragraph cell content                                  | `[type]` placeholder |
 | Markdown: raw HTML (block, inline)                                     | silently ignored     |
 
