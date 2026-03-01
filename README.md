@@ -112,11 +112,14 @@ md = render(doc)
 
 ### Not Supported
 
-- ADF marks: `underline`, `textColor`, `backgroundColor`, `subsup` (silently ignored)
-- ADF blocks: `extension`, `bodiedExtension`, `syncBlock`, `bodiedSyncBlock` (rendered as `[type]` placeholder)
-- ADF inlines: `placeholder`, `inlineExtension`, `mediaInline` (rendered as `[type]` placeholder)
-- ADF table: `colspan`, `rowspan`, `background`, `colwidth` attributes ignored; non-paragraph content inside cells is rendered as `[type]` placeholder
-- Markdown: raw HTML (block and inline, silently ignored)
+| Element                                                                | Behavior             |
+| ---------------------------------------------------------------------- | -------------------- |
+| ADF marks: `underline`, `textColor`, `backgroundColor`, `subsup`       | silently ignored     |
+| ADF blocks: `extension`, `bodiedExtension`, `syncBlock`, `bodiedSyncBlock` | `[type]` placeholder |
+| ADF inlines: `placeholder`, `inlineExtension`, `mediaInline`           | `[type]` placeholder |
+| ADF table: `colspan`, `rowspan`, `background`, `colwidth`              | attributes ignored   |
+| ADF table: non-paragraph cell content                                  | `[type]` placeholder |
+| Markdown: raw HTML (block, inline)                                     | silently ignored     |
 
 ## Development
 

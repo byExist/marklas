@@ -1230,6 +1230,38 @@ def test_nested_marks():
     ]
 
 
+def test_code_and_link_marks():
+    doc = parse(
+        {
+            "type": "doc",
+            "version": 1,
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "example",
+                            "marks": [
+                                {"type": "code"},
+                                {"type": "link", "attrs": {"href": "https://example.com"}},
+                            ],
+                        },
+                    ],
+                },
+            ],
+        }
+    )
+    p = doc.children[0]
+    assert isinstance(p, blocks.Paragraph)
+    assert p.children == [
+        inlines.Link(
+            url="https://example.com",
+            children=[inlines.CodeSpan(code="example")],
+        ),
+    ]
+
+
 def test_empty_text_with_marks():
     doc = parse(
         {

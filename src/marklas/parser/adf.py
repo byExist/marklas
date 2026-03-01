@@ -306,7 +306,7 @@ def _parse_inline_card(node: schema.InlineCard) -> list[inlines.Inline]:
 # ── Mark application ──────────────────────────────────────────────────
 
 
-_MARK_ORDER = {"code": 0, "link": 1, "strong": 2, "em": 3, "strike": 4}
+_MARK_ORDER = {"link": 0, "code": 1, "strong": 2, "em": 3, "strike": 4}
 _IGNORED_MARKS = {"underline", "textColor", "backgroundColor", "subsup"}
 
 
