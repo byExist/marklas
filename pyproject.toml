@@ -1,0 +1,20 @@
+[project]
+name = "marklas"
+version = "0.1.0"
+description = "GFM ↔ ADF 양방향 변환 라이브러리"
+readme = "README.md"
+authors = [
+    { name = "byExist", email = "jongbeom.kwon@gmail.com" }
+]
+requires-python = ">=3.13"
+dependencies = []
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8.0.0",
+    "pytest-cov>=4.1.0",
+]
+
+[build-system]
+requires = ["uv_build>=0.9.21,<0.10.0"]
+build-backend = "uv_build"
