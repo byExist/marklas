@@ -1,7 +1,6 @@
 from marklas.ast import blocks, inlines
 from marklas.renderer.md import render
 
-
 # ── Block renderers ───────────────────────────────────────────────────
 
 
@@ -24,7 +23,9 @@ def test_empty_paragraph():
 def test_heading_levels():
     for level in (1, 2, 3, 4, 5, 6):
         doc = blocks.Document(
-            children=[blocks.Heading(level=level, children=[inlines.Text(text="Title")])]
+            children=[
+                blocks.Heading(level=level, children=[inlines.Text(text="Title")])
+            ]
         )
         expected = "#" * level + " Title\n"
         assert render(doc) == expected
@@ -119,11 +120,15 @@ def test_bullet_list_checked():
             blocks.BulletList(
                 items=[
                     blocks.ListItem(
-                        children=[blocks.Paragraph(children=[inlines.Text(text="done")])],
+                        children=[
+                            blocks.Paragraph(children=[inlines.Text(text="done")])
+                        ],
                         checked=True,
                     ),
                     blocks.ListItem(
-                        children=[blocks.Paragraph(children=[inlines.Text(text="todo")])],
+                        children=[
+                            blocks.Paragraph(children=[inlines.Text(text="todo")])
+                        ],
                         checked=False,
                     ),
                 ]

@@ -1,7 +1,6 @@
 from marklas.ast import blocks, inlines
 from marklas.parser.adf import parse
 
-
 # ── Block parsers ─────────────────────────────────────────────────────
 
 
@@ -253,9 +252,7 @@ def test_table_header_body():
                                     "content": [
                                         {
                                             "type": "paragraph",
-                                            "content": [
-                                                {"type": "text", "text": "H1"}
-                                            ],
+                                            "content": [{"type": "text", "text": "H1"}],
                                         },
                                     ],
                                 },
@@ -264,9 +261,7 @@ def test_table_header_body():
                                     "content": [
                                         {
                                             "type": "paragraph",
-                                            "content": [
-                                                {"type": "text", "text": "H2"}
-                                            ],
+                                            "content": [{"type": "text", "text": "H2"}],
                                         },
                                     ],
                                 },
@@ -280,9 +275,7 @@ def test_table_header_body():
                                     "content": [
                                         {
                                             "type": "paragraph",
-                                            "content": [
-                                                {"type": "text", "text": "A"}
-                                            ],
+                                            "content": [{"type": "text", "text": "A"}],
                                         },
                                     ],
                                 },
@@ -291,9 +284,7 @@ def test_table_header_body():
                                     "content": [
                                         {
                                             "type": "paragraph",
-                                            "content": [
-                                                {"type": "text", "text": "B"}
-                                            ],
+                                            "content": [{"type": "text", "text": "B"}],
                                         },
                                     ],
                                 },
@@ -335,9 +326,7 @@ def test_table_no_header():
                                     "content": [
                                         {
                                             "type": "paragraph",
-                                            "content": [
-                                                {"type": "text", "text": "A"}
-                                            ],
+                                            "content": [{"type": "text", "text": "A"}],
                                         },
                                     ],
                                 },
@@ -468,9 +457,7 @@ def test_expand_with_title():
     assert result.children[0] == blocks.Paragraph(
         children=[inlines.Text(text="Details")]
     )
-    assert result.children[1] == blocks.Paragraph(
-        children=[inlines.Text(text="body")]
-    )
+    assert result.children[1] == blocks.Paragraph(children=[inlines.Text(text="body")])
 
 
 def test_expand_no_title():
@@ -585,9 +572,7 @@ def test_media_single_external():
         }
     )
     assert doc.children == [
-        blocks.Paragraph(
-            children=[inlines.Image(url="https://img.png", alt="photo")]
-        )
+        blocks.Paragraph(children=[inlines.Image(url="https://img.png", alt="photo")])
     ]
 
 
@@ -754,9 +739,7 @@ def test_text():
             ],
         }
     )
-    assert doc.children[0] == blocks.Paragraph(
-        children=[inlines.Text(text="hello")]
-    )
+    assert doc.children[0] == blocks.Paragraph(children=[inlines.Text(text="hello")])
 
 
 def test_hard_break():
@@ -1092,9 +1075,7 @@ def test_link_mark():
     p = doc.children[0]
     assert isinstance(p, blocks.Paragraph)
     assert p.children == [
-        inlines.Link(
-            url="https://example.com", children=[inlines.Text(text="click")]
-        )
+        inlines.Link(url="https://example.com", children=[inlines.Text(text="click")])
     ]
 
 
