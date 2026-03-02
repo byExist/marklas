@@ -3,8 +3,8 @@ from __future__ import annotations
 from typing import Any
 from uuid import uuid4
 
-from marklas import schema
-from marklas.ast import blocks, inlines
+from marklas.adf import schema
+from marklas.nodes import blocks, inlines
 
 # ── Mark ordering ────────────────────────────────────────────────────
 # ADF 권장 순서: link > strong > em > strike > code
@@ -199,7 +199,9 @@ def _render_inlines_from_blocks(
     return result
 
 
-def _flatten_inline(node: inlines.Inline, marks: list[schema.Mark]) -> list[schema.Inline]:
+def _flatten_inline(
+    node: inlines.Inline, marks: list[schema.Mark]
+) -> list[schema.Inline]:
     match node:
         case inlines.Text():
             if not node.text:

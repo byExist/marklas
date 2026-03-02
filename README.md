@@ -22,11 +22,9 @@ pip install marklas
 ### Markdown → ADF
 
 ```python
-from marklas.parser.md import parse
-from marklas.renderer.adf import render
+from marklas import to_adf
 
-doc = parse("**Hello** world")
-adf = render(doc)
+adf = to_adf("**Hello** world")
 
 # {
 #   "type": "doc",
@@ -46,26 +44,9 @@ adf = render(doc)
 ### ADF → Markdown
 
 ```python
-from typing import Any
+from marklas import to_md
 
-from marklas.parser.adf import parse
-from marklas.renderer.md import render
-
-adf: dict[str, Any] = {
-    "type": "doc",
-    "version": 1,
-    "content": [
-        {
-            "type": "paragraph",
-            "content": [
-                {"type": "text", "text": "Hello", "marks": [{"type": "strong"}]},
-                {"type": "text", "text": " world"},
-            ],
-        }
-    ],
-}
-doc = parse(adf)
-md = render(doc)
+md = to_md(adf)
 
 # "**Hello** world\n"
 ```

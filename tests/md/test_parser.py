@@ -1,5 +1,5 @@
-from marklas.ast import blocks, inlines
-from marklas.parser.md import parse
+from marklas.nodes import blocks, inlines
+from marklas.md.parser import parse
 
 # ── Block parsers ────────────────────────────────────────────────────
 

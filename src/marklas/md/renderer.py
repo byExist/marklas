@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from marklas.ast import blocks, inlines
+from marklas.nodes import blocks, inlines
 
 
 def render(doc: blocks.Document) -> str:

@@ -3,8 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Literal
 
-from marklas.ast.base import Node
-from marklas.ast.inlines import Inline
+from marklas.nodes.base import Node
+from marklas.nodes.inlines import Inline
 
 
 @dataclass

@@ -1,7 +1,7 @@
 from typing import Any
 
-from marklas.ast import blocks, inlines
-from marklas.parser.adf import parse
+from marklas.nodes import blocks, inlines
+from marklas.adf.parser import parse
 
 # ── Block parsers ─────────────────────────────────────────────────────
 
@@ -430,9 +430,7 @@ def test_table_cell_non_paragraph_placeholder():
 def _make_cell(text: str, type: str = "tableCell", **attrs: int) -> dict[str, Any]:
     cell: dict[str, Any] = {
         "type": type,
-        "content": [
-            {"type": "paragraph", "content": [{"type": "text", "text": text}]}
-        ],
+        "content": [{"type": "paragraph", "content": [{"type": "text", "text": text}]}],
     }
     if attrs:
         cell["attrs"] = attrs
@@ -446,9 +444,7 @@ def _make_table(*rows: list[dict[str, Any]]) -> dict[str, Any]:
         "content": [
             {
                 "type": "table",
-                "content": [
-                    {"type": "tableRow", "content": cells} for cells in rows
-                ],
+                "content": [{"type": "tableRow", "content": cells} for cells in rows],
             }
         ],
     }
@@ -1359,7 +1355,10 @@ def test_code_and_link_marks():
                             "text": "example",
                             "marks": [
                                 {"type": "code"},
-                                {"type": "link", "attrs": {"href": "https://example.com"}},
+                                {
+                                    "type": "link",
+                                    "attrs": {"href": "https://example.com"},
+                                },
                             ],
                         },
                     ],

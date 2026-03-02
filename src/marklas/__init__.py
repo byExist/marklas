@@ -1,3 +1,3 @@
-from marklas.ast.blocks import Document
+from marklas.convert import to_adf, to_md
 
-__all__ = ["Document"]
+__all__ = ["to_adf", "to_md"]

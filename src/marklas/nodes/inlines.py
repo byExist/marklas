@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from marklas.ast.base import Node
+from marklas.nodes.base import Node
 
 
 @dataclass

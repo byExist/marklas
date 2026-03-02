@@ -4,7 +4,7 @@ from typing import Any, Literal, cast
 
 import mistune
 
-from marklas.ast import blocks, inlines
+from marklas.nodes import blocks, inlines
 
 type _Alignment = Literal["left", "center", "right"] | None
 

@@ -3,8 +3,8 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any, Literal, cast
 
-from marklas import schema
-from marklas.ast import blocks, inlines
+from marklas.adf import schema
+from marklas.nodes import blocks, inlines
 
 
 def parse(doc: dict[str, Any]) -> blocks.Document:
@@ -155,12 +155,8 @@ def _parse_table(node: schema.Table) -> blocks.Table:
         num_cols = max(num_cols, cols)
 
     _EMPTY = blocks.TableCell(children=[])
-    grid: list[list[blocks.TableCell]] = [
-        [_EMPTY] * num_cols for _ in range(num_rows)
-    ]
-    occupied: list[list[bool]] = [
-        [False] * num_cols for _ in range(num_rows)
-    ]
+    grid: list[list[blocks.TableCell]] = [[_EMPTY] * num_cols for _ in range(num_rows)]
+    occupied: list[list[bool]] = [[False] * num_cols for _ in range(num_rows)]
 
     for r, row in enumerate(rows):
         col = 0
@@ -352,7 +348,9 @@ def _apply_marks(text: str, marks: list[schema.Mark]) -> list[inlines.Inline]:
     return _wrap_marks(text, supported, 0)
 
 
-def _wrap_marks(text: str, marks: list[schema.Mark], index: int) -> list[inlines.Inline]:
+def _wrap_marks(
+    text: str, marks: list[schema.Mark], index: int
+) -> list[inlines.Inline]:
     if index >= len(marks):
         return [inlines.Text(text=text)]
 

@@ -1,7 +1,7 @@
 from typing import Any
 
-from marklas.ast import blocks, inlines
-from marklas.renderer.adf import render as _render_adf
+from marklas.nodes import blocks, inlines
+from marklas.adf.renderer import render as _render_adf
 
 
 def render(doc: blocks.Document) -> Any:
