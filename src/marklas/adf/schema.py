@@ -211,7 +211,7 @@ class _LocalIdAttrs(TypedDict, total=False):
 
 class Paragraph(TypedDict):
     type: Literal["paragraph"]
-    content: list[Inline]
+    content: NotRequired[list[Inline]]
     attrs: NotRequired[_LocalIdAttrs]
 
 
@@ -223,7 +223,7 @@ class _HeadingAttrs(TypedDict):
 class Heading(TypedDict):
     type: Literal["heading"]
     attrs: _HeadingAttrs
-    content: list[Inline]
+    content: NotRequired[list[Inline]]
 
 
 class _CodeBlockAttrs(TypedDict, total=False):
@@ -233,7 +233,7 @@ class _CodeBlockAttrs(TypedDict, total=False):
 
 class CodeBlock(TypedDict):
     type: Literal["codeBlock"]
-    content: list[Inline]
+    content: NotRequired[list[Inline]]
     attrs: NotRequired[_CodeBlockAttrs]
 
 
@@ -274,7 +274,7 @@ class _TaskItemAttrs(TypedDict):
 class TaskItem(TypedDict):
     type: Literal["taskItem"]
     attrs: _TaskItemAttrs
-    content: list[Inline]
+    content: NotRequired[list[Inline]]
 
 
 class _TaskListAttrs(TypedDict):
@@ -397,7 +397,7 @@ class _NestedExpandAttrs(TypedDict, total=False):
 class NestedExpand(TypedDict):
     type: Literal["nestedExpand"]
     content: list[Block]
-    attrs: NotRequired[_NestedExpandAttrs]
+    attrs: _NestedExpandAttrs
 
 
 class _LayoutColumnAttrs(TypedDict):
@@ -425,7 +425,7 @@ class _DecisionItemAttrs(TypedDict):
 class DecisionItem(TypedDict):
     type: Literal["decisionItem"]
     attrs: _DecisionItemAttrs
-    content: list[Inline]
+    content: NotRequired[list[Inline]]
 
 
 class _DecisionListAttrs(TypedDict):
@@ -446,7 +446,7 @@ class _BlockCardAttrs(TypedDict, total=False):
 
 class BlockCard(TypedDict):
     type: Literal["blockCard"]
-    attrs: NotRequired[_BlockCardAttrs]
+    attrs: _BlockCardAttrs
 
 
 class _EmbedCardAttrs(TypedDict):
