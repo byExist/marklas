@@ -167,15 +167,15 @@ def test_table_with_alignment():
         children=[
             blocks.Table(
                 head=[
-                    blocks.TableCell(children=[inlines.Text(text="Left")]),
-                    blocks.TableCell(children=[inlines.Text(text="Center")]),
-                    blocks.TableCell(children=[inlines.Text(text="Right")]),
+                    blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="Left")])]),
+                    blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="Center")])]),
+                    blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="Right")])]),
                 ],
                 body=[
                     [
-                        blocks.TableCell(children=[inlines.Text(text="a")]),
-                        blocks.TableCell(children=[inlines.Text(text="b")]),
-                        blocks.TableCell(children=[inlines.Text(text="c")]),
+                        blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="a")])]),
+                        blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="b")])]),
+                        blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="c")])]),
                     ]
                 ],
                 alignments=["left", "center", "right"],
@@ -191,8 +191,8 @@ def test_table_empty_body():
         children=[
             blocks.Table(
                 head=[
-                    blocks.TableCell(children=[inlines.Text(text="A")]),
-                    blocks.TableCell(children=[inlines.Text(text="B")]),
+                    blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="A")])]),
+                    blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="B")])]),
                 ],
                 body=[],
             )
@@ -207,13 +207,13 @@ def test_table_body_pad_cells():
         children=[
             blocks.Table(
                 head=[
-                    blocks.TableCell(children=[inlines.Text(text="A")]),
-                    blocks.TableCell(children=[inlines.Text(text="B")]),
-                    blocks.TableCell(children=[inlines.Text(text="C")]),
+                    blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="A")])]),
+                    blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="B")])]),
+                    blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="C")])]),
                 ],
                 body=[
                     [
-                        blocks.TableCell(children=[inlines.Text(text="1")]),
+                        blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="1")])]),
                     ]
                 ],
             )
@@ -228,18 +228,22 @@ def test_table_cell_hard_break_renders_as_br():
         children=[
             blocks.Table(
                 head=[
-                    blocks.TableCell(children=[inlines.Text(text="Col")]),
+                    blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="Col")])]),
                 ],
                 body=[
                     [
                         blocks.TableCell(
                             children=[
-                                inlines.Strong(
-                                    children=[inlines.Text(text="first")]
-                                ),
-                                inlines.HardBreak(),
-                                inlines.Strong(
-                                    children=[inlines.Text(text="second")]
+                                blocks.Paragraph(
+                                    children=[
+                                        inlines.Strong(
+                                            children=[inlines.Text(text="first")]
+                                        ),
+                                        inlines.HardBreak(),
+                                        inlines.Strong(
+                                            children=[inlines.Text(text="second")]
+                                        ),
+                                    ]
                                 ),
                             ]
                         ),
@@ -249,6 +253,139 @@ def test_table_cell_hard_break_renders_as_br():
         ]
     )
     expected = "| Col |\n| --- |\n| **first**<br>**second** |\n"
+    assert render(doc) == expected
+
+
+def test_table_cell_flatten_bullet_list():
+    doc = blocks.Document(
+        children=[
+            blocks.Table(
+                head=[blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="Col")])])],
+                body=[
+                    [
+                        blocks.TableCell(
+                            children=[
+                                blocks.BulletList(
+                                    items=[
+                                        blocks.ListItem(children=[blocks.Paragraph(children=[inlines.Text(text="alpha")])]),
+                                        blocks.ListItem(children=[blocks.Paragraph(children=[inlines.Text(text="beta")])]),
+                                    ]
+                                ),
+                            ]
+                        ),
+                    ]
+                ],
+            )
+        ]
+    )
+    expected = "| Col |\n| --- |\n| - alpha<br>- beta |\n"
+    assert render(doc) == expected
+
+
+def test_table_cell_flatten_ordered_list():
+    doc = blocks.Document(
+        children=[
+            blocks.Table(
+                head=[blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="Col")])])],
+                body=[
+                    [
+                        blocks.TableCell(
+                            children=[
+                                blocks.OrderedList(
+                                    items=[
+                                        blocks.ListItem(children=[blocks.Paragraph(children=[inlines.Text(text="first")])]),
+                                        blocks.ListItem(children=[blocks.Paragraph(children=[inlines.Text(text="second")])]),
+                                    ],
+                                    start=1,
+                                ),
+                            ]
+                        ),
+                    ]
+                ],
+            )
+        ]
+    )
+    expected = "| Col |\n| --- |\n| 1. first<br>2. second |\n"
+    assert render(doc) == expected
+
+
+def test_table_cell_flatten_code_block():
+    doc = blocks.Document(
+        children=[
+            blocks.Table(
+                head=[blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="Col")])])],
+                body=[
+                    [
+                        blocks.TableCell(
+                            children=[blocks.CodeBlock(code="x = 1")]
+                        ),
+                    ]
+                ],
+            )
+        ]
+    )
+    expected = "| Col |\n| --- |\n| `x = 1` |\n"
+    assert render(doc) == expected
+
+
+def test_table_cell_flatten_mixed_blocks():
+    doc = blocks.Document(
+        children=[
+            blocks.Table(
+                head=[blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="Col")])])],
+                body=[
+                    [
+                        blocks.TableCell(
+                            children=[
+                                blocks.Paragraph(children=[inlines.Text(text="intro")]),
+                                blocks.BulletList(
+                                    items=[
+                                        blocks.ListItem(children=[blocks.Paragraph(children=[inlines.Text(text="a")])]),
+                                        blocks.ListItem(children=[blocks.Paragraph(children=[inlines.Text(text="b")])]),
+                                    ]
+                                ),
+                            ]
+                        ),
+                    ]
+                ],
+            )
+        ]
+    )
+    expected = "| Col |\n| --- |\n| intro<br>- a<br>- b |\n"
+    assert render(doc) == expected
+
+
+def test_table_cell_flatten_nested_list():
+    doc = blocks.Document(
+        children=[
+            blocks.Table(
+                head=[blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="Col")])])],
+                body=[
+                    [
+                        blocks.TableCell(
+                            children=[
+                                blocks.BulletList(
+                                    items=[
+                                        blocks.ListItem(
+                                            children=[
+                                                blocks.Paragraph(children=[inlines.Text(text="parent")]),
+                                                blocks.BulletList(
+                                                    items=[
+                                                        blocks.ListItem(children=[blocks.Paragraph(children=[inlines.Text(text="child")])]),
+                                                    ]
+                                                ),
+                                            ]
+                                        ),
+                                    ]
+                                ),
+                            ]
+                        ),
+                    ]
+                ],
+            )
+        ]
+    )
+    expected = "| Col |\n| --- |\n| - parent<br>  - child |\n"
     assert render(doc) == expected
 
 

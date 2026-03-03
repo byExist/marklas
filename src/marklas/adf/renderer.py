@@ -153,12 +153,9 @@ def _render_table(node: blocks.Table) -> schema.Table:
     if node.head:
         header_cells: list[schema.TableCell | schema.TableHeader] = []
         for cell in node.head:
-            cell_content = _render_inlines(cell.children)
+            content = _render_cell_blocks(cell)
             header_cells.append(
-                schema.TableHeader(
-                    type="tableHeader",
-                    content=[schema.Paragraph(type="paragraph", content=cell_content)],
-                )
+                schema.TableHeader(type="tableHeader", content=content)
             )
         rows.append(schema.TableRow(type="tableRow", content=header_cells))
 
@@ -166,16 +163,22 @@ def _render_table(node: blocks.Table) -> schema.Table:
     for row in node.body:
         body_cells: list[schema.TableCell | schema.TableHeader] = []
         for cell in row:
-            cell_content = _render_inlines(cell.children)
+            content = _render_cell_blocks(cell)
             body_cells.append(
-                schema.TableCell(
-                    type="tableCell",
-                    content=[schema.Paragraph(type="paragraph", content=cell_content)],
-                )
+                schema.TableCell(type="tableCell", content=content)
             )
         rows.append(schema.TableRow(type="tableRow", content=body_cells))
 
     return schema.Table(type="table", content=rows)
+
+
+def _render_cell_blocks(cell: blocks.TableCell) -> list[schema.Block]:
+    content: list[schema.Block] = []
+    for child in cell.children:
+        block = _render_block(child)
+        if block is not None:
+            content.append(block)
+    return content
 
 
 # ── Inline rendering ─────────────────────────────────────────────────

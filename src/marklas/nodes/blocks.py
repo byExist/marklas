@@ -65,7 +65,7 @@ class OrderedList(Block):
 
 @dataclass
 class TableCell(Node):
-    children: list[Inline]
+    children: list[Block]
 
 
 @dataclass

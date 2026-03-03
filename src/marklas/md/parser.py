@@ -94,7 +94,11 @@ class _ASTRenderer(mistune.BaseRenderer):
                 for cell_tok in child.get("children", []):
                     head.append(
                         blocks.TableCell(
-                            children=self._render_children(cell_tok, state)
+                            children=[
+                                blocks.Paragraph(
+                                    children=self._render_children(cell_tok, state)
+                                )
+                            ]
                         )
                     )
                     alignments.append(cell_tok.get("attrs", {}).get("align"))
@@ -104,7 +108,13 @@ class _ASTRenderer(mistune.BaseRenderer):
                     for cell_tok in row_tok.get("children", []):
                         row.append(
                             blocks.TableCell(
-                                children=self._render_children(cell_tok, state)
+                                children=[
+                                    blocks.Paragraph(
+                                        children=self._render_children(
+                                            cell_tok, state
+                                        )
+                                    )
+                                ]
                             )
                         )
                     body.append(row)

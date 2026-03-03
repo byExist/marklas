@@ -281,13 +281,13 @@ def test_table_header_body():
         children=[
             blocks.Table(
                 head=[
-                    blocks.TableCell(children=[inlines.Text(text="A")]),
-                    blocks.TableCell(children=[inlines.Text(text="B")]),
+                    blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="A")])]),
+                    blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="B")])]),
                 ],
                 body=[
                     [
-                        blocks.TableCell(children=[inlines.Text(text="1")]),
-                        blocks.TableCell(children=[inlines.Text(text="2")]),
+                        blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="1")])]),
+                        blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="2")])]),
                     ]
                 ],
             )
@@ -311,7 +311,7 @@ def test_table_empty_body():
         children=[
             blocks.Table(
                 head=[
-                    blocks.TableCell(children=[inlines.Text(text="A")]),
+                    blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="A")])]),
                 ],
                 body=[],
             )
@@ -327,7 +327,7 @@ def test_table_alignment_ignored():
     doc = blocks.Document(
         children=[
             blocks.Table(
-                head=[blocks.TableCell(children=[inlines.Text(text="A")])],
+                head=[blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="A")])])],
                 body=[],
                 alignments=["left", "center", "right"],
             )

@@ -94,7 +94,7 @@ def _render_table(node: blocks.Table) -> str:
 
     col_count = len(node.head)
 
-    head_cells = [_render_cell_inlines(cell.children) for cell in node.head]
+    head_cells = [_render_cell(cell) for cell in node.head]
     header = "| " + " | ".join(head_cells) + " |"
 
     delimiters: list[str] = []
@@ -116,12 +116,66 @@ def _render_table(node: blocks.Table) -> str:
         cells: list[str] = []
         for i in range(col_count):
             if i < len(row):
-                cells.append(_render_cell_inlines(row[i].children))
+                cells.append(_render_cell(row[i]))
             else:
                 cells.append("")
         rows.append("| " + " | ".join(cells) + " |")
 
     return "\n".join(rows)
+
+
+def _render_cell(cell: blocks.TableCell) -> str:
+    return "<br>".join(_cell_lines(cell.children))
+
+
+def _cell_lines(children: list[blocks.Block], depth: int = 0) -> list[str]:
+    indent = "  " * depth
+    result: list[str] = []
+    for node in children:
+        match node:
+            case blocks.Paragraph():
+                text = _render_cell_inlines(node.children)
+                if text:
+                    result.append(indent + text)
+            case blocks.BulletList():
+                for item in node.items:
+                    result.extend(_cell_item_lines(item, indent + "- ", depth))
+            case blocks.OrderedList():
+                for i, item in enumerate(node.items):
+                    result.extend(
+                        _cell_item_lines(item, f"{indent}{node.start + i}. ", depth)
+                    )
+            case blocks.CodeBlock():
+                result.append(
+                    indent + _render_code_span(inlines.CodeSpan(code=node.code))
+                )
+            case blocks.BlockQuote():
+                result.extend(_cell_lines(node.children, depth))
+            case blocks.Heading():
+                text = _render_cell_inlines(node.children)
+                if text:
+                    result.append(indent + text)
+            case blocks.ThematicBreak():
+                result.append(indent + "---")
+            case _:
+                pass
+    return result
+
+
+def _cell_item_lines(
+    item: blocks.ListItem, marker: str, depth: int
+) -> list[str]:
+    if item.checked is True:
+        marker += "[x] "
+    elif item.checked is False:
+        marker += "[ ] "
+    result: list[str] = []
+    for i, child in enumerate(item.children):
+        if i == 0 and isinstance(child, blocks.Paragraph):
+            result.append(marker + _render_cell_inlines(child.children))
+        else:
+            result.extend(_cell_lines([child], depth + 1))
+    return result
 
 
 def _render_cell_inlines(nodes: list[inlines.Inline]) -> str:

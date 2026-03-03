@@ -186,13 +186,7 @@ def _parse_table(node: schema.Table) -> blocks.Table:
 def _parse_table_cell(
     node: schema.TableCell | schema.TableHeader,
 ) -> blocks.TableCell:
-    result: list[inlines.Inline] = []
-    for block in node["content"]:
-        if block["type"] == "paragraph":
-            result.extend(_parse_inlines(cast(schema.Paragraph, block).get("content", [])))
-        else:
-            result.append(inlines.Text(text=f"[{block['type']}]"))
-    return blocks.TableCell(children=result)
+    return blocks.TableCell(children=_parse_blocks(node["content"]))
 
 
 def _parse_media_single(node: schema.MediaSingle) -> blocks.Paragraph:

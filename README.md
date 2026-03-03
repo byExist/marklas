@@ -66,7 +66,7 @@ md = to_md(adf)
 | `taskList > taskItem`                      | `- [x]` / `- [ ]`                                          |
 | `decisionList > decisionItem`              | `- [x]` / `- [ ]`                                          |
 | `rule`                                     | `---`                                                      |
-| `table > tableRow > tableHeader/tableCell` | GFM table (merged cells are split, only paragraph content) |
+| `table > tableRow > tableHeader/tableCell` | GFM table (merged cells are split, block content flattened with `<br>`) |
 | `mediaSingle > media` (external)           | `![alt](url)`                                              |
 | `mediaSingle > media` (non-external)       | `[Image: id]`                                              |
 | `mediaGroup > media`                       | `![alt](url)` / `[Image: id]`                              |

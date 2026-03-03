@@ -300,13 +300,13 @@ def test_table_header_body():
     result = doc.children[0]
     assert isinstance(result, blocks.Table)
     assert result.head == [
-        blocks.TableCell(children=[inlines.Text(text="H1")]),
-        blocks.TableCell(children=[inlines.Text(text="H2")]),
+        blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="H1")])]),
+        blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="H2")])]),
     ]
     assert result.body == [
         [
-            blocks.TableCell(children=[inlines.Text(text="A")]),
-            blocks.TableCell(children=[inlines.Text(text="B")]),
+            blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="A")])]),
+            blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="B")])]),
         ]
     ]
 
@@ -345,7 +345,7 @@ def test_table_no_header():
     assert len(result.body) == 1
 
 
-def test_table_cell_non_paragraph_placeholder():
+def test_table_cell_block_structure_preserved():
     doc = parse(
         {
             "type": "doc",
@@ -421,9 +421,15 @@ def test_table_cell_non_paragraph_placeholder():
     assert isinstance(table, blocks.Table)
     cell = table.body[0][0]
     assert cell.children == [
-        inlines.Text(text="before"),
-        inlines.Text(text="[codeBlock]"),
-        inlines.Text(text="[bulletList]"),
+        blocks.Paragraph(children=[inlines.Text(text="before")]),
+        blocks.CodeBlock(code="print(1)", language="python"),
+        blocks.BulletList(
+            items=[
+                blocks.ListItem(
+                    children=[blocks.Paragraph(children=[inlines.Text(text="item")])]
+                )
+            ]
+        ),
     ]
 
 
@@ -487,9 +493,13 @@ def test_table_cell_hard_break_preserved():
     assert isinstance(table, blocks.Table)
     cell = table.body[0][0]
     assert cell.children == [
-        inlines.Strong(children=[inlines.Text(text="first")]),
-        inlines.HardBreak(),
-        inlines.Strong(children=[inlines.Text(text="second")]),
+        blocks.Paragraph(
+            children=[
+                inlines.Strong(children=[inlines.Text(text="first")]),
+                inlines.HardBreak(),
+                inlines.Strong(children=[inlines.Text(text="second")]),
+            ]
+        ),
     ]
 
 
@@ -536,9 +546,9 @@ def test_table_colspan():
     assert len(table.body) == 1
     row = table.body[0]
     assert len(row) == 3
-    assert row[0].children == [inlines.Text(text="A")]
+    assert row[0].children == [blocks.Paragraph(children=[inlines.Text(text="A")])]
     assert row[1].children == []
-    assert row[2].children == [inlines.Text(text="B")]
+    assert row[2].children == [blocks.Paragraph(children=[inlines.Text(text="B")])]
 
 
 def test_table_rowspan():
@@ -562,12 +572,12 @@ def test_table_rowspan():
     assert len(table.body) == 2
     row0 = table.body[0]
     assert len(row0) == 2
-    assert row0[0].children == [inlines.Text(text="A")]
-    assert row0[1].children == [inlines.Text(text="B")]
+    assert row0[0].children == [blocks.Paragraph(children=[inlines.Text(text="A")])]
+    assert row0[1].children == [blocks.Paragraph(children=[inlines.Text(text="B")])]
     row1 = table.body[1]
     assert len(row1) == 2
     assert row1[0].children == []
-    assert row1[1].children == [inlines.Text(text="C")]
+    assert row1[1].children == [blocks.Paragraph(children=[inlines.Text(text="C")])]
 
 
 def test_table_colspan_and_rowspan():
@@ -592,14 +602,14 @@ def test_table_colspan_and_rowspan():
     assert len(table.body) == 2
     row0 = table.body[0]
     assert len(row0) == 3
-    assert row0[0].children == [inlines.Text(text="A")]
+    assert row0[0].children == [blocks.Paragraph(children=[inlines.Text(text="A")])]
     assert row0[1].children == []
-    assert row0[2].children == [inlines.Text(text="B")]
+    assert row0[2].children == [blocks.Paragraph(children=[inlines.Text(text="B")])]
     row1 = table.body[1]
     assert len(row1) == 3
     assert row1[0].children == []
     assert row1[1].children == []
-    assert row1[2].children == [inlines.Text(text="C")]
+    assert row1[2].children == [blocks.Paragraph(children=[inlines.Text(text="C")])]
 
 
 def test_task_list():

@@ -203,8 +203,10 @@ def test_table_pipe_escape():
     tbl = doc.children[0]
     assert isinstance(tbl, blocks.Table)
     cell = tbl.body[0][0]
+    para = cell.children[0]
+    assert isinstance(para, blocks.Paragraph)
     text = "".join(
-        child.text for child in cell.children if isinstance(child, inlines.Text)
+        child.text for child in para.children if isinstance(child, inlines.Text)
     )
     assert "|" in text
 
