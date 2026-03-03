@@ -65,6 +65,16 @@ class BackgroundColor(TypedDict):
     attrs: _BackgroundColorAttrs
 
 
+class _AnnotationAttrs(TypedDict):
+    id: str
+    annotationType: NotRequired[str]
+
+
+class AnnotationMark(TypedDict):
+    type: Literal["annotation"]
+    attrs: _AnnotationAttrs
+
+
 type Mark = (
     Strong
     | Em
@@ -75,6 +85,7 @@ type Mark = (
     | TextColor
     | SubSup
     | BackgroundColor
+    | AnnotationMark
 )
 
 
@@ -213,6 +224,7 @@ class Paragraph(TypedDict):
     type: Literal["paragraph"]
     content: NotRequired[list[Inline]]
     attrs: NotRequired[_LocalIdAttrs]
+    marks: NotRequired[list[dict[str, Any]]]
 
 
 class _HeadingAttrs(TypedDict):
@@ -224,6 +236,7 @@ class Heading(TypedDict):
     type: Literal["heading"]
     attrs: _HeadingAttrs
     content: NotRequired[list[Inline]]
+    marks: NotRequired[list[dict[str, Any]]]
 
 
 class _CodeBlockAttrs(TypedDict, total=False):
@@ -523,3 +536,21 @@ class Doc(TypedDict):
     type: Literal["doc"]
     version: int
     content: list[Block]
+
+
+# ── Mark ordering ─────────────────────────────────────────────────────
+# code는 재귀를 종료(CodeSpan 반환)하므로 반드시 마지막.
+# parser와 renderer 양쪽에서 이 순서를 공유한다.
+
+MARK_ORDER: dict[str, int] = {
+    "link": 0,
+    "strong": 1,
+    "em": 2,
+    "strike": 3,
+    "underline": 4,
+    "textColor": 5,
+    "backgroundColor": 6,
+    "subsup": 7,
+    "annotation": 8,
+    "code": 9,
+}

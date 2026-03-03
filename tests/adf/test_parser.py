@@ -1,1680 +1,998 @@
 from typing import Any
 
-from marklas.nodes import blocks, inlines
 from marklas.adf.parser import parse
+from marklas.nodes import blocks, inlines
 
-# ── Block parsers ─────────────────────────────────────────────────────
+
+def _doc(*content: dict[str, Any]) -> dict[str, Any]:
+    return {"type": "doc", "version": 1, "content": list(content)}
 
 
-def test_empty_doc():
-    doc = parse({"type": "doc", "version": 1, "content": []})
-    assert doc.children == []
+# ── 교집합 파싱 ───────────────────────────────────────────────────────
 
 
 def test_paragraph():
-    doc = parse(
+    doc = _doc({"type": "paragraph", "content": [{"type": "text", "text": "hello"}]})
+    result = parse(doc)
+    assert len(result.children) == 1
+    p = result.children[0]
+    assert isinstance(p, blocks.Paragraph)
+    t = p.children[0]
+    assert isinstance(t, inlines.Text)
+    assert t.text == "hello"
+
+
+def test_paragraph_empty():
+    doc = _doc({"type": "paragraph"})
+    result = parse(doc)
+    p = result.children[0]
+    assert isinstance(p, blocks.Paragraph)
+    assert p.children == []
+
+
+def test_heading():
+    doc = _doc(
         {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {"type": "text", "text": "hello"},
-                    ],
-                },
-            ],
+            "type": "heading",
+            "attrs": {"level": 2},
+            "content": [{"type": "text", "text": "title"}],
         }
     )
-    assert doc.children == [blocks.Paragraph(children=[inlines.Text(text="hello")])]
+    h = parse(doc).children[0]
+    assert isinstance(h, blocks.Heading)
+    assert h.level == 2
+    t = h.children[0]
+    assert isinstance(t, inlines.Text)
+    assert t.text == "title"
 
 
-def test_empty_paragraph():
-    doc = parse(
+def test_code_block():
+    doc = _doc(
         {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {"type": "paragraph", "content": []},
-            ],
+            "type": "codeBlock",
+            "attrs": {"language": "python"},
+            "content": [{"type": "text", "text": "x = 1"}],
         }
     )
-    assert doc.children == [blocks.Paragraph(children=[])]
-
-
-def test_heading_levels():
-    for level in (1, 2, 3, 4, 5, 6):
-        doc = parse(
-            {
-                "type": "doc",
-                "version": 1,
-                "content": [
-                    {
-                        "type": "heading",
-                        "attrs": {"level": level},
-                        "content": [
-                            {"type": "text", "text": f"H{level}"},
-                        ],
-                    },
-                ],
-            }
-        )
-        assert doc.children == [
-            blocks.Heading(level=level, children=[inlines.Text(text=f"H{level}")])
-        ]
-
-
-def test_code_block_with_language():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "codeBlock",
-                    "attrs": {"language": "python"},
-                    "content": [
-                        {"type": "text", "text": "print('hi')"},
-                    ],
-                },
-            ],
-        }
-    )
-    assert doc.children == [blocks.CodeBlock(code="print('hi')", language="python")]
-
-
-def test_code_block_no_language():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "codeBlock",
-                    "content": [
-                        {"type": "text", "text": "code"},
-                    ],
-                },
-            ],
-        }
-    )
-    assert doc.children == [blocks.CodeBlock(code="code", language=None)]
-
-
-def test_code_block_multiple_text_nodes():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "codeBlock",
-                    "content": [
-                        {"type": "text", "text": "line1\n"},
-                        {"type": "text", "text": "line2"},
-                    ],
-                },
-            ],
-        }
-    )
-    assert doc.children == [blocks.CodeBlock(code="line1\nline2")]
+    cb = parse(doc).children[0]
+    assert isinstance(cb, blocks.CodeBlock)
+    assert cb.code == "x = 1"
+    assert cb.language == "python"
 
 
 def test_blockquote():
-    doc = parse(
+    doc = _doc(
         {
-            "type": "doc",
-            "version": 1,
+            "type": "blockquote",
+            "content": [
+                {"type": "paragraph", "content": [{"type": "text", "text": "q"}]}
+            ],
+        }
+    )
+    bq = parse(doc).children[0]
+    assert isinstance(bq, blocks.BlockQuote)
+    assert len(bq.children) == 1
+
+
+def test_bullet_list():
+    doc = _doc(
+        {
+            "type": "bulletList",
             "content": [
                 {
-                    "type": "blockquote",
+                    "type": "listItem",
                     "content": [
                         {
                             "type": "paragraph",
+                            "content": [{"type": "text", "text": "item"}],
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+    bl = parse(doc).children[0]
+    assert isinstance(bl, blocks.BulletList)
+    assert len(bl.items) == 1
+
+
+def test_ordered_list():
+    doc = _doc(
+        {
+            "type": "orderedList",
+            "attrs": {"order": 3},
+            "content": [
+                {
+                    "type": "listItem",
+                    "content": [
+                        {
+                            "type": "paragraph",
+                            "content": [{"type": "text", "text": "item"}],
+                        }
+                    ],
+                }
+            ],
+        }
+    )
+    ol = parse(doc).children[0]
+    assert isinstance(ol, blocks.OrderedList)
+    assert ol.start == 3
+
+
+def test_thematic_break():
+    doc = _doc({"type": "rule"})
+    assert isinstance(parse(doc).children[0], blocks.ThematicBreak)
+
+
+def test_table_header():
+    doc = _doc(
+        {
+            "type": "table",
+            "content": [
+                {
+                    "type": "tableRow",
+                    "content": [
+                        {
+                            "type": "tableHeader",
                             "content": [
-                                {"type": "text", "text": "quoted"},
+                                {
+                                    "type": "paragraph",
+                                    "content": [{"type": "text", "text": "H"}],
+                                }
                             ],
-                        },
+                        }
+                    ],
+                },
+                {
+                    "type": "tableRow",
+                    "content": [
+                        {
+                            "type": "tableCell",
+                            "content": [
+                                {
+                                    "type": "paragraph",
+                                    "content": [{"type": "text", "text": "D"}],
+                                }
+                            ],
+                        }
                     ],
                 },
             ],
         }
     )
-    assert doc.children == [
-        blocks.BlockQuote(
-            children=[
-                blocks.Paragraph(children=[inlines.Text(text="quoted")]),
-            ]
-        )
-    ]
+    table = parse(doc).children[0]
+    assert isinstance(table, blocks.Table)
+    assert len(table.head) == 1
+    assert len(table.body) == 1
 
 
-def test_bullet_list():
-    doc = parse(
+def test_text_marks():
+    doc = _doc(
         {
-            "type": "doc",
-            "version": 1,
+            "type": "paragraph",
+            "content": [
+                {"type": "text", "text": "bold", "marks": [{"type": "strong"}]}
+            ],
+        }
+    )
+    p = parse(doc).children[0]
+    assert isinstance(p, blocks.Paragraph)
+    s = p.children[0]
+    assert isinstance(s, inlines.Strong)
+    inner = s.children[0]
+    assert isinstance(inner, inlines.Text)
+    assert inner.text == "bold"
+
+
+def test_emphasis_and_strike():
+    doc = _doc(
+        {
+            "type": "paragraph",
+            "content": [
+                {"type": "text", "text": "a", "marks": [{"type": "em"}]},
+                {"type": "text", "text": "b", "marks": [{"type": "strike"}]},
+            ],
+        }
+    )
+    p = parse(doc).children[0]
+    assert isinstance(p, blocks.Paragraph)
+    assert isinstance(p.children[0], inlines.Emphasis)
+    assert isinstance(p.children[1], inlines.Strikethrough)
+
+
+def test_link_mark():
+    doc = _doc(
+        {
+            "type": "paragraph",
             "content": [
                 {
-                    "type": "bulletList",
+                    "type": "text",
+                    "text": "click",
+                    "marks": [{"type": "link", "attrs": {"href": "http://x"}}],
+                }
+            ],
+        }
+    )
+    p = parse(doc).children[0]
+    assert isinstance(p, blocks.Paragraph)
+    link = p.children[0]
+    assert isinstance(link, inlines.Link)
+    assert link.url == "http://x"
+
+
+def test_code_mark():
+    doc = _doc(
+        {
+            "type": "paragraph",
+            "content": [
+                {"type": "text", "text": "code", "marks": [{"type": "code"}]}
+            ],
+        }
+    )
+    p = parse(doc).children[0]
+    assert isinstance(p, blocks.Paragraph)
+    cs = p.children[0]
+    assert isinstance(cs, inlines.CodeSpan)
+    assert cs.code == "code"
+
+
+def test_text_and_hard_break():
+    doc = _doc(
+        {
+            "type": "paragraph",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "hello",
+                },
+                {"type": "hardBreak"},
+            ],
+        }
+    )
+    p = parse(doc).children[0]
+    assert isinstance(p, blocks.Paragraph)
+    assert isinstance(p.children[0], inlines.Text)
+    assert isinstance(p.children[1], inlines.HardBreak)
+
+
+def test_nested_marks():
+    doc = _doc(
+        {
+            "type": "paragraph",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "x",
+                    "marks": [
+                        {"type": "link", "attrs": {"href": "http://x"}},
+                        {"type": "strong"},
+                        {"type": "em"},
+                    ],
+                }
+            ],
+        }
+    )
+    p = parse(doc).children[0]
+    assert isinstance(p, blocks.Paragraph)
+    # link(0) > strong(1) > em(2) > Text
+    link = p.children[0]
+    assert isinstance(link, inlines.Link)
+    strong = link.children[0]
+    assert isinstance(strong, inlines.Strong)
+    em = strong.children[0]
+    assert isinstance(em, inlines.Emphasis)
+    t = em.children[0]
+    assert isinstance(t, inlines.Text)
+    assert t.text == "x"
+
+
+# ── 차집합 블록 파싱 ─────────────────────────────────────────────────
+
+
+def test_panel():
+    doc = _doc(
+        {
+            "type": "panel",
+            "attrs": {"panelType": "info", "panelColor": "#eee"},
+            "content": [
+                {"type": "paragraph", "content": [{"type": "text", "text": "note"}]}
+            ],
+        }
+    )
+    panel = parse(doc).children[0]
+    assert isinstance(panel, blocks.Panel)
+    assert panel.panel_type == "info"
+    assert panel.panel_color == "#eee"
+    assert len(panel.children) == 1
+
+
+def test_expand():
+    doc = _doc(
+        {
+            "type": "expand",
+            "attrs": {"title": "Details"},
+            "content": [
+                {"type": "paragraph", "content": [{"type": "text", "text": "body"}]}
+            ],
+        }
+    )
+    expand = parse(doc).children[0]
+    assert isinstance(expand, blocks.Expand)
+    assert expand.title == "Details"
+
+
+def test_nested_expand():
+    doc = _doc(
+        {
+            "type": "nestedExpand",
+            "attrs": {"title": "Inner"},
+            "content": [
+                {"type": "paragraph", "content": [{"type": "text", "text": "x"}]}
+            ],
+        }
+    )
+    ne = parse(doc).children[0]
+    assert isinstance(ne, blocks.NestedExpand)
+    assert ne.title == "Inner"
+
+
+def test_task_list():
+    doc = _doc(
+        {
+            "type": "taskList",
+            "attrs": {"localId": "tl-1"},
+            "content": [
+                {
+                    "type": "taskItem",
+                    "attrs": {"localId": "ti-1", "state": "DONE"},
+                    "content": [{"type": "text", "text": "task 1"}],
+                },
+                {
+                    "type": "taskItem",
+                    "attrs": {"localId": "ti-2", "state": "TODO"},
+                    "content": [{"type": "text", "text": "task 2"}],
+                },
+            ],
+        }
+    )
+    tl = parse(doc).children[0]
+    assert isinstance(tl, blocks.TaskList)
+    assert len(tl.items) == 2
+    assert tl.items[0].state == "DONE"
+    assert tl.items[0].local_id == "ti-1"
+    assert tl.items[1].state == "TODO"
+
+
+def test_decision_list():
+    doc = _doc(
+        {
+            "type": "decisionList",
+            "attrs": {"localId": "dl-1"},
+            "content": [
+                {
+                    "type": "decisionItem",
+                    "attrs": {"localId": "di-1", "state": "DECIDED"},
+                    "content": [{"type": "text", "text": "yes"}],
+                }
+            ],
+        }
+    )
+    dl = parse(doc).children[0]
+    assert isinstance(dl, blocks.DecisionList)
+    assert dl.items[0].state == "DECIDED"
+
+
+def test_layout_section():
+    doc = _doc(
+        {
+            "type": "layoutSection",
+            "content": [
+                {
+                    "type": "layoutColumn",
+                    "attrs": {"width": 50.0},
                     "content": [
                         {
-                            "type": "listItem",
+                            "type": "paragraph",
+                            "content": [{"type": "text", "text": "left"}],
+                        }
+                    ],
+                },
+                {
+                    "type": "layoutColumn",
+                    "attrs": {"width": 50.0},
+                    "content": [
+                        {
+                            "type": "paragraph",
+                            "content": [{"type": "text", "text": "right"}],
+                        }
+                    ],
+                },
+            ],
+        }
+    )
+    ls = parse(doc).children[0]
+    assert isinstance(ls, blocks.LayoutSection)
+    assert len(ls.columns) == 2
+    assert ls.columns[0].width == 50.0
+
+
+def test_media_single():
+    doc = _doc(
+        {
+            "type": "mediaSingle",
+            "attrs": {"layout": "center", "width": 80.0},
+            "content": [
+                {
+                    "type": "media",
+                    "attrs": {
+                        "type": "external",
+                        "url": "http://img.png",
+                        "alt": "pic",
+                    },
+                }
+            ],
+        }
+    )
+    ms = parse(doc).children[0]
+    assert isinstance(ms, blocks.MediaSingle)
+    assert ms.layout == "center"
+    assert ms.width == 80.0
+    assert ms.media.media_type == "external"
+    assert ms.media.url == "http://img.png"
+    assert ms.media.alt == "pic"
+
+
+def test_media_group():
+    doc = _doc(
+        {
+            "type": "mediaGroup",
+            "content": [
+                {"type": "media", "attrs": {"type": "file", "id": "a", "collection": "c"}},
+                {"type": "media", "attrs": {"type": "file", "id": "b", "collection": "c"}},
+            ],
+        }
+    )
+    mg = parse(doc).children[0]
+    assert isinstance(mg, blocks.MediaGroup)
+    assert len(mg.media_list) == 2
+    assert mg.media_list[0].id == "a"
+
+
+def test_block_card():
+    doc = _doc({"type": "blockCard", "attrs": {"url": "http://x"}})
+    bc = parse(doc).children[0]
+    assert isinstance(bc, blocks.BlockCard)
+    assert bc.url == "http://x"
+
+
+def test_embed_card():
+    doc = _doc(
+        {
+            "type": "embedCard",
+            "attrs": {"url": "http://x", "layout": "wide", "width": 100.0},
+        }
+    )
+    ec = parse(doc).children[0]
+    assert isinstance(ec, blocks.EmbedCard)
+    assert ec.url == "http://x"
+    assert ec.layout == "wide"
+    assert ec.width == 100.0
+
+
+def test_extension_raw():
+    ext: dict[str, Any] = {"type": "extension", "attrs": {"extensionType": "t", "extensionKey": "k"}}
+    doc = _doc(ext)
+    e = parse(doc).children[0]
+    assert isinstance(e, blocks.Extension)
+    assert e.raw["type"] == "extension"
+    assert e.raw["attrs"]["extensionKey"] == "k"
+
+
+def test_bodied_extension_raw():
+    ext: dict[str, Any] = {
+        "type": "bodiedExtension",
+        "attrs": {"extensionType": "t", "extensionKey": "k"},
+        "content": [{"type": "paragraph", "content": [{"type": "text", "text": "x"}]}],
+    }
+    doc = _doc(ext)
+    e = parse(doc).children[0]
+    assert isinstance(e, blocks.BodiedExtension)
+    assert e.raw["type"] == "bodiedExtension"
+
+
+def test_sync_block_raw():
+    ext: dict[str, Any] = {
+        "type": "syncBlock",
+        "attrs": {"resourceId": "r-1", "localId": "l-1"},
+    }
+    doc = _doc(ext)
+    e = parse(doc).children[0]
+    assert isinstance(e, blocks.SyncBlock)
+    assert e.raw["type"] == "syncBlock"
+    assert e.raw["attrs"]["resourceId"] == "r-1"
+
+
+def test_bodied_sync_block_raw():
+    ext: dict[str, Any] = {
+        "type": "bodiedSyncBlock",
+        "attrs": {"resourceId": "r-1", "localId": "l-1"},
+        "content": [{"type": "paragraph", "content": [{"type": "text", "text": "x"}]}],
+    }
+    doc = _doc(ext)
+    e = parse(doc).children[0]
+    assert isinstance(e, blocks.BodiedSyncBlock)
+    assert e.raw["type"] == "bodiedSyncBlock"
+
+
+def test_unknown_block():
+    doc = _doc({"type": "unknownBlock", "attrs": {"foo": "bar"}})
+    e = parse(doc).children[0]
+    assert isinstance(e, blocks.Extension)
+    assert e.raw["type"] == "unknownBlock"
+
+
+# ── 차집합 인라인 파싱 ───────────────────────────────────────────────
+
+
+def _first_inline(doc: dict[str, Any]) -> inlines.Inline:
+    """parse(doc)의 첫 번째 paragraph의 첫 번째 inline을 반환."""
+    p = parse(doc).children[0]
+    assert isinstance(p, blocks.Paragraph)
+    return p.children[0]
+
+
+def test_mention():
+    doc = _doc(
+        {
+            "type": "paragraph",
+            "content": [
+                {
+                    "type": "mention",
+                    "attrs": {"id": "u1", "text": "John", "accessLevel": "CONTAINER"},
+                }
+            ],
+        }
+    )
+    m = _first_inline(doc)
+    assert isinstance(m, inlines.Mention)
+    assert m.id == "u1"
+    assert m.text == "John"
+    assert m.access_level == "CONTAINER"
+
+
+def test_emoji():
+    doc = _doc(
+        {
+            "type": "paragraph",
+            "content": [
+                {"type": "emoji", "attrs": {"shortName": ":smile:", "text": "😄"}}
+            ],
+        }
+    )
+    e = _first_inline(doc)
+    assert isinstance(e, inlines.Emoji)
+    assert e.short_name == ":smile:"
+    assert e.text == "😄"
+
+
+def test_date():
+    doc = _doc(
+        {
+            "type": "paragraph",
+            "content": [{"type": "date", "attrs": {"timestamp": "1234567890"}}],
+        }
+    )
+    d = _first_inline(doc)
+    assert isinstance(d, inlines.Date)
+    assert d.timestamp == "1234567890"
+
+
+def test_status():
+    doc = _doc(
+        {
+            "type": "paragraph",
+            "content": [
+                {
+                    "type": "status",
+                    "attrs": {"text": "Done", "color": "green", "style": "bold"},
+                }
+            ],
+        }
+    )
+    s = _first_inline(doc)
+    assert isinstance(s, inlines.Status)
+    assert s.text == "Done"
+    assert s.color == "green"
+    assert s.style == "bold"
+
+
+def test_inline_card():
+    doc = _doc(
+        {
+            "type": "paragraph",
+            "content": [{"type": "inlineCard", "attrs": {"url": "http://x"}}],
+        }
+    )
+    ic = _first_inline(doc)
+    assert isinstance(ic, inlines.InlineCard)
+    assert ic.url == "http://x"
+
+
+def test_placeholder():
+    doc = _doc(
+        {
+            "type": "paragraph",
+            "content": [{"type": "placeholder", "attrs": {"text": "Type here"}}],
+        }
+    )
+    ph = _first_inline(doc)
+    assert isinstance(ph, inlines.Placeholder)
+    assert ph.text == "Type here"
+
+
+def test_media_inline():
+    doc = _doc(
+        {
+            "type": "paragraph",
+            "content": [
+                {
+                    "type": "mediaInline",
+                    "attrs": {"id": "m1", "collection": "c1", "type": "file"},
+                }
+            ],
+        }
+    )
+    mi = _first_inline(doc)
+    assert isinstance(mi, inlines.MediaInline)
+    assert mi.id == "m1"
+    assert mi.media_type == "file"
+
+
+def test_inline_extension_raw():
+    doc = _doc(
+        {
+            "type": "paragraph",
+            "content": [
+                {
+                    "type": "inlineExtension",
+                    "attrs": {"extensionType": "t", "extensionKey": "k"},
+                }
+            ],
+        }
+    )
+    ie = _first_inline(doc)
+    assert isinstance(ie, inlines.InlineExtension)
+    assert ie.raw["type"] == "inlineExtension"
+
+
+def test_unknown_inline():
+    doc = _doc(
+        {
+            "type": "paragraph",
+            "content": [{"type": "unknownInline", "attrs": {"x": 1}}],
+        }
+    )
+    ie = _first_inline(doc)
+    assert isinstance(ie, inlines.InlineExtension)
+    assert ie.raw["type"] == "unknownInline"
+
+
+# ── Marks ─────────────────────────────────────────────────────────────
+
+
+def test_underline_mark():
+    doc = _doc(
+        {
+            "type": "paragraph",
+            "content": [
+                {"type": "text", "text": "u", "marks": [{"type": "underline"}]}
+            ],
+        }
+    )
+    u = _first_inline(doc)
+    assert isinstance(u, inlines.Underline)
+    t = u.children[0]
+    assert isinstance(t, inlines.Text)
+    assert t.text == "u"
+
+
+def test_text_color_mark():
+    doc = _doc(
+        {
+            "type": "paragraph",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "red",
+                    "marks": [{"type": "textColor", "attrs": {"color": "#ff0000"}}],
+                }
+            ],
+        }
+    )
+    tc = _first_inline(doc)
+    assert isinstance(tc, inlines.TextColor)
+    assert tc.color == "#ff0000"
+
+
+def test_background_color_mark():
+    doc = _doc(
+        {
+            "type": "paragraph",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "bg",
+                    "marks": [
+                        {"type": "backgroundColor", "attrs": {"color": "#00ff00"}}
+                    ],
+                }
+            ],
+        }
+    )
+    bg = _first_inline(doc)
+    assert isinstance(bg, inlines.BackgroundColor)
+    assert bg.color == "#00ff00"
+
+
+def test_subsup_mark():
+    doc = _doc(
+        {
+            "type": "paragraph",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "2",
+                    "marks": [{"type": "subsup", "attrs": {"type": "sup"}}],
+                }
+            ],
+        }
+    )
+    ss = _first_inline(doc)
+    assert isinstance(ss, inlines.SubSup)
+    assert ss.type == "sup"
+
+
+def test_annotation_mark():
+    doc = _doc(
+        {
+            "type": "paragraph",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "commented",
+                    "marks": [{"type": "annotation", "attrs": {"id": "ann-1"}}],
+                }
+            ],
+        }
+    )
+    ann = _first_inline(doc)
+    assert isinstance(ann, inlines.Annotation)
+    assert ann.id == "ann-1"
+
+
+def test_mark_order():
+    doc = _doc(
+        {
+            "type": "paragraph",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "x",
+                    "marks": [
+                        {"type": "underline"},
+                        {"type": "strong"},
+                        {"type": "link", "attrs": {"href": "http://x"}},
+                    ],
+                }
+            ],
+        }
+    )
+    # sorted: link(0) > strong(1) > underline(4)
+    link = _first_inline(doc)
+    assert isinstance(link, inlines.Link)
+    strong = link.children[0]
+    assert isinstance(strong, inlines.Strong)
+    underline = strong.children[0]
+    assert isinstance(underline, inlines.Underline)
+
+
+def test_code_mark_is_terminal():
+    doc = _doc(
+        {
+            "type": "paragraph",
+            "content": [
+                {
+                    "type": "text",
+                    "text": "x",
+                    "marks": [
+                        {"type": "textColor", "attrs": {"color": "#f00"}},
+                        {"type": "code"},
+                    ],
+                }
+            ],
+        }
+    )
+    # sorted: textColor(5) > code(9) — textColor wraps CodeSpan
+    tc = _first_inline(doc)
+    assert isinstance(tc, inlines.TextColor)
+    assert isinstance(tc.children[0], inlines.CodeSpan)
+
+
+# ── Block marks ───────────────────────────────────────────────────────
+
+
+def test_paragraph_alignment():
+    doc = _doc(
+        {
+            "type": "paragraph",
+            "marks": [{"type": "alignment", "attrs": {"align": "center"}}],
+            "content": [{"type": "text", "text": "centered"}],
+        }
+    )
+    p = parse(doc).children[0]
+    assert isinstance(p, blocks.Paragraph)
+    assert p.alignment == "center"
+
+
+def test_heading_indentation():
+    doc = _doc(
+        {
+            "type": "heading",
+            "attrs": {"level": 1},
+            "marks": [{"type": "indentation", "attrs": {"level": 2}}],
+            "content": [{"type": "text", "text": "indented"}],
+        }
+    )
+    h = parse(doc).children[0]
+    assert isinstance(h, blocks.Heading)
+    assert h.indentation == 2
+
+
+# ── TableCell ─────────────────────────────────────────────────────────
+
+
+def test_table_cell_block_children():
+    doc = _doc(
+        {
+            "type": "table",
+            "content": [
+                {
+                    "type": "tableRow",
+                    "content": [
+                        {
+                            "type": "tableCell",
                             "content": [
                                 {
                                     "type": "paragraph",
                                     "content": [{"type": "text", "text": "a"}],
                                 },
-                            ],
-                        },
-                        {
-                            "type": "listItem",
-                            "content": [
                                 {
                                     "type": "paragraph",
                                     "content": [{"type": "text", "text": "b"}],
                                 },
                             ],
-                        },
+                        }
                     ],
-                },
+                }
             ],
         }
     )
-    assert doc.children == [
-        blocks.BulletList(
-            items=[
-                blocks.ListItem(
-                    children=[blocks.Paragraph(children=[inlines.Text(text="a")])]
-                ),
-                blocks.ListItem(
-                    children=[blocks.Paragraph(children=[inlines.Text(text="b")])]
-                ),
-            ]
-        )
-    ]
-
-
-def test_ordered_list_with_start():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "orderedList",
-                    "attrs": {"order": 3},
-                    "content": [
-                        {
-                            "type": "listItem",
-                            "content": [
-                                {
-                                    "type": "paragraph",
-                                    "content": [{"type": "text", "text": "item"}],
-                                },
-                            ],
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    result = doc.children[0]
-    assert isinstance(result, blocks.OrderedList)
-    assert result.start == 3
-
-
-def test_thematic_break():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {"type": "rule"},
-            ],
-        }
-    )
-    assert doc.children == [blocks.ThematicBreak()]
-
-
-def test_table_header_body():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "table",
-                    "content": [
-                        {
-                            "type": "tableRow",
-                            "content": [
-                                {
-                                    "type": "tableHeader",
-                                    "content": [
-                                        {
-                                            "type": "paragraph",
-                                            "content": [{"type": "text", "text": "H1"}],
-                                        },
-                                    ],
-                                },
-                                {
-                                    "type": "tableHeader",
-                                    "content": [
-                                        {
-                                            "type": "paragraph",
-                                            "content": [{"type": "text", "text": "H2"}],
-                                        },
-                                    ],
-                                },
-                            ],
-                        },
-                        {
-                            "type": "tableRow",
-                            "content": [
-                                {
-                                    "type": "tableCell",
-                                    "content": [
-                                        {
-                                            "type": "paragraph",
-                                            "content": [{"type": "text", "text": "A"}],
-                                        },
-                                    ],
-                                },
-                                {
-                                    "type": "tableCell",
-                                    "content": [
-                                        {
-                                            "type": "paragraph",
-                                            "content": [{"type": "text", "text": "B"}],
-                                        },
-                                    ],
-                                },
-                            ],
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    result = doc.children[0]
-    assert isinstance(result, blocks.Table)
-    assert result.head == [
-        blocks.TableCell(children=[inlines.Text(text="H1")]),
-        blocks.TableCell(children=[inlines.Text(text="H2")]),
-    ]
-    assert result.body == [
-        [
-            blocks.TableCell(children=[inlines.Text(text="A")]),
-            blocks.TableCell(children=[inlines.Text(text="B")]),
-        ]
-    ]
-
-
-def test_table_no_header():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "table",
-                    "content": [
-                        {
-                            "type": "tableRow",
-                            "content": [
-                                {
-                                    "type": "tableCell",
-                                    "content": [
-                                        {
-                                            "type": "paragraph",
-                                            "content": [{"type": "text", "text": "A"}],
-                                        },
-                                    ],
-                                },
-                            ],
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    result = doc.children[0]
-    assert isinstance(result, blocks.Table)
-    assert result.head == []
-    assert len(result.body) == 1
-
-
-def test_table_cell_non_paragraph_placeholder():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "table",
-                    "content": [
-                        {
-                            "type": "tableRow",
-                            "content": [
-                                {
-                                    "type": "tableHeader",
-                                    "content": [
-                                        {
-                                            "type": "paragraph",
-                                            "content": [
-                                                {"type": "text", "text": "Col"}
-                                            ],
-                                        },
-                                    ],
-                                },
-                            ],
-                        },
-                        {
-                            "type": "tableRow",
-                            "content": [
-                                {
-                                    "type": "tableCell",
-                                    "content": [
-                                        {
-                                            "type": "paragraph",
-                                            "content": [
-                                                {"type": "text", "text": "before"}
-                                            ],
-                                        },
-                                        {
-                                            "type": "codeBlock",
-                                            "content": [
-                                                {"type": "text", "text": "print(1)"}
-                                            ],
-                                            "attrs": {"language": "python"},
-                                        },
-                                        {
-                                            "type": "bulletList",
-                                            "content": [
-                                                {
-                                                    "type": "listItem",
-                                                    "content": [
-                                                        {
-                                                            "type": "paragraph",
-                                                            "content": [
-                                                                {
-                                                                    "type": "text",
-                                                                    "text": "item",
-                                                                }
-                                                            ],
-                                                        },
-                                                    ],
-                                                },
-                                            ],
-                                        },
-                                    ],
-                                },
-                            ],
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    table = doc.children[0]
+    table = parse(doc).children[0]
     assert isinstance(table, blocks.Table)
     cell = table.body[0][0]
-    assert cell.children == [
-        inlines.Text(text="before"),
-        inlines.Text(text="[codeBlock]"),
-        inlines.Text(text="[bulletList]"),
-    ]
+    assert len(cell.children) == 2
+    assert all(isinstance(c, blocks.Paragraph) for c in cell.children)
 
 
-def test_table_cell_hard_break_preserved():
-    doc = parse(
+def test_table_cell_attrs():
+    doc = _doc(
         {
-            "type": "doc",
-            "version": 1,
+            "type": "table",
             "content": [
                 {
-                    "type": "table",
+                    "type": "tableRow",
                     "content": [
                         {
-                            "type": "tableRow",
-                            "content": [
-                                {
-                                    "type": "tableHeader",
-                                    "content": [
-                                        {
-                                            "type": "paragraph",
-                                            "content": [
-                                                {"type": "text", "text": "Col"},
-                                            ],
-                                        },
-                                    ],
-                                },
-                            ],
+                            "type": "tableCell",
+                            "attrs": {
+                                "colspan": 2,
+                                "rowspan": 1,
+                                "colwidth": [100, 200],
+                                "background": "#eee",
+                            },
+                            "content": [{"type": "paragraph"}],
                         },
                         {
-                            "type": "tableRow",
-                            "content": [
-                                {
-                                    "type": "tableCell",
-                                    "content": [
-                                        {
-                                            "type": "paragraph",
-                                            "content": [
-                                                {
-                                                    "type": "text",
-                                                    "text": "first",
-                                                    "marks": [{"type": "strong"}],
-                                                },
-                                                {"type": "hardBreak"},
-                                                {
-                                                    "type": "text",
-                                                    "text": "second",
-                                                    "marks": [{"type": "strong"}],
-                                                },
-                                            ],
-                                        },
-                                    ],
-                                },
-                            ],
+                            "type": "tableCell",
+                            "content": [{"type": "paragraph"}],
                         },
                     ],
-                },
+                }
             ],
         }
     )
-    table = doc.children[0]
+    table = parse(doc).children[0]
     assert isinstance(table, blocks.Table)
     cell = table.body[0][0]
-    assert cell.children == [
-        inlines.Strong(children=[inlines.Text(text="first")]),
-        inlines.HardBreak(),
-        inlines.Strong(children=[inlines.Text(text="second")]),
-    ]
+    assert cell.colspan == 2
+    assert cell.rowspan == 1
+    assert cell.col_width == [100, 200]
+    assert cell.background == "#eee"
 
 
-def _make_cell(text: str, type: str = "tableCell", **attrs: int) -> dict[str, Any]:
-    cell: dict[str, Any] = {
-        "type": type,
-        "content": [{"type": "paragraph", "content": [{"type": "text", "text": text}]}],
-    }
-    if attrs:
-        cell["attrs"] = attrs
-    return cell
-
-
-def _make_table(*rows: list[dict[str, Any]]) -> dict[str, Any]:
-    return {
-        "type": "doc",
-        "version": 1,
-        "content": [
-            {
-                "type": "table",
-                "content": [{"type": "tableRow", "content": cells} for cells in rows],
-            }
-        ],
-    }
-
-
-def test_table_colspan():
-    doc = parse(
-        _make_table(
-            [
-                _make_cell("H1", "tableHeader"),
-                _make_cell("H2", "tableHeader"),
-                _make_cell("H3", "tableHeader"),
+def test_table_attrs():
+    doc = _doc(
+        {
+            "type": "table",
+            "attrs": {
+                "displayMode": "fixed",
+                "isNumberColumnEnabled": True,
+                "layout": "wide",
+                "width": 760,
+            },
+            "content": [
+                {
+                    "type": "tableRow",
+                    "content": [
+                        {
+                            "type": "tableCell",
+                            "content": [{"type": "paragraph"}],
+                        }
+                    ],
+                }
             ],
-            [
-                _make_cell("A", colspan=2),
-                _make_cell("B"),
-            ],
-        )
+        }
     )
-    table = doc.children[0]
+    table = parse(doc).children[0]
     assert isinstance(table, blocks.Table)
-    assert len(table.head) == 3
-    assert len(table.body) == 1
-    row = table.body[0]
-    assert len(row) == 3
-    assert row[0].children == [inlines.Text(text="A")]
-    assert row[1].children == []
-    assert row[2].children == [inlines.Text(text="B")]
+    assert table.display_mode == "fixed"
+    assert table.is_number_column_enabled is True
+    assert table.layout == "wide"
+    assert table.width == 760
 
 
-def test_table_rowspan():
-    doc = parse(
-        _make_table(
-            [
-                _make_cell("H1", "tableHeader"),
-                _make_cell("H2", "tableHeader"),
+def test_table_header_cell_type():
+    """tableHeader 셀은 TableHeader로, tableCell은 TableCell로 파싱."""
+    doc = _doc(
+        {
+            "type": "table",
+            "content": [
+                {
+                    "type": "tableRow",
+                    "content": [
+                        {
+                            "type": "tableHeader",
+                            "content": [{"type": "paragraph", "content": [{"type": "text", "text": "H"}]}],
+                        },
+                    ],
+                },
+                {
+                    "type": "tableRow",
+                    "content": [
+                        {
+                            "type": "tableHeader",
+                            "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Col"}]}],
+                        },
+                    ],
+                },
+                {
+                    "type": "tableRow",
+                    "content": [
+                        {
+                            "type": "tableCell",
+                            "content": [{"type": "paragraph", "content": [{"type": "text", "text": "D"}]}],
+                        },
+                    ],
+                },
             ],
-            [
-                _make_cell("A", rowspan=2),
-                _make_cell("B"),
-            ],
-            [
-                _make_cell("C"),
-            ],
-        )
+        }
     )
-    table = doc.children[0]
+    table = parse(doc).children[0]
     assert isinstance(table, blocks.Table)
-    assert len(table.body) == 2
-    row0 = table.body[0]
-    assert len(row0) == 2
-    assert row0[0].children == [inlines.Text(text="A")]
-    assert row0[1].children == [inlines.Text(text="B")]
-    row1 = table.body[1]
-    assert len(row1) == 2
-    assert row1[0].children == []
-    assert row1[1].children == [inlines.Text(text="C")]
-
-
-def test_table_colspan_and_rowspan():
-    doc = parse(
-        _make_table(
-            [
-                _make_cell("H1", "tableHeader"),
-                _make_cell("H2", "tableHeader"),
-                _make_cell("H3", "tableHeader"),
-            ],
-            [
-                _make_cell("A", colspan=2, rowspan=2),
-                _make_cell("B"),
-            ],
-            [
-                _make_cell("C"),
-            ],
-        )
-    )
-    table = doc.children[0]
-    assert isinstance(table, blocks.Table)
-    assert len(table.body) == 2
-    row0 = table.body[0]
-    assert len(row0) == 3
-    assert row0[0].children == [inlines.Text(text="A")]
-    assert row0[1].children == []
-    assert row0[2].children == [inlines.Text(text="B")]
-    row1 = table.body[1]
-    assert len(row1) == 3
-    assert row1[0].children == []
-    assert row1[1].children == []
-    assert row1[2].children == [inlines.Text(text="C")]
-
-
-def test_task_list():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "taskList",
-                    "attrs": {"localId": "1"},
-                    "content": [
-                        {
-                            "type": "taskItem",
-                            "attrs": {"localId": "a", "state": "DONE"},
-                            "content": [
-                                {"type": "text", "text": "done"},
-                            ],
-                        },
-                        {
-                            "type": "taskItem",
-                            "attrs": {"localId": "b", "state": "TODO"},
-                            "content": [
-                                {"type": "text", "text": "todo"},
-                            ],
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    result = doc.children[0]
-    assert isinstance(result, blocks.BulletList)
-    assert result.items[0].checked is True
-    assert result.items[1].checked is False
-
-
-def test_decision_list():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "decisionList",
-                    "attrs": {"localId": "1"},
-                    "content": [
-                        {
-                            "type": "decisionItem",
-                            "attrs": {"localId": "a", "state": "DECIDED"},
-                            "content": [
-                                {"type": "text", "text": "yes"},
-                            ],
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    result = doc.children[0]
-    assert isinstance(result, blocks.BulletList)
-    assert result.items[0].checked is True
-
-
-def test_panel_fallback():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "panel",
-                    "attrs": {"panelType": "info"},
-                    "content": [
-                        {
-                            "type": "paragraph",
-                            "content": [{"type": "text", "text": "info"}],
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    assert doc.children == [
-        blocks.BlockQuote(
-            children=[
-                blocks.Paragraph(children=[inlines.Text(text="info")]),
-            ]
-        )
-    ]
-
-
-def test_expand_with_title():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "expand",
-                    "attrs": {"title": "Details"},
-                    "content": [
-                        {
-                            "type": "paragraph",
-                            "content": [{"type": "text", "text": "body"}],
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    result = doc.children[0]
-    assert isinstance(result, blocks.BlockQuote)
-    assert result.children[0] == blocks.Paragraph(
-        children=[inlines.Text(text="Details")]
-    )
-    assert result.children[1] == blocks.Paragraph(children=[inlines.Text(text="body")])
-
-
-def test_expand_no_title():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "expand",
-                    "content": [
-                        {
-                            "type": "paragraph",
-                            "content": [{"type": "text", "text": "body"}],
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    result = doc.children[0]
-    assert isinstance(result, blocks.BlockQuote)
-    assert len(result.children) == 1
-
-
-def test_nested_expand():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "nestedExpand",
-                    "attrs": {"title": "Nested"},
-                    "content": [
-                        {
-                            "type": "paragraph",
-                            "content": [{"type": "text", "text": "inner"}],
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    result = doc.children[0]
-    assert isinstance(result, blocks.BlockQuote)
-    assert result.children[0] == blocks.Paragraph(
-        children=[inlines.Text(text="Nested")]
-    )
-
-
-def test_layout_section_flatten():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "layoutSection",
-                    "content": [
-                        {
-                            "type": "layoutColumn",
-                            "attrs": {"width": 50},
-                            "content": [
-                                {
-                                    "type": "paragraph",
-                                    "content": [{"type": "text", "text": "col1"}],
-                                },
-                            ],
-                        },
-                        {
-                            "type": "layoutColumn",
-                            "attrs": {"width": 50},
-                            "content": [
-                                {
-                                    "type": "paragraph",
-                                    "content": [{"type": "text", "text": "col2"}],
-                                },
-                            ],
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    assert doc.children == [
-        blocks.Paragraph(children=[inlines.Text(text="col1")]),
-        blocks.Paragraph(children=[inlines.Text(text="col2")]),
-    ]
-
-
-def test_media_single_external():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "mediaSingle",
-                    "content": [
-                        {
-                            "type": "media",
-                            "attrs": {
-                                "type": "external",
-                                "url": "https://img.png",
-                                "alt": "photo",
-                            },
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    assert doc.children == [
-        blocks.Paragraph(children=[inlines.Image(url="https://img.png", alt="photo")])
-    ]
-
-
-def test_media_single_file():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "mediaSingle",
-                    "content": [
-                        {
-                            "type": "media",
-                            "attrs": {
-                                "type": "file",
-                                "id": "abc-123",
-                                "collection": "uploads",
-                            },
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    assert doc.children == [
-        blocks.Paragraph(children=[inlines.Text(text="[Image: abc-123]")])
-    ]
-
-
-def test_media_group():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "mediaGroup",
-                    "content": [
-                        {
-                            "type": "media",
-                            "attrs": {"type": "external", "url": "https://a.png"},
-                        },
-                        {
-                            "type": "media",
-                            "attrs": {"type": "external", "url": "https://b.png"},
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    result = doc.children[0]
-    assert isinstance(result, blocks.Paragraph)
-    assert len(result.children) == 2
-    assert isinstance(result.children[0], inlines.Image)
-    assert isinstance(result.children[1], inlines.Image)
-
-
-def test_block_card_with_url():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {"type": "blockCard", "attrs": {"url": "https://example.com"}},
-            ],
-        }
-    )
-    assert doc.children == [
-        blocks.Paragraph(
-            children=[
-                inlines.Link(
-                    url="https://example.com",
-                    children=[inlines.Text(text="https://example.com")],
-                ),
-            ]
-        )
-    ]
-
-
-def test_block_card_no_url():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {"type": "blockCard", "attrs": {"data": {"some": "data"}}},
-            ],
-        }
-    )
-    assert doc.children == [blocks.Paragraph(children=[])]
-
-
-def test_embed_card_with_url():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "embedCard",
-                    "attrs": {"url": "https://example.com", "layout": "center"},
-                },
-            ],
-        }
-    )
-    assert doc.children == [
-        blocks.Paragraph(
-            children=[
-                inlines.Link(
-                    url="https://example.com",
-                    children=[inlines.Text(text="https://example.com")],
-                ),
-            ]
-        )
-    ]
-
-
-def test_embed_card_no_url():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {"type": "embedCard", "attrs": {"url": "", "layout": "center"}},
-            ],
-        }
-    )
-    assert doc.children == []
-
-
-def test_unsupported_block():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "extension",
-                    "attrs": {
-                        "extensionType": "com.example",
-                        "extensionKey": "some-key",
-                    },
-                },
-            ],
-        }
-    )
-    assert doc.children == [
-        blocks.Paragraph(children=[inlines.Text(text="[extension]")])
-    ]
-
-
-# ── Inline parsers ────────────────────────────────────────────────────
-
-
-def test_text():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {"type": "paragraph", "content": [{"type": "text", "text": "hello"}]},
-            ],
-        }
-    )
-    assert doc.children[0] == blocks.Paragraph(children=[inlines.Text(text="hello")])
-
-
-def test_hard_break():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {"type": "text", "text": "a"},
-                        {"type": "hardBreak"},
-                        {"type": "text", "text": "b"},
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == [
-        inlines.Text(text="a"),
-        inlines.HardBreak(),
-        inlines.Text(text="b"),
-    ]
-
-
-def test_mention_with_text():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {"type": "mention", "attrs": {"id": "123", "text": "홍길동"}},
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == [inlines.CodeSpan(code="홍길동")]
-
-
-def test_mention_without_text():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {"type": "mention", "attrs": {"id": "123"}},
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == [inlines.CodeSpan(code="@123")]
-
-
-def test_emoji_with_text():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {
-                            "type": "emoji",
-                            "attrs": {"shortName": "smile", "text": "😄"},
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == [inlines.Text(text="😄")]
-
-
-def test_emoji_without_text():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {"type": "emoji", "attrs": {"shortName": "smile"}},
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == [inlines.Text(text=":smile:")]
-
-
-def test_date():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {"type": "date", "attrs": {"timestamp": "1672531200000"}},
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == [inlines.CodeSpan(code="2023-01-01")]
-
-
-def test_status():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {
-                            "type": "status",
-                            "attrs": {"text": "IN PROGRESS", "color": "blue"},
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == [inlines.CodeSpan(code="IN PROGRESS")]
-
-
-def test_inline_card_with_url():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {"type": "inlineCard", "attrs": {"url": "https://example.com"}},
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == [
-        inlines.Link(
-            url="https://example.com",
-            children=[inlines.Text(text="https://example.com")],
-        )
-    ]
-
-
-def test_inline_card_no_url():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {"type": "inlineCard", "attrs": {}},
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == []
-
-
-def test_unsupported_inline():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {"type": "placeholder", "attrs": {"text": "Type something"}},
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == [inlines.Text(text="[placeholder]")]
-
-
-# ── Mark parsers ──────────────────────────────────────────────────────
-
-
-def test_strong_mark():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {"type": "text", "text": "bold", "marks": [{"type": "strong"}]},
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == [inlines.Strong(children=[inlines.Text(text="bold")])]
-
-
-def test_em_mark():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {"type": "text", "text": "italic", "marks": [{"type": "em"}]},
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == [inlines.Emphasis(children=[inlines.Text(text="italic")])]
-
-
-def test_strike_mark():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "deleted",
-                            "marks": [{"type": "strike"}],
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == [
-        inlines.Strikethrough(children=[inlines.Text(text="deleted")])
-    ]
-
-
-def test_code_mark():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {"type": "text", "text": "code", "marks": [{"type": "code"}]},
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == [inlines.CodeSpan(code="code")]
-
-
-def test_link_mark():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "click",
-                            "marks": [
-                                {
-                                    "type": "link",
-                                    "attrs": {"href": "https://example.com"},
-                                },
-                            ],
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == [
-        inlines.Link(url="https://example.com", children=[inlines.Text(text="click")])
-    ]
-
-
-def test_link_mark_with_title():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "click",
-                            "marks": [
-                                {
-                                    "type": "link",
-                                    "attrs": {
-                                        "href": "https://example.com",
-                                        "title": "Example",
-                                    },
-                                },
-                            ],
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == [
-        inlines.Link(
-            url="https://example.com",
-            children=[inlines.Text(text="click")],
-            title="Example",
-        )
-    ]
-
-
-def test_nested_marks():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "bold italic",
-                            "marks": [
-                                {"type": "strong"},
-                                {"type": "em"},
-                            ],
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == [
-        inlines.Strong(
-            children=[inlines.Emphasis(children=[inlines.Text(text="bold italic")])]
-        )
-    ]
-
-
-def test_code_and_link_marks():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "example",
-                            "marks": [
-                                {"type": "code"},
-                                {
-                                    "type": "link",
-                                    "attrs": {"href": "https://example.com"},
-                                },
-                            ],
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == [
-        inlines.Link(
-            url="https://example.com",
-            children=[inlines.CodeSpan(code="example")],
-        ),
-    ]
-
-
-def test_empty_text_with_marks():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {"type": "text", "text": "", "marks": [{"type": "strong"}]},
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == []
-
-
-def test_underline_ignored():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "underlined",
-                            "marks": [{"type": "underline"}],
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == [inlines.Text(text="underlined")]
-
-
-def test_text_color_ignored():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "colored",
-                            "marks": [
-                                {"type": "textColor", "attrs": {"color": "#ff0000"}},
-                            ],
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == [inlines.Text(text="colored")]
-
-
-def test_background_color_ignored():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "highlighted",
-                            "marks": [
-                                {
-                                    "type": "backgroundColor",
-                                    "attrs": {"color": "#ffff00"},
-                                },
-                            ],
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == [inlines.Text(text="highlighted")]
-
-
-def test_subsup_ignored():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "sup",
-                            "marks": [
-                                {"type": "subsup", "attrs": {"type": "sup"}},
-                            ],
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == [inlines.Text(text="sup")]
-
-
-# ── Adjacent mark merging ────────────────────────────────────────────
-
-
-def test_adjacent_strong_merged():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "hello ",
-                            "marks": [{"type": "strong"}],
-                        },
-                        {
-                            "type": "text",
-                            "text": "world",
-                            "marks": [{"type": "strong"}],
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == [
-        inlines.Strong(
-            children=[inlines.Text(text="hello "), inlines.Text(text="world")]
-        ),
-    ]
-
-
-def test_adjacent_strong_with_ignored_underline_merged():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "plain ",
-                            "marks": [{"type": "strong"}],
-                        },
-                        {
-                            "type": "text",
-                            "text": "underlined",
-                            "marks": [
-                                {"type": "underline"},
-                                {"type": "strong"},
-                            ],
-                        },
-                        {
-                            "type": "text",
-                            "text": " rest",
-                            "marks": [{"type": "strong"}],
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == [
-        inlines.Strong(
-            children=[
-                inlines.Text(text="plain "),
-                inlines.Text(text="underlined"),
-                inlines.Text(text=" rest"),
-            ]
-        ),
-    ]
-
-
-def test_different_mark_types_not_merged():
-    doc = parse(
-        {
-            "type": "doc",
-            "version": 1,
-            "content": [
-                {
-                    "type": "paragraph",
-                    "content": [
-                        {
-                            "type": "text",
-                            "text": "bold",
-                            "marks": [{"type": "strong"}],
-                        },
-                        {
-                            "type": "text",
-                            "text": "italic",
-                            "marks": [{"type": "em"}],
-                        },
-                    ],
-                },
-            ],
-        }
-    )
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.children == [
-        inlines.Strong(children=[inlines.Text(text="bold")]),
-        inlines.Emphasis(children=[inlines.Text(text="italic")]),
-    ]
+    # head: 첫 행의 tableHeader
+    assert isinstance(table.head[0], blocks.TableHeader)
+    # body row 0: tableHeader (column header)
+    assert isinstance(table.body[0][0], blocks.TableHeader)
+    # body row 1: tableCell
+    assert isinstance(table.body[1][0], blocks.TableCell)
+    assert not isinstance(table.body[1][0], blocks.TableHeader)

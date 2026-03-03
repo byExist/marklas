@@ -8,8 +8,46 @@
 </p>
 
 <p align="center">
-  <b>Markdown</b> ⇄ <b>ADF</b>
+  Lossless bidirectional converter between <b>Markdown</b> and <b>Atlassian Document Format (ADF)</b>.
 </p>
+
+---
+
+## Why Marklas?
+
+Confluence and Jira store documents in [ADF](https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/) — a rich JSON structure with panels, layouts, mentions, colored text, and more. Standard Markdown can only represent a subset of these features.
+
+**Marklas defines a union AST that covers both specs**, then converts in both directions through it:
+
+```
+Markdown ⇄ Union AST ⇄ ADF
+```
+
+Nodes shared by both formats (paragraphs, headings, lists, tables, etc.) map directly. ADF-only nodes (panels, mentions, colored text, etc.) are embedded as invisible HTML comment annotations in the Markdown output, so the full structure survives a roundtrip:
+
+```
+ADF → Markdown (with annotations) → ADF   ✅ lossless
+```
+
+Without annotations, standard Markdown elements still convert to valid ADF — just without the ADF-specific extras:
+
+```
+Plain Markdown → ADF   ✅ works (standard elements only)
+```
+
+### How Annotations Work
+
+When ADF contains features that Markdown can't express natively (e.g., panels, mentions, colored text), Marklas wraps a readable Markdown fallback in HTML comment annotations:
+
+```markdown
+<!-- adf:panel {"panelType": "info"} -->
+This is an info panel — readable as plain Markdown.
+<!-- /adf:panel -->
+
+User <!-- adf:mention {"id": "abc123", "text": "@John"} -->`@John`<!-- /adf:mention --> approved this.
+```
+
+These annotations are invisible when rendered as Markdown (GitHub, editors, etc.), but Marklas can parse them back to reconstruct the original ADF structure exactly.
 
 ## Installation
 
@@ -19,88 +57,68 @@ pip install marklas
 
 ## Usage
 
+```python
+from marklas import to_adf, to_md
+```
+
 ### Markdown → ADF
 
+Any standard Markdown converts to valid ADF:
+
 ```python
-from marklas import to_adf
+adf = to_adf("""
+## Project Update
 
-adf = to_adf("**Hello** world")
+The release is **on track**. Key changes:
 
-# {
-#   "type": "doc",
-#   "version": 1,
-#   "content": [
-#     {
-#       "type": "paragraph",
-#       "content": [
-#         {"type": "text", "text": "Hello", "marks": [{"type": "strong"}]},
-#         {"type": "text", "text": " world"}
-#       ]
-#     }
-#   ]
-# }
+- Refactored auth module
+- Fixed 3 critical bugs
+
+| Component | Status |
+| --------- | ------ |
+| Backend   | Done   |
+| Frontend  | WIP    |
+""")
 ```
 
 ### ADF → Markdown
 
+ADF-only features (panels, mentions, colored text, etc.) are preserved as HTML comment annotations — invisible in rendered Markdown, but fully restorable:
+
 ```python
-from marklas import to_md
-
-md = to_md(adf)
-
-# "**Hello** world\n"
+md = to_md(adf_with_panel)
 ```
 
-## Conversion Rules
+```markdown
+<!-- adf:panel {"panelType": "warning"} -->
+Do **not** deploy on Fridays.
+<!-- /adf:panel -->
+```
 
-### Block
+### Roundtrip
 
-| ADF                                        | Markdown                                                   |
-| ------------------------------------------ | ---------------------------------------------------------- |
-| `paragraph`                                | inline content                                             |
-| `heading` (level 1-6)                      | `# ~ ######`                                               |
-| `codeBlock` (language?)                    | ` ```lang\ncode\n``` `                                     |
-| `blockquote`                               | `> text`                                                   |
-| `bulletList > listItem`                    | `- item`                                                   |
-| `orderedList > listItem`                   | `1. item`                                                  |
-| `taskList > taskItem`                      | `- [x]` / `- [ ]`                                          |
-| `decisionList > decisionItem`              | `- [x]` / `- [ ]`                                          |
-| `rule`                                     | `---`                                                      |
-| `table > tableRow > tableHeader/tableCell` | GFM table (merged cells are split, only paragraph content) |
-| `mediaSingle > media` (external)           | `![alt](url)`                                              |
-| `mediaSingle > media` (non-external)       | `[Image: id]`                                              |
-| `mediaGroup > media`                       | `![alt](url)` / `[Image: id]`                              |
-| `panel`                                    | `> text`                                                   |
-| `expand` / `nestedExpand` (title?)         | `> title\n> text`                                          |
-| `layoutSection > layoutColumn`             | columns flattened                                          |
-| `blockCard` (url)                          | `[url](url)`                                               |
-| `embedCard` (url)                          | `[url](url)`                                               |
+```python
+original_adf = fetch_confluence_page()     # complex ADF
+markdown = to_md(original_adf)             # edit in any Markdown editor
+restored_adf = to_adf(markdown)            # push back — structure preserved
+```
 
-### Inline
+## Token Efficiency
 
-| ADF                    | Markdown            |
-| ---------------------- | ------------------- |
-| `text`                 | plain text          |
-| `text` + `strong` mark | `**text**`          |
-| `text` + `em` mark     | `*text*`            |
-| `text` + `strike` mark | `~~text~~`          |
-| `text` + `code` mark   | `` `code` ``        |
-| `text` + `link` mark   | `[text](url)`       |
-| `hardBreak`            | `\` + newline       |
-| `mention`              | `` `@user` ``       |
-| `emoji`                | `:shortName:`       |
-| `date`                 | `` `2024-01-01` ``  |
-| `status`               | `` `status text` `` |
-| `inlineCard` (url)     | `[url](url)`        |
+Markdown is significantly more compact than ADF JSON — critical for LLM-based workflows where every token counts.
 
-### Not Supported
+| Format | Tokens | Bytes |
+| --- | --- | --- |
+| ADF JSON | 89,374 | 523 KB |
+| Markdown | 21,798 | 49 KB |
+| **Reduction** | **4.1x** | **10.6x** |
 
-| Element                                                                    | Behavior             |
-| -------------------------------------------------------------------------- | -------------------- |
-| ADF marks: `underline`, `textColor`, `backgroundColor`, `subsup`           | silently ignored     |
-| ADF blocks: `extension`, `bodiedExtension`, `syncBlock`, `bodiedSyncBlock` | `[type]` placeholder |
-| ADF inlines: `placeholder`, `inlineExtension`, `mediaInline`               | `[type]` placeholder |
-| Markdown: raw HTML (block, inline)                                         | silently ignored     |
+*Measured on a real Confluence page using GPT-4o tokenizer (tiktoken).*
+
+## Notes
+
+- **Table cells**: Non-paragraph content inside table cells (lists, code blocks, etc.) is converted to inline HTML (`<ul>`, `<code>`, `<br>`) to fit within GFM table syntax.
+- **Markdown-only features**: Raw HTML blocks/inlines and other Markdown-specific constructs that have no ADF equivalent are silently dropped during conversion.
 
 ## Development
 

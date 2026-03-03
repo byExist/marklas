@@ -1,6 +1,15 @@
+"""Union AST → Markdown 렌더링. 차집합 노드는 annotation + fallback."""
+
 from __future__ import annotations
 
+import json
+from datetime import UTC, datetime
+from typing import Any
+
 from marklas.nodes import blocks, inlines
+
+
+# ── Public API ───────────────────────────────────────────────────────
 
 
 def render(doc: blocks.Document) -> str:
@@ -8,11 +17,38 @@ def render(doc: blocks.Document) -> str:
     return "\n\n".join(parts) + "\n" if parts else ""
 
 
-# ── Block dispatch ────────────────────────────────────────────────────
+# ── Annotation helpers ───────────────────────────────────────────────
+
+
+def _to_tag(node: object) -> str:
+    name = type(node).__name__
+    return name[0].lower() + name[1:]
+
+
+def _filter_none(d: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in d.items() if v is not None}
+
+
+def _annotate_block(node: object, content: str, **attrs: Any) -> str:
+    tag = _to_tag(node)
+    filtered = {k: v for k, v in attrs.items() if v is not None}
+    attr_json = f" {json.dumps(filtered, ensure_ascii=False)}" if filtered else ""
+    return f"<!-- adf:{tag}{attr_json} -->\n{content}\n<!-- /adf:{tag} -->"
+
+
+def _annotate_inline(node: object, content: str, **attrs: Any) -> str:
+    tag = _to_tag(node)
+    filtered = {k: v for k, v in attrs.items() if v is not None}
+    attr_json = f" {json.dumps(filtered, ensure_ascii=False)}" if filtered else ""
+    return f"<!-- adf:{tag}{attr_json} -->{content}<!-- /adf:{tag} -->"
+
+
+# ── Block dispatch ───────────────────────────────────────────────────
 
 
 def _render_block(node: blocks.Block) -> str:
     match node:
+        # 교집합
         case blocks.Paragraph():
             return _render_paragraph(node)
         case blocks.Heading():
@@ -29,37 +65,75 @@ def _render_block(node: blocks.Block) -> str:
             return "---"
         case blocks.Table():
             return _render_table(node)
+        # 차집합 — Annotated
+        case blocks.Panel():
+            return _render_panel(node)
+        case blocks.Expand():
+            return _render_expand(node)
+        case blocks.NestedExpand():
+            return _render_expand(node)
+        case blocks.TaskList():
+            return _render_task_list(node)
+        case blocks.DecisionList():
+            return _render_decision_list(node)
+        case blocks.LayoutSection():
+            return _render_layout_section(node)
+        case blocks.MediaSingle():
+            return _render_media_single(node)
+        case blocks.MediaGroup():
+            return _render_media_group(node)
+        case blocks.BlockCard():
+            return _render_block_card(node)
+        case blocks.EmbedCard():
+            return _render_embed_card(node)
+        # 차집합 — Placeholder 전용
+        case blocks.Extension() | blocks.BodiedExtension() \
+           | blocks.SyncBlock() | blocks.BodiedSyncBlock():
+            return f"`\u2699 Confluence macro`"
         case _:
             return ""
 
 
-# ── Block renderers ───────────────────────────────────────────────────
+# ── Block renderers ──────────────────────────────────────────────────
 
 
 def _render_paragraph(node: blocks.Paragraph) -> str:
-    return _render_inlines(node.children)
+    content = _render_inlines(node.children)
+    if node.alignment or node.indentation:
+        return _annotate_block(
+            node, content, align=node.alignment, indentation=node.indentation,
+        )
+    return content
 
 
 def _render_heading(node: blocks.Heading) -> str:
-    prefix = "#" * node.level
-    content = _render_inlines(node.children)
-    return f"{prefix} {content}"
+    content = "#" * node.level + " " + _render_inlines(node.children)
+    if node.alignment or node.indentation:
+        return _annotate_block(
+            node, content, align=node.alignment, indentation=node.indentation,
+        )
+    return content
 
 
 def _render_code_block(node: blocks.CodeBlock) -> str:
-    fence = "````" if "```" in node.code else "```"
     lang = node.language or ""
-    return f"{fence}{lang}\n{node.code}\n{fence}"
+    return f"```{lang}\n{node.code}\n```"
 
 
 def _render_blockquote(node: blocks.BlockQuote) -> str:
-    inner = "\n\n".join(_render_block(child) for child in node.children)
-    lines = inner.split("\n")
-    return "\n".join(f"> {line}" if line else ">" for line in lines)
+    inner = "\n\n".join(_render_block(c) for c in node.children)
+    return "\n".join(f"> {line}" if line else ">" for line in inner.split("\n"))
 
 
 def _render_bullet_list(node: blocks.BulletList) -> str:
-    items = [_render_list_item(item, "- ") for item in node.items]
+    items: list[str] = []
+    for item in node.items:
+        if item.checked is not None:
+            marker = "- [x] " if item.checked else "- [ ] "
+        else:
+            marker = "- "
+        body = _render_list_item_body(item.children, node.tight)
+        items.append(marker + body)
     sep = "\n\n" if not node.tight else "\n"
     return sep.join(items)
 
@@ -68,60 +142,136 @@ def _render_ordered_list(node: blocks.OrderedList) -> str:
     items: list[str] = []
     for i, item in enumerate(node.items):
         num = node.start + i
-        items.append(_render_list_item(item, f"{num}. "))
+        body = _render_list_item_body(item.children, node.tight)
+        items.append(f"{num}. {body}")
     sep = "\n\n" if not node.tight else "\n"
     return sep.join(items)
 
 
-def _render_list_item(item: blocks.ListItem, marker: str) -> str:
-    if item.checked is True:
-        marker = marker.rstrip() + " [x] "
-    elif item.checked is False:
-        marker = marker.rstrip() + " [ ] "
+def _render_list_item_body(children: list[blocks.Block], tight: bool) -> str:
+    if tight and len(children) == 1 and isinstance(children[0], blocks.Paragraph):
+        return _render_inlines(children[0].children)
+    parts: list[str] = []
+    for child in children:
+        rendered = _render_block(child)
+        parts.append(rendered)
+    body = "\n\n".join(parts)
+    # 두 번째 줄부터 4칸 들여쓰기
+    lines = body.split("\n")
+    if len(lines) > 1:
+        return lines[0] + "\n" + "\n".join("    " + l if l else "" for l in lines[1:])
+    return body
 
-    content = "\n\n".join(_render_block(child) for child in item.children)
-    lines = content.split("\n")
-    indent = " " * len(marker)
-    result = marker + lines[0]
-    for line in lines[1:]:
-        result += "\n" + (indent + line if line else "")
-    return result
+
+# ── Table ────────────────────────────────────────────────────────────
 
 
 def _render_table(node: blocks.Table) -> str:
-    if not node.head:
+    if node.head:
+        col_count = len(node.head)
+        head_cells = [_render_cell_blocks(cell.children) for cell in node.head]
+    elif node.body:
+        col_count = max(len(row) for row in node.body)
+        head_cells = [""] * col_count
+    else:
         return ""
-
-    col_count = len(node.head)
-
-    head_cells = [_render_cell_inlines(cell.children) for cell in node.head]
     header = "| " + " | ".join(head_cells) + " |"
 
+    # delimiter row
     delimiters: list[str] = []
     for i in range(col_count):
         align = node.alignments[i] if i < len(node.alignments) else None
-        match align:
-            case "left":
-                delimiters.append(":---")
-            case "center":
-                delimiters.append(":---:")
-            case "right":
-                delimiters.append("---:")
-            case _:
-                delimiters.append("---")
+        if align == "center":
+            delimiters.append(":---:")
+        elif align == "right":
+            delimiters.append("---:")
+        elif align == "left":
+            delimiters.append(":---")
+        else:
+            delimiters.append("---")
     delimiter = "| " + " | ".join(delimiters) + " |"
 
-    rows: list[str] = [header, delimiter]
-    for row in node.body:
-        cells: list[str] = []
-        for i in range(col_count):
-            if i < len(row):
-                cells.append(_render_cell_inlines(row[i].children))
-            else:
-                cells.append("")
+    rows = [header, delimiter]
+    for body_row in node.body:
+        cells = [_render_cell_blocks(cell.children) for cell in body_row]
+        # 부족한 셀은 빈 문자열로 패딩
+        while len(cells) < col_count:
+            cells.append("")
         rows.append("| " + " | ".join(cells) + " |")
 
-    return "\n".join(rows)
+    table_md = "\n".join(rows)
+
+    # Table/Cell attrs가 있으면 annotation 래핑
+    table_attr_values: list[Any] = [
+        node.display_mode, node.is_number_column_enabled,
+        node.layout, node.width,
+    ]
+    has_table_attrs = any(v is not None for v in table_attr_values)
+    has_cell_attrs = any(
+        cell.colspan or cell.rowspan or cell.col_width or cell.background
+        or isinstance(cell, blocks.TableHeader)
+        for row_cells in [node.head, *node.body]
+        for cell in row_cells
+    )
+    if has_table_attrs or has_cell_attrs:
+        table_attrs: dict[str, Any] = {}
+        if node.display_mode is not None:
+            table_attrs["displayMode"] = node.display_mode
+        if node.is_number_column_enabled is not None:
+            table_attrs["isNumberColumnEnabled"] = node.is_number_column_enabled
+        if node.layout is not None:
+            table_attrs["layout"] = node.layout
+        if node.width is not None:
+            table_attrs["width"] = node.width
+        cell_attrs = _collect_cell_attrs(node)
+        if cell_attrs:
+            table_attrs["cells"] = cell_attrs
+        return _annotate_block(node, table_md, **table_attrs)
+
+    return table_md
+
+
+def _collect_cell_attrs(node: blocks.Table) -> list[list[Any]] | None:
+    """Compact cell attrs 수집.
+
+    - ``null`` — 모든 속성 기본값
+    - ``[colwidth]`` (list) — colwidth만 있는 기본 셀
+    - ``{...}`` (dict) — 비기본 속성 (colspan≠1, rowspan≠1, background, header)
+    """
+    all_rows = [node.head, *node.body]
+    result: list[list[Any]] = []
+    has_any = False
+    for row in all_rows:
+        row_attrs: list[Any] = []
+        for cell in row:
+            is_header = isinstance(cell, blocks.TableHeader)
+            has_special = (
+                (cell.colspan is not None and cell.colspan != 1)
+                or (cell.rowspan is not None and cell.rowspan != 1)
+                or cell.background
+                or is_header
+            )
+            if has_special:
+                attrs: dict[str, Any] = {}
+                if cell.colspan is not None and cell.colspan != 1:
+                    attrs["colspan"] = cell.colspan
+                if cell.rowspan is not None and cell.rowspan != 1:
+                    attrs["rowspan"] = cell.rowspan
+                if cell.col_width:
+                    attrs["colwidth"] = cell.col_width
+                if cell.background:
+                    attrs["background"] = cell.background
+                if is_header:
+                    attrs["header"] = True
+                has_any = True
+                row_attrs.append(attrs)
+            elif cell.col_width:
+                has_any = True
+                row_attrs.append(cell.col_width)
+            else:
+                row_attrs.append(None)
+        result.append(row_attrs)
+    return result if has_any else None
 
 
 def _render_cell_inlines(nodes: list[inlines.Inline]) -> str:
@@ -131,23 +281,183 @@ def _render_cell_inlines(nodes: list[inlines.Inline]) -> str:
     )
 
 
-# ── Inline dispatch ───────────────────────────────────────────────────
+def _render_cell_blocks(children: list[blocks.Block]) -> str:
+    parts: list[str] = []
+    for child in children:
+        if isinstance(child, blocks.Paragraph):
+            parts.append(_render_cell_inlines(child.children))
+        elif isinstance(child, blocks.CodeBlock):
+            # 테이블 셀 내 코드블록: 펜스 대신 <code> 사용
+            code = child.code.replace("\n", "<br>")
+            parts.append(f"<code>{code}</code>")
+        elif isinstance(child, (blocks.BulletList, blocks.OrderedList)):
+            parts.append(_render_cell_list(child))
+        else:
+            rendered = _render_block(child)
+            # HardBreak(\\\n) → <br> 먼저, 이후 나머지 줄바꿈 → <br>
+            rendered = rendered.replace("\\\n", "<br>").replace("\n", "<br>")
+            parts.append(rendered)
+    return "<br>".join(parts)
+
+
+def _render_cell_list(node: blocks.BulletList | blocks.OrderedList) -> str:
+    """테이블 셀 내 리스트를 HTML <ul>/<ol> 태그로 렌더링."""
+    tag = "ol" if isinstance(node, blocks.OrderedList) else "ul"
+    start_attr = f' start="{node.start}"' if isinstance(node, blocks.OrderedList) and node.start != 1 else ""
+    items: list[str] = []
+    for item in node.items:
+        body = _render_cell_list_item(item.children)
+        items.append(f"<li>{body}</li>")
+    return f"<{tag}{start_attr}>{''.join(items)}</{tag}>"
+
+
+def _render_cell_list_item(children: list[blocks.Block]) -> str:
+    """리스트 아이템의 children을 HTML로 렌더링. 중첩 리스트 지원."""
+    parts: list[str] = []
+    for child in children:
+        if isinstance(child, blocks.Paragraph):
+            parts.append(_render_cell_inlines(child.children))
+        elif isinstance(child, (blocks.BulletList, blocks.OrderedList)):
+            parts.append(_render_cell_list(child))
+        else:
+            rendered = _render_block(child)
+            rendered = rendered.replace("\\\n", "<br>").replace("\n", "<br>")
+            parts.append(rendered)
+    return "<br>".join(parts)
+
+
+# ── 차집합 블록 렌더링 ───────────────────────────────────────────────
+
+
+def _render_panel(node: blocks.Panel) -> str:
+    inner = "\n\n".join(_render_block(c) for c in node.children)
+    return _annotate_block(
+        node, inner,
+        panelType=node.panel_type,
+        panelIcon=node.panel_icon,
+        panelIconId=node.panel_icon_id,
+        panelIconText=node.panel_icon_text,
+        panelColor=node.panel_color,
+    )
+
+
+def _render_expand(node: blocks.Expand | blocks.NestedExpand) -> str:
+    inner = "\n\n".join(_render_block(c) for c in node.children)
+    return _annotate_block(node, inner, title=node.title)
+
+
+def _render_task_list(node: blocks.TaskList) -> str:
+    items: list[str] = []
+    for item in node.items:
+        marker = "- [x] " if item.state == "DONE" else "- [ ] "
+        items.append(marker + _render_inlines(item.children))
+    return _annotate_block(node, "\n".join(items))
+
+
+def _render_decision_list(node: blocks.DecisionList) -> str:
+    items: list[str] = []
+    for item in node.items:
+        marker = "- [x] " if item.state == "DECIDED" else "- [ ] "
+        items.append(marker + _render_inlines(item.children))
+    return _annotate_block(node, "\n".join(items))
+
+
+def _render_layout_section(node: blocks.LayoutSection) -> str:
+    parts: list[str] = []
+    for col in node.columns:
+        inner = "\n\n".join(_render_block(c) for c in col.children)
+        parts.append(_annotate_block(col, inner, width=col.width))
+    return _annotate_block(node, "\n\n".join(parts))
+
+
+def _build_media_dict(media: blocks.Media) -> dict[str, Any]:
+    """media attrs dict 생성. mediaType이 "file"이면 생략 (기본값)."""
+    d: dict[str, Any] = {}
+    if media.media_type != "file":
+        d["mediaType"] = media.media_type
+    d.update(_filter_none({
+        "id": media.id, "collection": media.collection,
+        "url": media.url, "alt": media.alt,
+        "width": media.width, "height": media.height,
+    }))
+    return d
+
+
+def _render_media_single(node: blocks.MediaSingle) -> str:
+    if node.media.media_type == "external" and node.media.url:
+        fallback = f"![{node.media.alt or ''}]({node.media.url})"
+    else:
+        alt = node.media.alt or "attachment"
+        fallback = f"`\U0001F4CE {alt}`"
+    media = _build_media_dict(node.media)
+    return _annotate_block(
+        node, fallback,
+        layout=node.layout, width=node.width, widthType=node.width_type, media=media,
+    )
+
+
+def _render_media_group(node: blocks.MediaGroup) -> str:
+    fallbacks: list[str] = []
+    for m in node.media_list:
+        if m.media_type == "external" and m.url:
+            fallbacks.append(f"![{m.alt or ''}]({m.url})")
+        else:
+            alt = m.alt or "attachment"
+            fallbacks.append(f"`\U0001F4CE {alt}`")
+    media_list = [_build_media_dict(m) for m in node.media_list]
+    return _annotate_block(node, "\n".join(fallbacks), mediaList=media_list)
+
+
+def _render_block_card(node: blocks.BlockCard) -> str:
+    fallback = f"[{node.url}]({node.url})" if node.url else "`\U0001F517 card link`"
+    return _annotate_block(node, fallback, url=node.url, data=node.data)
+
+
+def _render_embed_card(node: blocks.EmbedCard) -> str:
+    fallback = f"[{node.url}]({node.url})"
+    return _annotate_block(
+        node, fallback,
+        url=node.url, layout=node.layout, width=node.width,
+        originalWidth=node.original_width, originalHeight=node.original_height,
+    )
+
+
+# ── Inline rendering ────────────────────────────────────────────────
 
 
 def _render_inlines(nodes: list[inlines.Inline]) -> str:
     return "".join(_render_inline(node) for node in nodes)
 
 
+def _wrap_mark(content: str, delimiter: str) -> str:
+    """CommonMark 준수: 공백이 delimiter 안쪽에 오지 않도록 바깥으로 이동."""
+    if not content:
+        return content
+    leading = ""
+    trailing = ""
+    inner = content
+    if inner.startswith(" "):
+        leading = " "
+        inner = inner[1:]
+    if inner.endswith(" "):
+        trailing = " "
+        inner = inner[:-1]
+    if not inner:
+        return content
+    return f"{leading}{delimiter}{inner}{delimiter}{trailing}"
+
+
 def _render_inline(node: inlines.Inline) -> str:
     match node:
+        # 교집합
         case inlines.Text():
             return node.text
         case inlines.Strong():
-            return f"**{_render_inlines(node.children)}**"
+            return _wrap_mark(_render_inlines(node.children), "**")
         case inlines.Emphasis():
-            return f"*{_render_inlines(node.children)}*"
+            return _wrap_mark(_render_inlines(node.children), "*")
         case inlines.Strikethrough():
-            return f"~~{_render_inlines(node.children)}~~"
+            return _wrap_mark(_render_inlines(node.children), "~~")
         case inlines.Link():
             return _render_link(node)
         case inlines.Image():
@@ -158,11 +468,39 @@ def _render_inline(node: inlines.Inline) -> str:
             return "\\\n"
         case inlines.SoftBreak():
             return "\n"
+        # 차집합 — Annotated
+        case inlines.Mention():
+            return _render_mention(node)
+        case inlines.Emoji():
+            return _render_emoji(node)
+        case inlines.Date():
+            return _render_date(node)
+        case inlines.Status():
+            return _render_status(node)
+        case inlines.InlineCard():
+            return _render_inline_card(node)
+        case inlines.MediaInline():
+            return _render_media_inline(node)
+        case inlines.Underline():
+            return _render_underline(node)
+        case inlines.TextColor():
+            return _render_text_color(node)
+        case inlines.BackgroundColor():
+            return _render_background_color(node)
+        case inlines.SubSup():
+            return _render_subsup(node)
+        case inlines.Annotation():
+            return _render_annotation_inline(node)
+        # 차집합 — Placeholder 전용
+        case inlines.Placeholder():
+            return ""
+        case inlines.InlineExtension():
+            return f"`\u2699 inline macro`"
         case _:
             return ""
 
 
-# ── Inline renderers ──────────────────────────────────────────────────
+# ── 교집합 인라인 렌더러 ─────────────────────────────────────────────
 
 
 def _render_link(node: inlines.Link) -> str:
@@ -179,6 +517,94 @@ def _render_image(node: inlines.Image) -> str:
 
 
 def _render_code_span(node: inlines.CodeSpan) -> str:
-    if "`" in node.code:
-        return f"`` {node.code} ``"
-    return f"`{node.code}`"
+    code = node.code
+    if "`" in code:
+        return f"`` {code} ``"
+    return f"`{code}`"
+
+
+# ── 차집합 인라인 렌더러 ─────────────────────────────────────────────
+
+
+def _render_mention(node: inlines.Mention) -> str:
+    text = node.text or f"@{node.id}"
+    fallback = f"`{text}`"
+    return _annotate_inline(
+        node, fallback,
+        id=node.id, text=node.text,
+        accessLevel=node.access_level, userType=node.user_type,
+    )
+
+
+def _render_emoji(node: inlines.Emoji) -> str:
+    fallback = node.text or f":{node.short_name}:"
+    return _annotate_inline(
+        node, fallback,
+        shortName=node.short_name, text=node.text, id=node.id,
+    )
+
+
+def _render_date(node: inlines.Date) -> str:
+    dt = datetime.fromtimestamp(int(node.timestamp) / 1000, tz=UTC)
+    fallback = f"`{dt.strftime('%Y-%m-%d')}`"
+    return _annotate_inline(node, fallback, timestamp=node.timestamp)
+
+
+def _render_status(node: inlines.Status) -> str:
+    fallback = f"`{node.text}`"
+    return _annotate_inline(
+        node, fallback,
+        text=node.text, color=node.color,
+        style=node.style,
+    )
+
+
+def _render_inline_card(node: inlines.InlineCard) -> str:
+    if node.url:
+        fallback = f"[{node.url}]({node.url})"
+    else:
+        fallback = "`\U0001F517 card link`"
+    # url만 있고 data 없으면 attrs 생략 (fallback link에서 추출 가능)
+    if node.url and not node.data:
+        return _annotate_inline(node, fallback)
+    return _annotate_inline(node, fallback, url=node.url, data=node.data)
+
+
+def _render_media_inline(node: inlines.MediaInline) -> str:
+    alt = node.alt or "attachment"
+    fallback = f"`\U0001F4CE {alt}`"
+    media_type = None if node.media_type == "file" else node.media_type
+    return _annotate_inline(
+        node, fallback,
+        id=node.id, collection=node.collection,
+        mediaType=media_type, alt=node.alt,
+        width=node.width, height=node.height,
+    )
+
+
+def _render_underline(node: inlines.Underline) -> str:
+    content = _render_inlines(node.children)
+    return _annotate_inline(node, content)
+
+
+def _render_text_color(node: inlines.TextColor) -> str:
+    content = _render_inlines(node.children)
+    return _annotate_inline(node, content, color=node.color)
+
+
+def _render_background_color(node: inlines.BackgroundColor) -> str:
+    content = _render_inlines(node.children)
+    return _annotate_inline(node, content, color=node.color)
+
+
+def _render_subsup(node: inlines.SubSup) -> str:
+    content = _render_inlines(node.children)
+    return _annotate_inline(node, content, type=node.type)
+
+
+def _render_annotation_inline(node: inlines.Annotation) -> str:
+    content = _render_inlines(node.children)
+    return _annotate_inline(
+        node, content,
+        id=node.id, annotationType=node.annotation_type,
+    )
