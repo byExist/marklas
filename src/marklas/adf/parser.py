@@ -75,18 +75,18 @@ def _parse_block(
 
 
 def _parse_paragraph(node: schema.Paragraph) -> blocks.Paragraph:
-    return blocks.Paragraph(children=_parse_inlines(node["content"]))
+    return blocks.Paragraph(children=_parse_inlines(node.get("content", [])))
 
 
 def _parse_heading(node: schema.Heading) -> blocks.Heading:
     level = cast(Literal[1, 2, 3, 4, 5, 6], node["attrs"]["level"])
-    return blocks.Heading(level=level, children=_parse_inlines(node["content"]))
+    return blocks.Heading(level=level, children=_parse_inlines(node.get("content", [])))
 
 
 def _parse_code_block(node: schema.CodeBlock) -> blocks.CodeBlock:
     attrs = node.get("attrs")
     language = attrs.get("language") if attrs else None
-    code = "".join(c["text"] for c in node["content"] if c["type"] == "text")
+    code = "".join(c["text"] for c in node.get("content", []) if c["type"] == "text")
     return blocks.CodeBlock(code=code, language=language)
 
 
@@ -115,7 +115,7 @@ def _parse_task_list(node: schema.TaskList) -> blocks.BulletList:
     items: list[blocks.ListItem] = []
     for item in node["content"]:
         checked = item["attrs"]["state"] == "DONE"
-        children = _parse_inlines(item["content"])
+        children = _parse_inlines(item.get("content", []))
         items.append(
             blocks.ListItem(
                 children=[blocks.Paragraph(children=children)] if children else [],
@@ -129,7 +129,7 @@ def _parse_decision_list(node: schema.DecisionList) -> blocks.BulletList:
     items: list[blocks.ListItem] = []
     for item in node["content"]:
         checked = item["attrs"]["state"] == "DECIDED"
-        children = _parse_inlines(item["content"])
+        children = _parse_inlines(item.get("content", []))
         items.append(
             blocks.ListItem(
                 children=[blocks.Paragraph(children=children)] if children else [],
@@ -189,7 +189,7 @@ def _parse_table_cell(
     result: list[inlines.Inline] = []
     for block in node["content"]:
         if block["type"] == "paragraph":
-            result.extend(_parse_inlines(cast(schema.Paragraph, block)["content"]))
+            result.extend(_parse_inlines(cast(schema.Paragraph, block).get("content", [])))
         else:
             result.append(inlines.Text(text=f"[{block['type']}]"))
     return blocks.TableCell(children=result)
@@ -244,8 +244,7 @@ def _parse_layout_section(node: schema.LayoutSection) -> list[blocks.Block]:
 
 
 def _parse_block_card(node: schema.BlockCard) -> blocks.Paragraph:
-    attrs = node.get("attrs")
-    url = attrs.get("url") if attrs else None
+    url = node["attrs"].get("url")
     if url:
         return blocks.Paragraph(
             children=[inlines.Link(url=url, children=[inlines.Text(text=url)])]
