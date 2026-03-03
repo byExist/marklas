@@ -223,6 +223,35 @@ def test_table_body_pad_cells():
     assert render(doc) == expected
 
 
+def test_table_cell_hard_break_renders_as_br():
+    doc = blocks.Document(
+        children=[
+            blocks.Table(
+                head=[
+                    blocks.TableCell(children=[inlines.Text(text="Col")]),
+                ],
+                body=[
+                    [
+                        blocks.TableCell(
+                            children=[
+                                inlines.Strong(
+                                    children=[inlines.Text(text="first")]
+                                ),
+                                inlines.HardBreak(),
+                                inlines.Strong(
+                                    children=[inlines.Text(text="second")]
+                                ),
+                            ]
+                        ),
+                    ]
+                ],
+            )
+        ]
+    )
+    expected = "| Col |\n| --- |\n| **first**<br>**second** |\n"
+    assert render(doc) == expected
+
+
 # ── Inline renderers ──────────────────────────────────────────────────
 
 

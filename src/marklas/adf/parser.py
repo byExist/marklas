@@ -268,6 +268,26 @@ def _parse_inlines(nodes: list[schema.Inline]) -> list[inlines.Inline]:
     result: list[inlines.Inline] = []
     for node in nodes:
         result.extend(_parse_inline(node))
+    return _merge_adjacent(result)
+
+
+_MERGEABLE = (inlines.Strong, inlines.Emphasis, inlines.Strikethrough)
+
+
+def _merge_adjacent(nodes: list[inlines.Inline]) -> list[inlines.Inline]:
+    if len(nodes) < 2:
+        return nodes
+    result: list[inlines.Inline] = [nodes[0]]
+    for node in nodes[1:]:
+        prev = result[-1]
+        if (
+            type(prev) is type(node)
+            and isinstance(prev, _MERGEABLE)
+            and isinstance(node, _MERGEABLE)
+        ):
+            prev.children.extend(node.children)
+        else:
+            result.append(node)
     return result
 
 

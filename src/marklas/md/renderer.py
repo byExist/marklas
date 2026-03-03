@@ -94,7 +94,7 @@ def _render_table(node: blocks.Table) -> str:
 
     col_count = len(node.head)
 
-    head_cells = [_render_inlines(cell.children) for cell in node.head]
+    head_cells = [_render_cell_inlines(cell.children) for cell in node.head]
     header = "| " + " | ".join(head_cells) + " |"
 
     delimiters: list[str] = []
@@ -116,12 +116,19 @@ def _render_table(node: blocks.Table) -> str:
         cells: list[str] = []
         for i in range(col_count):
             if i < len(row):
-                cells.append(_render_inlines(row[i].children))
+                cells.append(_render_cell_inlines(row[i].children))
             else:
                 cells.append("")
         rows.append("| " + " | ".join(cells) + " |")
 
     return "\n".join(rows)
+
+
+def _render_cell_inlines(nodes: list[inlines.Inline]) -> str:
+    return "".join(
+        "<br>" if isinstance(node, inlines.HardBreak) else _render_inline(node)
+        for node in nodes
+    )
 
 
 # ── Inline dispatch ───────────────────────────────────────────────────

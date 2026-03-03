@@ -427,6 +427,72 @@ def test_table_cell_non_paragraph_placeholder():
     ]
 
 
+def test_table_cell_hard_break_preserved():
+    doc = parse(
+        {
+            "type": "doc",
+            "version": 1,
+            "content": [
+                {
+                    "type": "table",
+                    "content": [
+                        {
+                            "type": "tableRow",
+                            "content": [
+                                {
+                                    "type": "tableHeader",
+                                    "content": [
+                                        {
+                                            "type": "paragraph",
+                                            "content": [
+                                                {"type": "text", "text": "Col"},
+                                            ],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                        {
+                            "type": "tableRow",
+                            "content": [
+                                {
+                                    "type": "tableCell",
+                                    "content": [
+                                        {
+                                            "type": "paragraph",
+                                            "content": [
+                                                {
+                                                    "type": "text",
+                                                    "text": "first",
+                                                    "marks": [{"type": "strong"}],
+                                                },
+                                                {"type": "hardBreak"},
+                                                {
+                                                    "type": "text",
+                                                    "text": "second",
+                                                    "marks": [{"type": "strong"}],
+                                                },
+                                            ],
+                                        },
+                                    ],
+                                },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        }
+    )
+    table = doc.children[0]
+    assert isinstance(table, blocks.Table)
+    cell = table.body[0][0]
+    assert cell.children == [
+        inlines.Strong(children=[inlines.Text(text="first")]),
+        inlines.HardBreak(),
+        inlines.Strong(children=[inlines.Text(text="second")]),
+    ]
+
+
 def _make_cell(text: str, type: str = "tableCell", **attrs: int) -> dict[str, Any]:
     cell: dict[str, Any] = {
         "type": type,
@@ -1499,3 +1565,116 @@ def test_subsup_ignored():
     p = doc.children[0]
     assert isinstance(p, blocks.Paragraph)
     assert p.children == [inlines.Text(text="sup")]
+
+
+# ── Adjacent mark merging ────────────────────────────────────────────
+
+
+def test_adjacent_strong_merged():
+    doc = parse(
+        {
+            "type": "doc",
+            "version": 1,
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "hello ",
+                            "marks": [{"type": "strong"}],
+                        },
+                        {
+                            "type": "text",
+                            "text": "world",
+                            "marks": [{"type": "strong"}],
+                        },
+                    ],
+                },
+            ],
+        }
+    )
+    p = doc.children[0]
+    assert isinstance(p, blocks.Paragraph)
+    assert p.children == [
+        inlines.Strong(
+            children=[inlines.Text(text="hello "), inlines.Text(text="world")]
+        ),
+    ]
+
+
+def test_adjacent_strong_with_ignored_underline_merged():
+    doc = parse(
+        {
+            "type": "doc",
+            "version": 1,
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "plain ",
+                            "marks": [{"type": "strong"}],
+                        },
+                        {
+                            "type": "text",
+                            "text": "underlined",
+                            "marks": [
+                                {"type": "underline"},
+                                {"type": "strong"},
+                            ],
+                        },
+                        {
+                            "type": "text",
+                            "text": " rest",
+                            "marks": [{"type": "strong"}],
+                        },
+                    ],
+                },
+            ],
+        }
+    )
+    p = doc.children[0]
+    assert isinstance(p, blocks.Paragraph)
+    assert p.children == [
+        inlines.Strong(
+            children=[
+                inlines.Text(text="plain "),
+                inlines.Text(text="underlined"),
+                inlines.Text(text=" rest"),
+            ]
+        ),
+    ]
+
+
+def test_different_mark_types_not_merged():
+    doc = parse(
+        {
+            "type": "doc",
+            "version": 1,
+            "content": [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "bold",
+                            "marks": [{"type": "strong"}],
+                        },
+                        {
+                            "type": "text",
+                            "text": "italic",
+                            "marks": [{"type": "em"}],
+                        },
+                    ],
+                },
+            ],
+        }
+    )
+    p = doc.children[0]
+    assert isinstance(p, blocks.Paragraph)
+    assert p.children == [
+        inlines.Strong(children=[inlines.Text(text="bold")]),
+        inlines.Emphasis(children=[inlines.Text(text="italic")]),
+    ]
