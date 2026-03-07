@@ -13,7 +13,7 @@ class Block(Node):
     pass
 
 
-# --- 교집합 ---
+# --- Intersection ---
 
 
 @dataclass
@@ -98,7 +98,7 @@ class Table(Block):
     width: float | None = None
 
 
-# --- 차집합: Annotated 블록 ---
+# --- Difference-set: Annotated blocks ---
 
 
 @dataclass
@@ -147,11 +147,11 @@ class DecisionList(Block):
     items: list[DecisionItem]
 
 
-# 참고: ADF 스키마에서 width는 required이지만,
-# MD 복원 시 주석에 width가 없을 수 있으므로 AST에서는 optional.
-# ADF renderer에서 None이면 균등 분배 기본값(100/len(columns)) 사용.
-# Block을 상속: Phase 5에서 _pair_block_annotations(list[Block]) 내부에
-# 임시로 포함되므로 타입 정합성을 위해 Block으로 정의한다.
+# Note: width is required in the ADF schema, but may be absent in
+# annotation comments during MD restoration, so it's optional in the AST.
+# ADF renderer uses equal distribution (100/len(columns)) when None.
+# Inherits Block for type compatibility since it appears temporarily
+# inside _pair_block_annotations(list[Block]) during parsing.
 @dataclass
 class LayoutColumn(Block):
     children: list[Block]
@@ -174,8 +174,8 @@ class Media(Node):
     height: int | None = None
 
 
-# 참고: ADF mediaSingle.content는 list이지만 실제로 항상 Media 1개.
-# caption 등 추가 content는 현재 미지원 (라운드트립 시 content[0]만 보존).
+# Note: ADF mediaSingle.content is a list but always contains exactly one Media.
+# Additional content like captions is not currently supported (only content[0] is preserved on roundtrip).
 @dataclass
 class MediaSingle(Block):
     media: Media
@@ -204,7 +204,7 @@ class EmbedCard(Block):
     original_height: int | None = None
 
 
-# --- 차집합: Placeholder 전용 ---
+# --- Difference-set: Placeholder-only ---
 
 
 @dataclass

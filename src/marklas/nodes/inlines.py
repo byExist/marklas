@@ -11,7 +11,7 @@ class Inline(Node):
     pass
 
 
-# --- 교집합 ---
+# --- Intersection ---
 
 
 @dataclass
@@ -63,7 +63,7 @@ class SoftBreak(Inline):
     pass
 
 
-# --- 차집합: Annotated 인라인 ---
+# --- Difference-set: Annotated inlines ---
 
 
 @dataclass
@@ -109,7 +109,7 @@ class MediaInline(Inline):
     height: int | None = None
 
 
-# --- 차집합: 래핑 marks ---
+# --- Difference-set: Wrapping marks ---
 
 
 @dataclass
@@ -142,7 +142,7 @@ class Annotation(Inline):
     annotation_type: str = "inlineComment"
 
 
-# --- 차집합: Placeholder 전용 ---
+# --- Difference-set: Placeholder-only ---
 
 
 @dataclass

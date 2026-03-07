@@ -92,7 +92,7 @@ def _render_block(node: blocks.Block) -> dict[str, Any] | None:
 
 
 def _render_paragraph(node: blocks.Paragraph) -> dict[str, Any]:
-    # 단일 Image → mediaSingle 변환 (교집합 역매핑)
+    # Single Image → mediaSingle conversion (intersection reverse-mapping)
     if len(node.children) == 1 and isinstance(node.children[0], inlines.Image):
         img = node.children[0]
         media: dict[str, Any] = {
@@ -129,7 +129,7 @@ def _render_blockquote(node: blocks.BlockQuote) -> dict[str, Any]:
 
 
 def _render_bullet_list(node: blocks.BulletList) -> dict[str, Any]:
-    # checked 항목이 있으면 taskList로 변환 (교집합 역매핑)
+    # Convert to taskList if any items have checked state (intersection reverse-mapping)
     if any(item.checked is not None for item in node.items):
         task_items: list[dict[str, Any]] = []
         for item in node.items:
@@ -298,7 +298,7 @@ def _render_embed_card(node: blocks.EmbedCard) -> dict[str, Any]:
 
 
 def _render_table(node: blocks.Table) -> dict[str, Any]:
-    # 모든 행을 수집
+    # Collect all rows
     all_cell_rows: list[list[blocks.TableCell]] = []
     if node.head:
         all_cell_rows.append(node.head)
@@ -308,7 +308,7 @@ def _render_table(node: blocks.Table) -> dict[str, Any]:
     num_rows = len(all_cell_rows)
     num_cols = max((len(cells) for cells in all_cell_rows), default=0)
 
-    # colspan/rowspan으로 점유된 위치를 계산 (원점 제외)
+    # Calculate positions occupied by colspan/rowspan (excluding origin)
     occupied: list[list[bool]] = [[False] * num_cols for _ in range(num_rows)]
     for r, cells in enumerate(all_cell_rows):
         for col_idx, cell in enumerate(cells):
@@ -319,7 +319,7 @@ def _render_table(node: blocks.Table) -> dict[str, Any]:
                     if (dr > 0 or dc > 0) and r + dr < num_rows and col_idx + dc < num_cols:
                         occupied[r + dr][col_idx + dc] = True
 
-    # 점유된 셀을 스킵하면서 렌더링
+    # Render while skipping occupied cells
     rows: list[dict[str, Any]] = []
     for r, cells in enumerate(all_cell_rows):
         row_cells: list[dict[str, Any]] = []
@@ -379,7 +379,7 @@ def _render_inlines(nodes: list[inlines.Inline]) -> list[dict[str, Any]]:
 def _render_inlines_from_blocks(
     block_nodes: list[blocks.Block],
 ) -> list[dict[str, Any]]:
-    """ListItem.children(블록 리스트)에서 인라인을 추출한다. taskItem content용."""
+    """Extract inlines from ListItem.children (block list) for taskItem content."""
     result: list[dict[str, Any]] = []
     for block in block_nodes:
         if isinstance(block, blocks.Paragraph):
@@ -431,7 +431,7 @@ def _flatten_inline(
             return [{"type": "text", "text": " "}]
 
         case inlines.Image():
-            # 인라인 위치의 Image → link mark + alt 텍스트로 fallback
+            # Inline Image → fallback to link mark + alt text
             link_mark = {"type": "link", "attrs": {"href": node.url}}
             if node.title:
                 link_mark["attrs"]["title"] = node.title
@@ -441,7 +441,7 @@ def _flatten_inline(
             text["marks"] = _sort_marks(new_marks)
             return [text]
 
-        # 차집합 인라인 노드
+        # Difference-set inline nodes
         case inlines.Mention():
             attrs: dict[str, Any] = {"id": node.id}
             if node.text is not None:
@@ -498,7 +498,7 @@ def _flatten_inline(
         case inlines.InlineExtension():
             return [node.raw]
 
-        # 차집합 래핑 marks
+        # Difference-set wrapping marks
         case inlines.Underline():
             new_marks: list[dict[str, Any]] = [*marks, {"type": "underline"}]
             return [child for c in node.children for child in _flatten_inline(c, new_marks)]

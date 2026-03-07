@@ -1,4 +1,4 @@
-"""Markdown → Union AST 파싱. `<!-- adf:... -->` 주석이 있으면 차집합 노드를 자동 복원."""
+"""Markdown → Union AST parsing. Auto-restores difference-set nodes from `<!-- adf:... -->` comments."""
 
 from __future__ import annotations
 
@@ -13,14 +13,14 @@ from marklas.nodes import blocks, inlines
 
 type _Alignment = Literal["left", "center", "right"] | None
 
-# ── ADF 주석 파싱 ────────────────────────────────────────────────────
+# ── ADF comment parsing ──────────────────────────────────────────────
 
 _ADF_COMMENT_RE = re.compile(r"<!--\s*(/?)adf:(\w+)\s*(.*?)-->")
 _ADF_COMMENT_SPLIT_RE = re.compile(r"(<!--\s*/?adf:\w+\s*.*?-->)")
 
 
 def _split_inline_adf(raw: str) -> list[inlines.Inline]:
-    """block_html raw에서 인라인 ADF 주석과 텍스트를 분리."""
+    """Split inline ADF comments and text from block_html raw."""
     parts = _ADF_COMMENT_SPLIT_RE.split(raw.strip())
     children: list[inlines.Inline] = []
     for part in parts:
@@ -36,7 +36,7 @@ def _split_inline_adf(raw: str) -> list[inlines.Inline]:
 
 
 def _parse_adf_comment(raw: str) -> tuple[bool, str, dict[str, Any]] | None:
-    """ADF 주석이면 (closing, tag, attrs) 반환, 아니면 None."""
+    """Return (closing, tag, attrs) if ADF comment, else None."""
     m = _ADF_COMMENT_RE.fullmatch(raw.strip())
     if not m:
         return None
@@ -48,7 +48,7 @@ def _parse_adf_comment(raw: str) -> tuple[bool, str, dict[str, Any]] | None:
     return bool(closing), tag, attrs
 
 
-# ── 마커 노드 ────────────────────────────────────────────────────────
+# ── Marker nodes ────────────────────────────────────────────────────
 
 
 @dataclass
@@ -65,11 +65,11 @@ class _AdfInlineComment(inlines.Inline):
     closing: bool = False
 
 
-# ── 1단계: mistune AST 렌더러 ────────────────────────────────────────
+# ── Phase 1: mistune AST renderer ────────────────────────────────────
 
 
 class _ASTRenderer(mistune.BaseRenderer):
-    """mistune 커스텀 렌더러: 토큰을 AST 노드로 직접 변환한다."""
+    """Custom mistune renderer: converts tokens directly to AST nodes."""
 
     def _render_children(self, token: dict[str, Any], state: Any) -> list[Any]:
         result: list[Any] = []
@@ -181,13 +181,13 @@ class _ASTRenderer(mistune.BaseRenderer):
         self, token: dict[str, Any], state: Any
     ) -> _AdfBlockComment | blocks.Paragraph | None:
         raw = token["raw"]
-        # 단일 ADF 주석 → 블록 마커
+        # Single ADF comment → block marker
         parsed = _parse_adf_comment(raw)
         if parsed:
             closing, tag, attrs = parsed
             return _AdfBlockComment(tag=tag, attrs=attrs, closing=closing)
-        # 인라인 ADF 주석이 줄 전체를 차지하면 block_html로 인식됨
-        # → 인라인 children으로 분리하여 Paragraph로 래핑
+        # Inline ADF comments spanning a full line are parsed as block_html
+        # → split into inline children and wrap in Paragraph
         if "<!-- adf:" in raw or "<!-- /adf:" in raw:
             children = _split_inline_adf(raw)
             if children:
@@ -247,7 +247,7 @@ _md = mistune.create_markdown(
 )
 
 
-# ── 2단계: 주석-요소 페어링 ──────────────────────────────────────────
+# ── Phase 2: comment-element pairing ─────────────────────────────────
 
 
 def _pair_block_annotations(children: list[blocks.Block]) -> list[blocks.Block]:
@@ -273,7 +273,7 @@ def _pair_block_annotations(children: list[blocks.Block]) -> list[blocks.Block]:
             else:
                 result.extend(inner)
         elif isinstance(child, _AdfBlockComment) and child.closing:
-            pass  # 짝 없는 닫는 주석 무시
+            pass  # Ignore unpaired closing comment
         else:
             result.append(child)
         i += 1
@@ -301,7 +301,7 @@ def _pair_inline_annotations(
                 inner.append(c)
                 i += 1
             if found_closing:
-                inner = _pair_inline_annotations(inner)  # 재귀: 중첩 인라인 주석
+                inner = _pair_inline_annotations(inner)  # Recurse: nested inline comments
                 result.append(_build_inline_node(tag, attrs, inner))
             else:
                 result.extend(inner)
@@ -326,7 +326,7 @@ def _post_process(children: list[blocks.Block]) -> list[blocks.Block]:
 
 
 def _apply_inline_annotations(block: blocks.Block) -> None:
-    """블록 내부의 인라인 주석을 재귀적으로 페어링."""
+    """Recursively pair inline comments inside blocks."""
     match block:
         case blocks.Paragraph():
             block.children = _pair_inline_annotations(block.children)
@@ -350,7 +350,7 @@ def _apply_inline_annotations(block: blocks.Block) -> None:
             pass
 
 
-# ── 노드 빌더 ────────────────────────────────────────────────────────
+# ── Node builders ────────────────────────────────────────────────────
 
 
 def _build_block_node(
@@ -466,7 +466,7 @@ def _build_inline_node(
     tag: str, attrs: dict[str, Any], inner: list[inlines.Inline]
 ) -> inlines.Inline:
     match tag:
-        # 독립 인라인 — attrs에서 복원, inner(fallback) 무시
+        # Standalone inlines — restore from attrs, ignore inner (fallback)
         case "mention":
             return inlines.Mention(
                 id=attrs["id"],
@@ -502,7 +502,7 @@ def _build_inline_node(
                 width=attrs.get("width"),
                 height=attrs.get("height"),
             )
-        # 래핑 marks — inner를 children으로 사용
+        # Wrapping marks — use inner as children
         case "underline":
             return inlines.Underline(children=inner)
         case "textColor":
@@ -522,7 +522,7 @@ def _build_inline_node(
 
 
 def _is_empty_head(head: list[blocks.TableCell]) -> bool:
-    """헤더 행의 모든 셀이 빈 텍스트인지 확인. headerless table 복원용."""
+    """Check if all header row cells contain empty text. For headerless table restoration."""
     for cell in head:
         for child in cell.children:
             if not isinstance(child, blocks.Paragraph):
@@ -533,15 +533,15 @@ def _is_empty_head(head: list[blocks.TableCell]) -> bool:
     return True
 
 
-# ── 유틸리티 ─────────────────────────────────────────────────────────
+# ── Utilities ───────────────────────────────────────────────────────
 
 
 _MARKDOWN_LINK_RE = re.compile(r"\[.*?\]\((.*?)\)")
 
 
 def _extract_url_from_inner(inner: list[inlines.Inline]) -> str | None:
-    """inner nodes에서 URL 추출. inlineCard compact format용.
-    mistune은 인라인 주석 사이 텍스트를 raw Text로 처리하므로 정규식 추출 필요."""
+    """Extract URL from inner nodes for inlineCard compact format.
+    mistune treats text between inline comments as raw Text, so regex extraction is needed."""
     for node in inner:
         if isinstance(node, inlines.Link):
             return node.url
@@ -553,7 +553,7 @@ def _extract_url_from_inner(inner: list[inlines.Inline]) -> str | None:
 
 
 def _unwrap_blockquote(inner: list[blocks.Block]) -> list[blocks.Block]:
-    """annotation 내부의 BlockQuote를 벗겨서 children 추출."""
+    """Unwrap BlockQuote inside annotation and extract children."""
     if len(inner) == 1 and isinstance(inner[0], blocks.BlockQuote):
         return inner[0].children
     return inner
@@ -606,7 +606,7 @@ def _parse_decision_items(inner: list[blocks.Block]) -> list[blocks.DecisionItem
 
 
 def _extract_inlines(children: list[blocks.Block]) -> list[inlines.Inline]:
-    """ListItem.children(list[Block])에서 인라인 추출."""
+    """Extract inlines from ListItem.children (list[Block])."""
     result: list[inlines.Inline] = []
     for child in children:
         if isinstance(child, blocks.Paragraph):
@@ -617,7 +617,7 @@ def _extract_inlines(children: list[blocks.Block]) -> list[inlines.Inline]:
 def _apply_cell_attrs_grid(
     table: blocks.Table, grid: list[list[Any]]
 ) -> None:
-    """Compact cell attrs 적용. list=colwidth, dict=full attrs, None=기본값."""
+    """Apply compact cell attrs. list=colwidth, dict=full attrs, None=defaults."""
     all_rows = [table.head, *table.body]
     for row_idx, row_attrs in enumerate(grid):
         if row_idx >= len(all_rows):

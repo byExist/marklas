@@ -1,4 +1,4 @@
-"""Union AST → Markdown 렌더링. 차집합 노드는 annotation + fallback."""
+"""Union AST → Markdown rendering. Difference-set nodes use annotation + fallback."""
 
 from __future__ import annotations
 
@@ -48,7 +48,7 @@ def _annotate_inline(node: object, content: str, **attrs: Any) -> str:
 
 def _render_block(node: blocks.Block) -> str:
     match node:
-        # 교집합
+        # Intersection
         case blocks.Paragraph():
             return _render_paragraph(node)
         case blocks.Heading():
@@ -65,7 +65,7 @@ def _render_block(node: blocks.Block) -> str:
             return "---"
         case blocks.Table():
             return _render_table(node)
-        # 차집합 — Annotated
+        # Difference-set — Annotated
         case blocks.Panel():
             return _render_panel(node)
         case blocks.Expand():
@@ -86,7 +86,7 @@ def _render_block(node: blocks.Block) -> str:
             return _render_block_card(node)
         case blocks.EmbedCard():
             return _render_embed_card(node)
-        # 차집합 — Placeholder 전용
+        # Difference-set — Placeholder-only
         case blocks.Extension() | blocks.BodiedExtension() \
            | blocks.SyncBlock() | blocks.BodiedSyncBlock():
             return f"`\u2699 Confluence macro`"
@@ -156,7 +156,7 @@ def _render_list_item_body(children: list[blocks.Block], tight: bool) -> str:
         rendered = _render_block(child)
         parts.append(rendered)
     body = "\n\n".join(parts)
-    # 두 번째 줄부터 4칸 들여쓰기
+    # Indent lines after the first by 4 spaces
     lines = body.split("\n")
     if len(lines) > 1:
         return lines[0] + "\n" + "\n".join("    " + l if l else "" for l in lines[1:])
@@ -194,14 +194,14 @@ def _render_table(node: blocks.Table) -> str:
     rows = [header, delimiter]
     for body_row in node.body:
         cells = [_render_cell_blocks(cell.children) for cell in body_row]
-        # 부족한 셀은 빈 문자열로 패딩
+        # Pad missing cells with empty strings
         while len(cells) < col_count:
             cells.append("")
         rows.append("| " + " | ".join(cells) + " |")
 
     table_md = "\n".join(rows)
 
-    # Table/Cell attrs가 있으면 annotation 래핑
+    # Wrap with annotation if table/cell attrs are present
     table_attr_values: list[Any] = [
         node.display_mode, node.is_number_column_enabled,
         node.layout, node.width,
@@ -232,11 +232,11 @@ def _render_table(node: blocks.Table) -> str:
 
 
 def _collect_cell_attrs(node: blocks.Table) -> list[list[Any]] | None:
-    """Compact cell attrs 수집.
+    """Collect compact cell attrs.
 
-    - ``null`` — 모든 속성 기본값
-    - ``[colwidth]`` (list) — colwidth만 있는 기본 셀
-    - ``{...}`` (dict) — 비기본 속성 (colspan≠1, rowspan≠1, background, header)
+    - ``null`` — all default attributes
+    - ``[colwidth]`` (list) — default cell with only colwidth
+    - ``{...}`` (dict) — non-default attributes (colspan≠1, rowspan≠1, background, header)
     """
     all_rows = [node.head, *node.body]
     result: list[list[Any]] = []
@@ -287,21 +287,21 @@ def _render_cell_blocks(children: list[blocks.Block]) -> str:
         if isinstance(child, blocks.Paragraph):
             parts.append(_render_cell_inlines(child.children))
         elif isinstance(child, blocks.CodeBlock):
-            # 테이블 셀 내 코드블록: 펜스 대신 <code> 사용
+            # Code block in table cell: use <code> instead of fences
             code = child.code.replace("\n", "<br>")
             parts.append(f"<code>{code}</code>")
         elif isinstance(child, (blocks.BulletList, blocks.OrderedList)):
             parts.append(_render_cell_list(child))
         else:
             rendered = _render_block(child)
-            # HardBreak(\\\n) → <br> 먼저, 이후 나머지 줄바꿈 → <br>
+            # HardBreak(\\\n) → <br> first, then remaining newlines → <br>
             rendered = rendered.replace("\\\n", "<br>").replace("\n", "<br>")
             parts.append(rendered)
     return "<br>".join(parts)
 
 
 def _render_cell_list(node: blocks.BulletList | blocks.OrderedList) -> str:
-    """테이블 셀 내 리스트를 HTML <ul>/<ol> 태그로 렌더링."""
+    """Render lists in table cells as HTML <ul>/<ol> tags."""
     tag = "ol" if isinstance(node, blocks.OrderedList) else "ul"
     start_attr = f' start="{node.start}"' if isinstance(node, blocks.OrderedList) and node.start != 1 else ""
     items: list[str] = []
@@ -312,7 +312,7 @@ def _render_cell_list(node: blocks.BulletList | blocks.OrderedList) -> str:
 
 
 def _render_cell_list_item(children: list[blocks.Block]) -> str:
-    """리스트 아이템의 children을 HTML로 렌더링. 중첩 리스트 지원."""
+    """Render list item children as HTML. Supports nested lists."""
     parts: list[str] = []
     for child in children:
         if isinstance(child, blocks.Paragraph):
@@ -326,7 +326,7 @@ def _render_cell_list_item(children: list[blocks.Block]) -> str:
     return "<br>".join(parts)
 
 
-# ── 차집합 블록 렌더링 ───────────────────────────────────────────────
+# ── Difference-set block rendering ────────────────────────────────────
 
 
 def _render_panel(node: blocks.Panel) -> str:
@@ -371,7 +371,7 @@ def _render_layout_section(node: blocks.LayoutSection) -> str:
 
 
 def _build_media_dict(media: blocks.Media) -> dict[str, Any]:
-    """media attrs dict 생성. mediaType이 "file"이면 생략 (기본값)."""
+    """Build media attrs dict. Omits mediaType when "file" (default)."""
     d: dict[str, Any] = {}
     if media.media_type != "file":
         d["mediaType"] = media.media_type
@@ -430,7 +430,7 @@ def _render_inlines(nodes: list[inlines.Inline]) -> str:
 
 
 def _wrap_mark(content: str, delimiter: str) -> str:
-    """CommonMark 준수: 공백이 delimiter 안쪽에 오지 않도록 바깥으로 이동."""
+    """CommonMark compliance: move spaces from inside delimiters to outside."""
     if not content:
         return content
     leading = ""
@@ -449,7 +449,7 @@ def _wrap_mark(content: str, delimiter: str) -> str:
 
 def _render_inline(node: inlines.Inline) -> str:
     match node:
-        # 교집합
+        # Intersection
         case inlines.Text():
             return node.text
         case inlines.Strong():
@@ -468,7 +468,7 @@ def _render_inline(node: inlines.Inline) -> str:
             return "\\\n"
         case inlines.SoftBreak():
             return "\n"
-        # 차집합 — Annotated
+        # Difference-set — Annotated
         case inlines.Mention():
             return _render_mention(node)
         case inlines.Emoji():
@@ -491,7 +491,7 @@ def _render_inline(node: inlines.Inline) -> str:
             return _render_subsup(node)
         case inlines.Annotation():
             return _render_annotation_inline(node)
-        # 차집합 — Placeholder 전용
+        # Difference-set — Placeholder-only
         case inlines.Placeholder():
             return ""
         case inlines.InlineExtension():
@@ -500,7 +500,7 @@ def _render_inline(node: inlines.Inline) -> str:
             return ""
 
 
-# ── 교집합 인라인 렌더러 ─────────────────────────────────────────────
+# ── Intersection inline renderers ─────────────────────────────────────
 
 
 def _render_link(node: inlines.Link) -> str:
@@ -523,7 +523,7 @@ def _render_code_span(node: inlines.CodeSpan) -> str:
     return f"`{code}`"
 
 
-# ── 차집합 인라인 렌더러 ─────────────────────────────────────────────
+# ── Difference-set inline renderers ───────────────────────────────────
 
 
 def _render_mention(node: inlines.Mention) -> str:
@@ -564,7 +564,7 @@ def _render_inline_card(node: inlines.InlineCard) -> str:
         fallback = f"[{node.url}]({node.url})"
     else:
         fallback = "`\U0001F517 card link`"
-    # url만 있고 data 없으면 attrs 생략 (fallback link에서 추출 가능)
+    # Omit attrs when only url is present and no data (extractable from fallback link)
     if node.url and not node.data:
         return _annotate_inline(node, fallback)
     return _annotate_inline(node, fallback, url=node.url, data=node.data)

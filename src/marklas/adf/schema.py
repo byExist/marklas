@@ -539,8 +539,8 @@ class Doc(TypedDict):
 
 
 # ── Mark ordering ─────────────────────────────────────────────────────
-# code는 재귀를 종료(CodeSpan 반환)하므로 반드시 마지막.
-# parser와 renderer 양쪽에서 이 순서를 공유한다.
+# code must be last since it terminates recursion (returns CodeSpan).
+# This ordering is shared by both the parser and the renderer.
 
 MARK_ORDER: dict[str, int] = {
     "link": 0,
