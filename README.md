@@ -8,7 +8,7 @@
 </p>
 
 <p align="center">
-  Lossless bidirectional converter between <b>Markdown</b> and <b>Atlassian Document Format (ADF)</b>.
+  Bidirectional converter between <b>Markdown</b> and <b>Atlassian Document Format (ADF)</b>.
 </p>
 
 ---
@@ -95,6 +95,16 @@ Do **not** deploy on Fridays.
 <!-- /adf:panel -->
 ```
 
+To get clean Markdown without annotations, pass `annotate=False`. ADF-only attributes are stripped and only standard Markdown elements remain:
+
+```python
+clean_md = to_md(adf_with_panel, annotate=False)
+```
+
+```markdown
+Do **not** deploy on Fridays.
+```
+
 ### Roundtrip
 
 ```python
@@ -125,5 +135,4 @@ Markdown is significantly more compact than ADF JSON — critical for LLM-based 
 ```bash
 uv sync --extra dev
 uv run pytest -v
-uv run black src/ tests/
 ```
