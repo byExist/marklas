@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import re
+import textwrap
 from typing import Any, Literal, cast
 
 import mistune
@@ -293,6 +294,7 @@ def _parse_code_block(token: dict[str, Any]) -> blocks.CodeBlock:
     code = token.get("raw", "")
     if code.endswith("\n"):
         code = code[:-1]
+    code = textwrap.dedent(code)
     info = token.get("attrs", {}).get("info", "")
     language = info or None
     return blocks.CodeBlock(code=code, language=language)

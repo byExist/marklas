@@ -837,3 +837,50 @@ def test_adjacent_text_nodes_merged():
     text_children = [c for c in bg.children if isinstance(c, inlines.Text)]
     assert len(text_children) == 1
     assert text_children[0].text == "text[1]end"
+
+
+def test_block_annotation_in_nested_list_item():
+    """Multi-line block annotation in list item should be parsed."""
+    md = (
+        "- item\n\n"
+        "    - <!-- adf:mediaSingle {} -->\n"
+        "        content\n"
+        "        <!-- /adf:mediaSingle -->\n"
+    )
+    doc = parse(md)
+    bl = doc.children[0]
+    assert isinstance(bl, blocks.BulletList)
+    sub_list = bl.items[0].children[1]
+    assert isinstance(sub_list, blocks.BulletList)
+    sub_item = sub_list.items[0]
+    assert any(isinstance(c, blocks.MediaSingle) for c in sub_item.children)
+
+
+def test_split_block_html_blockquote_char_not_misinterpreted():
+    """> char should not be misinterpreted as blockquote."""
+    md = "<!-- adf:inlineCard -->[link](url)<!-- /adf:inlineCard -->  > tail\n"
+    doc = parse(md)
+    p = doc.children[0]
+    assert isinstance(p, blocks.Paragraph)
+    texts = [c for c in p.children if isinstance(c, inlines.Text)]
+    combined = "".join(t.text for t in texts)
+    assert "> tail" in combined
+
+
+def test_code_block_in_list_item_dedented():
+    """Residual indentation in code block inside list should be stripped."""
+    md = (
+        "- item\n\n"
+        "    - ```\n"
+        "        {\n"
+        '          "key": "value"\n'
+        "        }\n"
+        "        ```\n"
+    )
+    doc = parse(md)
+    bl = doc.children[0]
+    sub_list = bl.items[0].children[1]
+    assert isinstance(sub_list, blocks.BulletList)
+    code_block = sub_list.items[0].children[0]
+    assert isinstance(code_block, blocks.CodeBlock)
+    assert code_block.code == '{\n  "key": "value"\n}'

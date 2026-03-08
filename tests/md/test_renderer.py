@@ -1415,3 +1415,24 @@ def test_empty_paragraph_plain():
     )
     result = render(doc, annotate=False)
     assert "<!-- adf:" not in result
+
+
+def test_whitespace_only_paragraph_skipped_in_list_item():
+    """Whitespace-only paragraph should be skipped in list item rendering."""
+    doc = blocks.Document(
+        children=[
+            blocks.BulletList(
+                items=[
+                    blocks.ListItem(
+                        children=[
+                            blocks.Paragraph(children=[inlines.Text(text=" ")]),
+                            blocks.Paragraph(children=[inlines.Text(text="content")]),
+                        ]
+                    )
+                ],
+                tight=False,
+            )
+        ]
+    )
+    result = render(doc, annotate=True)
+    assert "- content" in result

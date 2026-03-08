@@ -1238,8 +1238,52 @@ def test_table_cell_hardbreak_roundtrip():
     assert_roundtrip(adf)
 
 
+def test_code_block_in_nested_list_roundtrip():
+    """Code block inside nested list item should survive roundtrip."""
+    adf = {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "bulletList",
+                "content": [
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [{"type": "text", "text": "item"}],
+                            },
+                            {
+                                "type": "bulletList",
+                                "content": [
+                                    {
+                                        "type": "listItem",
+                                        "content": [
+                                            {
+                                                "type": "codeBlock",
+                                                "content": [
+                                                    {
+                                                        "type": "text",
+                                                        "text": '{\n  "key": "value"\n}',
+                                                    }
+                                                ],
+                                            }
+                                        ],
+                                    }
+                                ],
+                            },
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    assert_roundtrip(adf)
+
+
 def test_list_with_inline_annotation_roundtrip():
-    """리스트 아이템 내 inline annotation이 라운드트립에서 보존되어야 한다."""
+    """List item inline annotation should survive roundtrip."""
     adf = {
         "type": "doc",
         "version": 1,
