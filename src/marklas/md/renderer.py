@@ -181,11 +181,23 @@ def _render_ordered_list(node: blocks.OrderedList) -> str:
     return sep.join(items)
 
 
+def _is_whitespace_only_paragraph(node: blocks.Block) -> bool:
+    return (
+        isinstance(node, blocks.Paragraph)
+        and all(
+            isinstance(c, inlines.Text) and not c.text.strip() for c in node.children
+        )
+        and len(node.children) > 0
+    )
+
+
 def _render_list_item_body(children: list[blocks.Block], tight: bool) -> str:
     if tight and len(children) == 1 and isinstance(children[0], blocks.Paragraph):
         return _render_inlines(children[0].children)
     parts: list[str] = []
     for child in children:
+        if _is_whitespace_only_paragraph(child):
+            continue
         rendered = _render_block(child)
         parts.append(rendered)
     body = "\n\n".join(parts)
