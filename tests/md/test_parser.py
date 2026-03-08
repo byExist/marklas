@@ -747,3 +747,93 @@ def test_empty_header_row_parsed_as_headerless():
     assert isinstance(table, blocks.Table)
     assert table.head == []
     assert len(table.body) == 2
+
+
+# ── 라운드트립 수정 관련 테스트 ───────────────────────────────────────
+
+
+def test_blank_line_not_parsed_as_paragraph():
+    """블록 사이 빈 줄이 빈 Paragraph로 파싱되면 안 된다."""
+    md = "# A\n\n# B\n"
+    doc = parse(md)
+    assert len(doc.children) == 2
+    assert all(isinstance(c, blocks.Heading) for c in doc.children)
+
+
+def test_annotated_empty_paragraph_preserved():
+    """annotated 빈 Paragraph는 보존되어야 한다."""
+    md = "# A\n\n<!-- adf:paragraph -->\n\n<!-- /adf:paragraph -->\n\n# B\n"
+    doc = parse(md)
+    assert len(doc.children) == 3
+    assert isinstance(doc.children[0], blocks.Heading)
+    assert isinstance(doc.children[1], blocks.Paragraph)
+    assert doc.children[1].children == []
+    assert isinstance(doc.children[2], blocks.Heading)
+
+
+def test_blank_line_in_list_item_ignored():
+    """리스트 아이템 내 blank_line은 무시되어야 한다."""
+    md = "- item one\n\n- item two\n"
+    doc = parse(md)
+    assert len(doc.children) == 1
+    bl = doc.children[0]
+    assert isinstance(bl, blocks.BulletList)
+    assert len(bl.items) == 2
+
+
+def test_block_html_annotation_in_list_item():
+    """리스트 아이템 내 inline annotation이 파싱되어야 한다."""
+    md = '- <!-- adf:status {"text": "Done", "color": "green", "style": "bold"} -->`Done`<!-- /adf:status -->\n'
+    doc = parse(md)
+    bl = doc.children[0]
+    assert isinstance(bl, blocks.BulletList)
+    p = bl.items[0].children[0]
+    assert isinstance(p, blocks.Paragraph)
+    assert isinstance(p.children[0], inlines.Status)
+
+
+def test_br_to_linebreak_in_table_cell():
+    """테이블 셀 내 <br>이 HardBreak으로 파싱되어야 한다."""
+    md = (
+        "<!-- adf:table {} -->\n"
+        "| <!-- adf:paragraph -->a<br>b<!-- /adf:paragraph --> |\n"
+        "| --- |\n"
+        "<!-- /adf:table -->\n"
+    )
+    doc = parse(md)
+    table = doc.children[0]
+    assert isinstance(table, blocks.Table)
+    cell = table.head[0]
+    para = cell.children[0]
+    assert isinstance(para, blocks.Paragraph)
+    texts = [c for c in para.children if isinstance(c, inlines.Text)]
+    breaks = [c for c in para.children if isinstance(c, inlines.HardBreak)]
+    assert len(texts) == 2
+    assert len(breaks) == 1
+
+
+def test_split_block_html_preserves_whitespace():
+    """_split_block_html이 annotation 사이 공백을 보존해야 한다."""
+    md = "<!-- adf:strong -->bold<!-- /adf:strong --> text\n"
+    doc = parse(md)
+    p = doc.children[0]
+    assert isinstance(p, blocks.Paragraph)
+    # " text" 부분의 공백이 보존되어야 한다
+    texts = [c for c in p.children if isinstance(c, inlines.Text)]
+    combined = "".join(t.text for t in texts)
+    assert " text" in combined
+
+
+def test_adjacent_text_nodes_merged():
+    """mistune이 분리한 인접 Text 노드가 병합되어야 한다."""
+    # "[" 문자가 포함되면 mistune이 텍스트를 분리함
+    md = '<!-- adf:backgroundColor {"color": "#fff"} -->text[1]end<!-- /adf:backgroundColor -->\n'
+    doc = parse(md)
+    p = doc.children[0]
+    assert isinstance(p, blocks.Paragraph)
+    # backgroundColor 안의 텍스트가 하나의 Text로 병합
+    bg = p.children[0]
+    assert isinstance(bg, inlines.BackgroundColor)
+    text_children = [c for c in bg.children if isinstance(c, inlines.Text)]
+    assert len(text_children) == 1
+    assert text_children[0].text == "text[1]end"

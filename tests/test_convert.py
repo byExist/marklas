@@ -1189,3 +1189,85 @@ def test_table_cell_mixed_blocks_roundtrip():
         ]
     )
     assert_roundtrip(adf)
+
+
+def test_table_cell_pipe_roundtrip():
+    """셀 내 | 문자가 라운드트립에서 보존되어야 한다."""
+    adf = _table_with_cell_content(
+        [{"type": "paragraph", "content": [{"type": "text", "text": "a | b"}]}]
+    )
+    assert_roundtrip(adf)
+
+
+def test_empty_paragraph_roundtrip():
+    """빈 Paragraph가 라운드트립에서 보존되어야 한다."""
+    adf = {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "heading",
+                "attrs": {"level": 1},
+                "content": [{"type": "text", "text": "A"}],
+            },
+            {"type": "paragraph", "content": []},
+            {
+                "type": "heading",
+                "attrs": {"level": 2},
+                "content": [{"type": "text", "text": "B"}],
+            },
+        ],
+    }
+    assert_roundtrip(adf)
+
+
+def test_table_cell_hardbreak_roundtrip():
+    """셀 내 HardBreak이 라운드트립에서 보존되어야 한다."""
+    adf = _table_with_cell_content(
+        [
+            {
+                "type": "paragraph",
+                "content": [
+                    {"type": "text", "text": "line1"},
+                    {"type": "hardBreak"},
+                    {"type": "text", "text": "line2"},
+                ],
+            }
+        ]
+    )
+    assert_roundtrip(adf)
+
+
+def test_list_with_inline_annotation_roundtrip():
+    """리스트 아이템 내 inline annotation이 라운드트립에서 보존되어야 한다."""
+    adf = {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "bulletList",
+                "content": [
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [
+                                    {
+                                        "type": "status",
+                                        "attrs": {
+                                            "text": "Done",
+                                            "color": "green",
+                                            "style": "bold",
+                                        },
+                                    },
+                                    {"type": "text", "text": " task"},
+                                ],
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    assert_roundtrip(adf)

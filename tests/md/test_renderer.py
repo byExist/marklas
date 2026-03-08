@@ -1366,3 +1366,52 @@ def test_headerless_table_renders_empty_header():
         lines[3]
         == "| <!-- adf:paragraph -->A2<!-- /adf:paragraph --> | <!-- adf:paragraph -->B2<!-- /adf:paragraph --> |"
     )
+
+
+# ── pipe escape / empty paragraph annotation ──────────────────────────
+
+
+def test_table_cell_pipe_escaped():
+    """셀 내용의 | 가 \\| 로 이스케이프 되어야 한다."""
+    doc = blocks.Document(
+        children=[
+            blocks.Table(
+                head=[
+                    blocks.TableCell(
+                        children=[
+                            blocks.Paragraph(children=[inlines.Text(text="a | b")])
+                        ]
+                    )
+                ],
+                body=[],
+            )
+        ]
+    )
+    result = render(doc, annotate=False)
+    assert "a \\| b" in result
+
+
+def test_empty_paragraph_annotated():
+    """annotated 모드에서 빈 Paragraph에 annotation이 감싸져야 한다."""
+    doc = blocks.Document(
+        children=[
+            blocks.Heading(level=1, children=[inlines.Text(text="A")]),
+            blocks.Paragraph(children=[]),
+            blocks.Heading(level=2, children=[inlines.Text(text="B")]),
+        ]
+    )
+    result = render(doc, annotate=True)
+    assert "<!-- adf:paragraph -->" in result
+
+
+def test_empty_paragraph_plain():
+    """plain 모드에서 빈 Paragraph는 annotation 없이 빈 줄이어야 한다."""
+    doc = blocks.Document(
+        children=[
+            blocks.Heading(level=1, children=[inlines.Text(text="A")]),
+            blocks.Paragraph(children=[]),
+            blocks.Heading(level=2, children=[inlines.Text(text="B")]),
+        ]
+    )
+    result = render(doc, annotate=False)
+    assert "<!-- adf:" not in result
