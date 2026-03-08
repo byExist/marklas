@@ -89,8 +89,7 @@ def test_thematic_break():
 def test_multiple_blocks():
     doc = parse("a\n\nb\n")
     paragraphs = [
-        c for c in doc.children
-        if isinstance(c, blocks.Paragraph) and c.children
+        c for c in doc.children if isinstance(c, blocks.Paragraph) and c.children
     ]
     assert len(paragraphs) == 2
 
@@ -98,8 +97,7 @@ def test_multiple_blocks():
 def test_empty_document():
     doc = parse("")
     non_empty = [
-        c for c in doc.children
-        if not isinstance(c, blocks.Paragraph) or c.children
+        c for c in doc.children if not isinstance(c, blocks.Paragraph) or c.children
     ]
     assert len(non_empty) == 0
 
