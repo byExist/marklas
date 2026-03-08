@@ -817,26 +817,23 @@ def _parse_inlines(tokens: list[dict[str, Any]]) -> list[inlines.Inline]:
 def _parse_inline(token: dict[str, Any]) -> inlines.Inline | None:
     match token["type"]:
         case "text":
-            return inlines.Text(text=token["raw"])
+            return _parse_text(token)
         case "strong":
-            children = _parse_inlines(token.get("children", []))
-            return inlines.Strong(children=children)
+            return _parse_strong(token)
         case "emphasis":
-            children = _parse_inlines(token.get("children", []))
-            return inlines.Emphasis(children=children)
+            return _parse_emphasis(token)
         case "strikethrough":
-            children = _parse_inlines(token.get("children", []))
-            return inlines.Strikethrough(children=children)
+            return _parse_strikethrough(token)
         case "link":
             return _parse_link(token)
         case "image":
             return _parse_image(token)
         case "codespan":
-            return inlines.CodeSpan(code=token["raw"])
+            return _parse_codespan(token)
         case "linebreak":
-            return inlines.HardBreak()
+            return _parse_linebreak(token)
         case "softbreak":
-            return inlines.SoftBreak()
+            return _parse_softbreak(token)
         case "mention":
             return _parse_annotated_mention(token)
         case "emoji":
@@ -862,9 +859,28 @@ def _parse_inline(token: dict[str, Any]) -> inlines.Inline | None:
         case "placeholder":
             return _parse_annotated_placeholder(token)
         case "inlineExtension":
-            return inlines.InlineExtension(raw=token.get("attrs", {}))
+            return _parse_annotated_inline_extension(token)
         case _:
             raise ValueError(f"Unknown inline type: {token['type']}")
+
+
+def _parse_text(token: dict[str, Any]) -> inlines.Text:
+    return inlines.Text(text=token["raw"])
+
+
+def _parse_strong(token: dict[str, Any]) -> inlines.Strong:
+    children = _parse_inlines(token.get("children", []))
+    return inlines.Strong(children=children)
+
+
+def _parse_emphasis(token: dict[str, Any]) -> inlines.Emphasis:
+    children = _parse_inlines(token.get("children", []))
+    return inlines.Emphasis(children=children)
+
+
+def _parse_strikethrough(token: dict[str, Any]) -> inlines.Strikethrough:
+    children = _parse_inlines(token.get("children", []))
+    return inlines.Strikethrough(children=children)
 
 
 def _parse_link(token: dict[str, Any]) -> inlines.Link:
@@ -886,6 +902,22 @@ def _parse_image(token: dict[str, Any]) -> inlines.Image:
                 alt_parts.append(c["raw"])
         alt = "".join(alt_parts)
     return inlines.Image(url=url, alt=alt, title=title)
+
+
+def _parse_codespan(token: dict[str, Any]) -> inlines.CodeSpan:
+    return inlines.CodeSpan(code=token["raw"])
+
+
+def _parse_linebreak(_token: dict[str, Any]) -> inlines.HardBreak:
+    return inlines.HardBreak()
+
+
+def _parse_softbreak(_token: dict[str, Any]) -> inlines.SoftBreak:
+    return inlines.SoftBreak()
+
+
+def _parse_annotated_inline_extension(token: dict[str, Any]) -> inlines.InlineExtension:
+    return inlines.InlineExtension(raw=token.get("attrs", {}))
 
 
 def _parse_annotated_mention(token: dict[str, Any]) -> inlines.Mention:
