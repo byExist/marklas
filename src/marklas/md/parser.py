@@ -21,6 +21,7 @@ _tokenize = mistune.create_markdown(
     renderer="ast",
     plugins=["table", "strikethrough", "task_lists"],
 )
+_inline_parser = _tokenize.inline
 
 
 # ---------------------------------------------------------------------------
@@ -112,18 +113,9 @@ def _split_block_html(raw: str) -> list[dict[str, Any]] | None:
         if parsed:
             synthetic_tokens.append({"type": "inline_html", "raw": part})
         else:
-            # Preserve leading/trailing whitespace that _tokenize strips
-            leading = part[: len(part) - len(part.lstrip())]
-            trailing = part[len(part.rstrip()) :]
-            if leading:
-                synthetic_tokens.append({"type": "text", "raw": leading})
-            inner_tokens = cast(list[dict[str, Any]], _tokenize(part))
-            for tok in inner_tokens:
-                if tok["type"] == "paragraph":
-                    children = cast(list[dict[str, Any]], tok.get("children", []))
-                    synthetic_tokens.extend(children)
-            if trailing:
-                synthetic_tokens.append({"type": "text", "raw": trailing})
+            state = _inline_parser.state_cls(env={})
+            state.src = part
+            synthetic_tokens.extend(_inline_parser.parse(state))
 
     if not synthetic_tokens:
         return None
@@ -337,8 +329,14 @@ def _parse_list(token: dict[str, Any]) -> blocks.BulletList | blocks.OrderedList
 def _parse_list_item_children(
     item_token: dict[str, Any], tight: bool
 ) -> list[blocks.Block]:
+    matched = _match_block_annotations(item_token.get("children", []))
     children: list[blocks.Block] = []
-    for child in item_token.get("children", []):
+    for child in matched:
+        if child.get("_annotated"):
+            node = _parse_block(child)
+            if node is not None:
+                children.append(node)
+            continue
         match child["type"]:
             case "paragraph":
                 children.append(_parse_paragraph(child))
