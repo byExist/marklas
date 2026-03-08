@@ -261,10 +261,12 @@ def _parse_table(node: schema.Table) -> blocks.Table:
 
     if not rows:
         return blocks.Table(
-            head=[], body=[],
+            head=[],
+            body=[],
             display_mode=display_mode,
             is_number_column_enabled=is_number_column_enabled,
-            layout=layout, width=width,
+            layout=layout,
+            width=width,
         )
 
     num_rows = len(rows)
@@ -305,10 +307,12 @@ def _parse_table(node: schema.Table) -> blocks.Table:
     head = grid[0] if is_header else []
     body = grid[1:] if is_header else grid
     return blocks.Table(
-        head=head, body=body,
+        head=head,
+        body=body,
         display_mode=display_mode,
         is_number_column_enabled=is_number_column_enabled,
-        layout=layout, width=width,
+        layout=layout,
+        width=width,
     )
 
 
@@ -336,7 +340,12 @@ def _parse_inlines(nodes: list[schema.Inline]) -> list[inlines.Inline]:
     return _merge_adjacent(result)
 
 
-_MERGEABLE = (inlines.Strong, inlines.Emphasis, inlines.Strikethrough, inlines.Underline)
+_MERGEABLE = (
+    inlines.Strong,
+    inlines.Emphasis,
+    inlines.Strikethrough,
+    inlines.Underline,
+)
 
 
 def _merge_adjacent(nodes: list[inlines.Inline]) -> list[inlines.Inline]:
@@ -493,9 +502,7 @@ def _wrap_marks(
         case "em":
             return [inlines.Emphasis(children=_wrap_marks(text, marks, index + 1))]
         case "strike":
-            return [
-                inlines.Strikethrough(children=_wrap_marks(text, marks, index + 1))
-            ]
+            return [inlines.Strikethrough(children=_wrap_marks(text, marks, index + 1))]
         case "underline":
             return [inlines.Underline(children=_wrap_marks(text, marks, index + 1))]
         case "textColor":

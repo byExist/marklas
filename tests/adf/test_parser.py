@@ -224,9 +224,7 @@ def test_code_mark():
     doc = _doc(
         {
             "type": "paragraph",
-            "content": [
-                {"type": "text", "text": "code", "marks": [{"type": "code"}]}
-            ],
+            "content": [{"type": "text", "text": "code", "marks": [{"type": "code"}]}],
         }
     )
     p = parse(doc).children[0]
@@ -447,8 +445,14 @@ def test_media_group():
         {
             "type": "mediaGroup",
             "content": [
-                {"type": "media", "attrs": {"type": "file", "id": "a", "collection": "c"}},
-                {"type": "media", "attrs": {"type": "file", "id": "b", "collection": "c"}},
+                {
+                    "type": "media",
+                    "attrs": {"type": "file", "id": "a", "collection": "c"},
+                },
+                {
+                    "type": "media",
+                    "attrs": {"type": "file", "id": "b", "collection": "c"},
+                },
             ],
         }
     )
@@ -480,7 +484,10 @@ def test_embed_card():
 
 
 def test_extension_raw():
-    ext: dict[str, Any] = {"type": "extension", "attrs": {"extensionType": "t", "extensionKey": "k"}}
+    ext: dict[str, Any] = {
+        "type": "extension",
+        "attrs": {"extensionType": "t", "extensionKey": "k"},
+    }
     doc = _doc(ext)
     e = parse(doc).children[0]
     assert isinstance(e, blocks.Extension)
@@ -962,7 +969,12 @@ def test_table_header_cell_type():
                     "content": [
                         {
                             "type": "tableHeader",
-                            "content": [{"type": "paragraph", "content": [{"type": "text", "text": "H"}]}],
+                            "content": [
+                                {
+                                    "type": "paragraph",
+                                    "content": [{"type": "text", "text": "H"}],
+                                }
+                            ],
                         },
                     ],
                 },
@@ -971,7 +983,12 @@ def test_table_header_cell_type():
                     "content": [
                         {
                             "type": "tableHeader",
-                            "content": [{"type": "paragraph", "content": [{"type": "text", "text": "Col"}]}],
+                            "content": [
+                                {
+                                    "type": "paragraph",
+                                    "content": [{"type": "text", "text": "Col"}],
+                                }
+                            ],
                         },
                     ],
                 },
@@ -980,7 +997,12 @@ def test_table_header_cell_type():
                     "content": [
                         {
                             "type": "tableCell",
-                            "content": [{"type": "paragraph", "content": [{"type": "text", "text": "D"}]}],
+                            "content": [
+                                {
+                                    "type": "paragraph",
+                                    "content": [{"type": "text", "text": "D"}],
+                                }
+                            ],
                         },
                     ],
                 },

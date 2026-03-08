@@ -382,7 +382,7 @@ def test_media_group_annotation():
         '{"mediaType": "file", "id": "f-1", "collection": "c"}'
         "]} -->\n"
         "![](https://a.png)\n"
-        "`\U0001F4CE attachment`\n"
+        "`\U0001f4ce attachment`\n"
         "<!-- /adf:mediaGroup -->\n"
     )
     doc = parse(md)
@@ -520,7 +520,7 @@ def test_inline_card_annotation():
 def test_media_inline_annotation():
     md = (
         '<!-- adf:mediaInline {"id": "m-1", "collection": "c", "mediaType": "file"} -->'
-        "`\U0001F4CE attachment`"
+        "`\U0001f4ce attachment`"
         "<!-- /adf:mediaInline -->\n"
     )
     doc = parse(md)

@@ -472,9 +472,7 @@ def test_roundtrip_subsup():
                     {
                         "type": "text",
                         "text": "2",
-                        "marks": [
-                            {"type": "subsup", "attrs": {"type": "sub"}}
-                        ],
+                        "marks": [{"type": "subsup", "attrs": {"type": "sub"}}],
                     },
                     {"type": "text", "text": "O"},
                 ],
@@ -567,9 +565,7 @@ def test_roundtrip_table_attrs():
                                 "content": [
                                     {
                                         "type": "paragraph",
-                                        "content": [
-                                            {"type": "text", "text": "A"}
-                                        ],
+                                        "content": [{"type": "text", "text": "A"}],
                                     }
                                 ],
                             },
@@ -578,9 +574,7 @@ def test_roundtrip_table_attrs():
                                 "content": [
                                     {
                                         "type": "paragraph",
-                                        "content": [
-                                            {"type": "text", "text": "B"}
-                                        ],
+                                        "content": [{"type": "text", "text": "B"}],
                                     }
                                 ],
                             },
@@ -595,9 +589,7 @@ def test_roundtrip_table_attrs():
                                 "content": [
                                     {
                                         "type": "paragraph",
-                                        "content": [
-                                            {"type": "text", "text": "병합"}
-                                        ],
+                                        "content": [{"type": "text", "text": "병합"}],
                                     }
                                 ],
                             },
@@ -660,9 +652,7 @@ def test_roundtrip_layout_with_panel():
                                 "content": [
                                     {
                                         "type": "paragraph",
-                                        "content": [
-                                            {"type": "text", "text": "메모"}
-                                        ],
+                                        "content": [{"type": "text", "text": "메모"}],
                                     }
                                 ],
                             }
@@ -827,13 +817,19 @@ def test_table_column_headers_roundtrip():
                             {
                                 "type": "tableHeader",
                                 "content": [
-                                    {"type": "paragraph", "content": [{"type": "text", "text": "Name"}]}
+                                    {
+                                        "type": "paragraph",
+                                        "content": [{"type": "text", "text": "Name"}],
+                                    }
                                 ],
                             },
                             {
                                 "type": "tableHeader",
                                 "content": [
-                                    {"type": "paragraph", "content": [{"type": "text", "text": "Value"}]}
+                                    {
+                                        "type": "paragraph",
+                                        "content": [{"type": "text", "text": "Value"}],
+                                    }
                                 ],
                             },
                         ],
@@ -844,13 +840,19 @@ def test_table_column_headers_roundtrip():
                             {
                                 "type": "tableHeader",
                                 "content": [
-                                    {"type": "paragraph", "content": [{"type": "text", "text": "A"}]}
+                                    {
+                                        "type": "paragraph",
+                                        "content": [{"type": "text", "text": "A"}],
+                                    }
                                 ],
                             },
                             {
                                 "type": "tableCell",
                                 "content": [
-                                    {"type": "paragraph", "content": [{"type": "text", "text": "1"}]}
+                                    {
+                                        "type": "paragraph",
+                                        "content": [{"type": "text", "text": "1"}],
+                                    }
                                 ],
                             },
                         ],
@@ -860,6 +862,7 @@ def test_table_column_headers_roundtrip():
         ],
     }
     assert_roundtrip(adf)
+
 
 # ── annotate=False (to_md) ─────────────────────────────────────────
 
@@ -974,13 +977,19 @@ def test_headerless_table_roundtrip():
                             {
                                 "type": "tableCell",
                                 "content": [
-                                    {"type": "paragraph", "content": [{"type": "text", "text": "A1"}]}
+                                    {
+                                        "type": "paragraph",
+                                        "content": [{"type": "text", "text": "A1"}],
+                                    }
                                 ],
                             },
                             {
                                 "type": "tableCell",
                                 "content": [
-                                    {"type": "paragraph", "content": [{"type": "text", "text": "B1"}]}
+                                    {
+                                        "type": "paragraph",
+                                        "content": [{"type": "text", "text": "B1"}],
+                                    }
                                 ],
                             },
                         ],
@@ -991,13 +1000,19 @@ def test_headerless_table_roundtrip():
                             {
                                 "type": "tableCell",
                                 "content": [
-                                    {"type": "paragraph", "content": [{"type": "text", "text": "A2"}]}
+                                    {
+                                        "type": "paragraph",
+                                        "content": [{"type": "text", "text": "A2"}],
+                                    }
                                 ],
                             },
                             {
                                 "type": "tableCell",
                                 "content": [
-                                    {"type": "paragraph", "content": [{"type": "text", "text": "B2"}]}
+                                    {
+                                        "type": "paragraph",
+                                        "content": [{"type": "text", "text": "B2"}],
+                                    }
                                 ],
                             },
                         ],
@@ -1027,7 +1042,10 @@ def _table_with_cell_content(cell_content: list[dict[str, Any]]) -> dict[str, An
                             {
                                 "type": "tableHeader",
                                 "content": [
-                                    {"type": "paragraph", "content": [{"type": "text", "text": "H"}]}
+                                    {
+                                        "type": "paragraph",
+                                        "content": [{"type": "text", "text": "H"}],
+                                    }
                                 ],
                             },
                         ],
@@ -1048,81 +1066,126 @@ def _table_with_cell_content(cell_content: list[dict[str, Any]]) -> dict[str, An
 
 
 def test_table_cell_code_block_roundtrip():
-    adf = _table_with_cell_content([
-        {"type": "codeBlock", "attrs": {"language": "python"}, "content": [{"type": "text", "text": "x = 1"}]},
-    ])
+    adf = _table_with_cell_content(
+        [
+            {
+                "type": "codeBlock",
+                "attrs": {"language": "python"},
+                "content": [{"type": "text", "text": "x = 1"}],
+            },
+        ]
+    )
     assert_roundtrip(adf)
 
 
 def test_table_cell_bullet_list_roundtrip():
-    adf = _table_with_cell_content([
-        {
-            "type": "bulletList",
-            "content": [
-                {"type": "listItem", "content": [
-                    {"type": "paragraph", "content": [{"type": "text", "text": "a"}]}
-                ]},
-                {"type": "listItem", "content": [
-                    {"type": "paragraph", "content": [{"type": "text", "text": "b"}]}
-                ]},
-            ],
-        },
-    ])
+    adf = _table_with_cell_content(
+        [
+            {
+                "type": "bulletList",
+                "content": [
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [{"type": "text", "text": "a"}],
+                            }
+                        ],
+                    },
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [{"type": "text", "text": "b"}],
+                            }
+                        ],
+                    },
+                ],
+            },
+        ]
+    )
     assert_roundtrip(adf)
 
 
 def test_table_cell_ordered_list_roundtrip():
-    adf = _table_with_cell_content([
-        {
-            "type": "orderedList",
-            "content": [
-                {"type": "listItem", "content": [
-                    {"type": "paragraph", "content": [{"type": "text", "text": "first"}]}
-                ]},
-                {"type": "listItem", "content": [
-                    {"type": "paragraph", "content": [{"type": "text", "text": "second"}]}
-                ]},
-            ],
-        },
-    ])
+    adf = _table_with_cell_content(
+        [
+            {
+                "type": "orderedList",
+                "content": [
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [{"type": "text", "text": "first"}],
+                            }
+                        ],
+                    },
+                    {
+                        "type": "listItem",
+                        "content": [
+                            {
+                                "type": "paragraph",
+                                "content": [{"type": "text", "text": "second"}],
+                            }
+                        ],
+                    },
+                ],
+            },
+        ]
+    )
     assert_roundtrip(adf)
 
 
 def test_table_cell_blockquote_roundtrip():
-    adf = _table_with_cell_content([
-        {
-            "type": "blockquote",
-            "content": [
-                {"type": "paragraph", "content": [{"type": "text", "text": "quoted"}]},
-            ],
-        },
-    ])
+    adf = _table_with_cell_content(
+        [
+            {
+                "type": "blockquote",
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [{"type": "text", "text": "quoted"}],
+                    },
+                ],
+            },
+        ]
+    )
     assert_roundtrip(adf)
 
 
 def test_table_cell_heading_roundtrip():
-    adf = _table_with_cell_content([
-        {
-            "type": "heading",
-            "attrs": {"level": 2},
-            "content": [{"type": "text", "text": "title"}],
-        },
-    ])
+    adf = _table_with_cell_content(
+        [
+            {
+                "type": "heading",
+                "attrs": {"level": 2},
+                "content": [{"type": "text", "text": "title"}],
+            },
+        ]
+    )
     assert_roundtrip(adf)
 
 
 def test_table_cell_thematic_break_roundtrip():
-    adf = _table_with_cell_content([
-        {"type": "rule"},
-    ])
+    adf = _table_with_cell_content(
+        [
+            {"type": "rule"},
+        ]
+    )
     assert_roundtrip(adf)
 
 
 def test_table_cell_mixed_blocks_roundtrip():
     """Paragraph + CodeBlock in same cell."""
-    adf = _table_with_cell_content([
-        {"type": "paragraph", "content": [{"type": "text", "text": "before"}]},
-        {"type": "codeBlock", "content": [{"type": "text", "text": "code"}]},
-        {"type": "paragraph", "content": [{"type": "text", "text": "after"}]},
-    ])
+    adf = _table_with_cell_content(
+        [
+            {"type": "paragraph", "content": [{"type": "text", "text": "before"}]},
+            {"type": "codeBlock", "content": [{"type": "text", "text": "code"}]},
+            {"type": "paragraph", "content": [{"type": "text", "text": "after"}]},
+        ]
+    )
     assert_roundtrip(adf)

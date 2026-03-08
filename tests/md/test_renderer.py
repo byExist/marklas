@@ -446,14 +446,24 @@ def test_table_cell_non_paragraph_blocks():
                 head=[
                     blocks.TableCell(
                         children=[
-                            blocks.BulletList(items=[
-                                blocks.ListItem(children=[
-                                    blocks.Paragraph(children=[inlines.Text(text="item1")]),
-                                ]),
-                                blocks.ListItem(children=[
-                                    blocks.Paragraph(children=[inlines.Text(text="item2")]),
-                                ]),
-                            ]),
+                            blocks.BulletList(
+                                items=[
+                                    blocks.ListItem(
+                                        children=[
+                                            blocks.Paragraph(
+                                                children=[inlines.Text(text="item1")]
+                                            ),
+                                        ]
+                                    ),
+                                    blocks.ListItem(
+                                        children=[
+                                            blocks.Paragraph(
+                                                children=[inlines.Text(text="item2")]
+                                            ),
+                                        ]
+                                    ),
+                                ]
+                            ),
                         ]
                     ),
                 ],
@@ -462,7 +472,10 @@ def test_table_cell_non_paragraph_blocks():
         ]
     )
     result = render(doc)
-    assert "<!-- adf:bulletList --><ul><li><!-- adf:paragraph -->item1<!-- /adf:paragraph --></li><li><!-- adf:paragraph -->item2<!-- /adf:paragraph --></li></ul><!-- /adf:bulletList -->" in result
+    assert (
+        "<!-- adf:bulletList --><ul><li><!-- adf:paragraph -->item1<!-- /adf:paragraph --></li><li><!-- adf:paragraph -->item2<!-- /adf:paragraph --></li></ul><!-- /adf:bulletList -->"
+        in result
+    )
 
 
 def test_table_cell_block_with_hardbreak():
@@ -494,7 +507,10 @@ def test_table_cell_block_with_hardbreak():
     result = render(doc)
     # HardBreak가 <br>로 변환, 고아 \ 없어야 함
     assert "\\ " not in result
-    assert "<blockquote><!-- adf:paragraph -->a<br>b<!-- /adf:paragraph --></blockquote>" in result
+    assert (
+        "<blockquote><!-- adf:paragraph -->a<br>b<!-- /adf:paragraph --></blockquote>"
+        in result
+    )
 
 
 def test_table_with_attrs():
@@ -692,7 +708,7 @@ def test_media_single_file():
         ]
     )
     result = render(doc)
-    assert "`\U0001F4CE attachment`" in result
+    assert "`\U0001f4ce attachment`" in result
 
 
 def test_media_group():
@@ -709,7 +725,7 @@ def test_media_group():
     result = render(doc)
     assert "<!-- adf:mediaGroup" in result
     assert "![](https://a.png)" in result
-    assert "`\U0001F4CE attachment`" in result
+    assert "`\U0001f4ce attachment`" in result
 
 
 def test_block_card_with_url():
@@ -722,7 +738,7 @@ def test_block_card_with_url():
 def test_block_card_with_data():
     doc = blocks.Document(children=[blocks.BlockCard(data={"name": "card"})])
     result = render(doc)
-    assert "`\U0001F517 card link`" in result
+    assert "`\U0001f517 card link`" in result
 
 
 def test_embed_card():
@@ -861,9 +877,7 @@ def test_status():
         children=[
             blocks.Paragraph(
                 children=[
-                    inlines.Status(
-                        text="In Progress", color="blue", style="bold"
-                    )
+                    inlines.Status(text="In Progress", color="blue", style="bold")
                 ]
             )
         ]
@@ -893,7 +907,7 @@ def test_inline_card_data():
         ]
     )
     result = render(doc)
-    assert "`\U0001F517 card link`" in result
+    assert "`\U0001f517 card link`" in result
 
 
 def test_media_inline():
@@ -908,7 +922,7 @@ def test_media_inline():
     )
     result = render(doc)
     assert "<!-- adf:mediaInline" in result
-    assert "`\U0001F4CE attachment`" in result
+    assert "`\U0001f4ce attachment`" in result
     assert '"id": "m-1"' in result
 
 
@@ -1156,10 +1170,14 @@ def test_annotate_false_task_list():
             blocks.TaskList(
                 items=[
                     blocks.TaskItem(
-                        children=[inlines.Text(text="done")], state="DONE", local_id="t1"
+                        children=[inlines.Text(text="done")],
+                        state="DONE",
+                        local_id="t1",
                     ),
                     blocks.TaskItem(
-                        children=[inlines.Text(text="todo")], state="TODO", local_id="t2"
+                        children=[inlines.Text(text="todo")],
+                        state="TODO",
+                        local_id="t2",
                     ),
                 ]
             )
@@ -1175,9 +1193,7 @@ def test_annotate_false_mention():
     """annotate=False strips mention annotation, renders fallback only."""
     doc = blocks.Document(
         children=[
-            blocks.Paragraph(
-                children=[inlines.Mention(id="user-1", text="@Alice")]
-            )
+            blocks.Paragraph(children=[inlines.Mention(id="user-1", text="@Alice")])
         ]
     )
     result = render(doc, annotate=False)
@@ -1311,12 +1327,28 @@ def test_headerless_table_renders_empty_header():
                 head=[],
                 body=[
                     [
-                        blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="A1")])]),
-                        blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="B1")])]),
+                        blocks.TableCell(
+                            children=[
+                                blocks.Paragraph(children=[inlines.Text(text="A1")])
+                            ]
+                        ),
+                        blocks.TableCell(
+                            children=[
+                                blocks.Paragraph(children=[inlines.Text(text="B1")])
+                            ]
+                        ),
                     ],
                     [
-                        blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="A2")])]),
-                        blocks.TableCell(children=[blocks.Paragraph(children=[inlines.Text(text="B2")])]),
+                        blocks.TableCell(
+                            children=[
+                                blocks.Paragraph(children=[inlines.Text(text="A2")])
+                            ]
+                        ),
+                        blocks.TableCell(
+                            children=[
+                                blocks.Paragraph(children=[inlines.Text(text="B2")])
+                            ]
+                        ),
                     ],
                 ],
             )
@@ -1326,5 +1358,11 @@ def test_headerless_table_renders_empty_header():
     lines = result.strip().split("\n")
     assert lines[0] == "|  |  |"
     assert lines[1] == "| --- | --- |"
-    assert lines[2] == "| <!-- adf:paragraph -->A1<!-- /adf:paragraph --> | <!-- adf:paragraph -->B1<!-- /adf:paragraph --> |"
-    assert lines[3] == "| <!-- adf:paragraph -->A2<!-- /adf:paragraph --> | <!-- adf:paragraph -->B2<!-- /adf:paragraph --> |"
+    assert (
+        lines[2]
+        == "| <!-- adf:paragraph -->A1<!-- /adf:paragraph --> | <!-- adf:paragraph -->B1<!-- /adf:paragraph --> |"
+    )
+    assert (
+        lines[3]
+        == "| <!-- adf:paragraph -->A2<!-- /adf:paragraph --> | <!-- adf:paragraph -->B2<!-- /adf:paragraph --> |"
+    )

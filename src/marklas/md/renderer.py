@@ -197,7 +197,9 @@ def _render_list_item_body(children: list[blocks.Block], tight: bool) -> str:
     body = "\n\n".join(parts)
     lines = body.split("\n")
     if len(lines) > 1:
-        return lines[0] + "\n" + "\n".join("    " + ln if ln else "" for ln in lines[1:])
+        return (
+            lines[0] + "\n" + "\n".join("    " + ln if ln else "" for ln in lines[1:])
+        )
     return body
 
 
@@ -653,7 +655,6 @@ def _render_inline(node: inlines.Inline) -> str:
             return "\\\n"
         case inlines.SoftBreak():
             return "\n"
-
         case inlines.Mention():
             return _render_mention(node)
         case inlines.Emoji():
@@ -676,7 +677,6 @@ def _render_inline(node: inlines.Inline) -> str:
             return _render_subsup(node)
         case inlines.Annotation():
             return _render_annotation_inline(node)
-
         case inlines.Placeholder():
             return ""
         case inlines.InlineExtension():

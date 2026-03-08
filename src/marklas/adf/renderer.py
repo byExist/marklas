@@ -82,7 +82,12 @@ def _render_block(node: blocks.Block) -> dict[str, Any] | None:
             return _render_block_card(node)
         case blocks.EmbedCard():
             return _render_embed_card(node)
-        case blocks.Extension() | blocks.BodiedExtension() | blocks.SyncBlock() | blocks.BodiedSyncBlock():
+        case (
+            blocks.Extension()
+            | blocks.BodiedExtension()
+            | blocks.SyncBlock()
+            | blocks.BodiedSyncBlock()
+        ):
             return node.raw
         case _:
             return None
@@ -101,7 +106,10 @@ def _render_paragraph(node: blocks.Paragraph) -> dict[str, Any]:
         }
         return {"type": "mediaSingle", "content": [media]}
 
-    result: dict[str, Any] = {"type": "paragraph", "content": _render_inlines(node.children)}
+    result: dict[str, Any] = {
+        "type": "paragraph",
+        "content": _render_inlines(node.children),
+    }
     _apply_block_marks(result, node.alignment, node.indentation)
     return result
 
@@ -214,14 +222,20 @@ def _render_panel(node: blocks.Panel) -> dict[str, Any]:
 
 
 def _render_expand(node: blocks.Expand) -> dict[str, Any]:
-    result: dict[str, Any] = {"type": "expand", "content": _render_children(node.children)}
+    result: dict[str, Any] = {
+        "type": "expand",
+        "content": _render_children(node.children),
+    }
     if node.title:
         result["attrs"] = {"title": node.title}
     return result
 
 
 def _render_nested_expand(node: blocks.NestedExpand) -> dict[str, Any]:
-    result: dict[str, Any] = {"type": "nestedExpand", "content": _render_children(node.children)}
+    result: dict[str, Any] = {
+        "type": "nestedExpand",
+        "content": _render_children(node.children),
+    }
     if node.title:
         result["attrs"] = {"title": node.title}
     return result
@@ -231,11 +245,13 @@ def _render_layout_section(node: blocks.LayoutSection) -> dict[str, Any]:
     columns: list[dict[str, Any]] = []
     for col in node.columns:
         width = col.width if col.width is not None else 100 / len(node.columns)
-        columns.append({
-            "type": "layoutColumn",
-            "attrs": {"width": width},
-            "content": _render_children(col.children),
-        })
+        columns.append(
+            {
+                "type": "layoutColumn",
+                "attrs": {"width": width},
+                "content": _render_children(col.children),
+            }
+        )
     return {"type": "layoutSection", "content": columns}
 
 
@@ -257,7 +273,10 @@ def _render_media(media: blocks.Media) -> dict[str, Any]:
 
 
 def _render_media_single(node: blocks.MediaSingle) -> dict[str, Any]:
-    result: dict[str, Any] = {"type": "mediaSingle", "content": [_render_media(node.media)]}
+    result: dict[str, Any] = {
+        "type": "mediaSingle",
+        "content": [_render_media(node.media)],
+    }
     attrs: dict[str, Any] = {}
     if node.layout is not None:
         attrs["layout"] = node.layout
@@ -316,7 +335,11 @@ def _render_table(node: blocks.Table) -> dict[str, Any]:
             rs = cell.rowspan or 1
             for dr in range(rs):
                 for dc in range(cs):
-                    if (dr > 0 or dc > 0) and r + dr < num_rows and col_idx + dc < num_cols:
+                    if (
+                        (dr > 0 or dc > 0)
+                        and r + dr < num_rows
+                        and col_idx + dc < num_cols
+                    ):
                         occupied[r + dr][col_idx + dc] = True
 
     # Render while skipping occupied cells
@@ -326,7 +349,9 @@ def _render_table(node: blocks.Table) -> dict[str, Any]:
         for col_idx, cell in enumerate(cells):
             if col_idx < num_cols and occupied[r][col_idx]:
                 continue
-            cell_type = "tableHeader" if isinstance(cell, blocks.TableHeader) else "tableCell"
+            cell_type = (
+                "tableHeader" if isinstance(cell, blocks.TableHeader) else "tableCell"
+            )
             cell_json: dict[str, Any] = {
                 "type": cell_type,
                 "content": _render_children(cell.children),
@@ -401,22 +426,30 @@ def _flatten_inline(
 
         case inlines.Strong():
             new_marks: list[dict[str, Any]] = [*marks, {"type": "strong"}]
-            return [child for c in node.children for child in _flatten_inline(c, new_marks)]
+            return [
+                child for c in node.children for child in _flatten_inline(c, new_marks)
+            ]
 
         case inlines.Emphasis():
             new_marks: list[dict[str, Any]] = [*marks, {"type": "em"}]
-            return [child for c in node.children for child in _flatten_inline(c, new_marks)]
+            return [
+                child for c in node.children for child in _flatten_inline(c, new_marks)
+            ]
 
         case inlines.Strikethrough():
             new_marks: list[dict[str, Any]] = [*marks, {"type": "strike"}]
-            return [child for c in node.children for child in _flatten_inline(c, new_marks)]
+            return [
+                child for c in node.children for child in _flatten_inline(c, new_marks)
+            ]
 
         case inlines.Link():
             link_mark: dict[str, Any] = {"type": "link", "attrs": {"href": node.url}}
             if node.title:
                 link_mark["attrs"]["title"] = node.title
             new_marks: list[dict[str, Any]] = [*marks, link_mark]
-            return [child for c in node.children for child in _flatten_inline(c, new_marks)]
+            return [
+                child for c in node.children for child in _flatten_inline(c, new_marks)
+            ]
 
         case inlines.CodeSpan():
             text = {"type": "text", "text": node.code}
@@ -501,26 +534,48 @@ def _flatten_inline(
         # Difference-set wrapping marks
         case inlines.Underline():
             new_marks: list[dict[str, Any]] = [*marks, {"type": "underline"}]
-            return [child for c in node.children for child in _flatten_inline(c, new_marks)]
+            return [
+                child for c in node.children for child in _flatten_inline(c, new_marks)
+            ]
 
         case inlines.TextColor():
-            new_marks: list[dict[str, Any]] = [*marks, {"type": "textColor", "attrs": {"color": node.color}}]
-            return [child for c in node.children for child in _flatten_inline(c, new_marks)]
+            new_marks: list[dict[str, Any]] = [
+                *marks,
+                {"type": "textColor", "attrs": {"color": node.color}},
+            ]
+            return [
+                child for c in node.children for child in _flatten_inline(c, new_marks)
+            ]
 
         case inlines.BackgroundColor():
-            new_marks: list[dict[str, Any]] = [*marks, {"type": "backgroundColor", "attrs": {"color": node.color}}]
-            return [child for c in node.children for child in _flatten_inline(c, new_marks)]
+            new_marks: list[dict[str, Any]] = [
+                *marks,
+                {"type": "backgroundColor", "attrs": {"color": node.color}},
+            ]
+            return [
+                child for c in node.children for child in _flatten_inline(c, new_marks)
+            ]
 
         case inlines.SubSup():
-            new_marks: list[dict[str, Any]] = [*marks, {"type": "subsup", "attrs": {"type": node.type}}]
-            return [child for c in node.children for child in _flatten_inline(c, new_marks)]
+            new_marks: list[dict[str, Any]] = [
+                *marks,
+                {"type": "subsup", "attrs": {"type": node.type}},
+            ]
+            return [
+                child for c in node.children for child in _flatten_inline(c, new_marks)
+            ]
 
         case inlines.Annotation():
-            new_marks: list[dict[str, Any]] = [*marks, {
-                "type": "annotation",
-                "attrs": {"id": node.id, "annotationType": node.annotation_type},
-            }]
-            return [child for c in node.children for child in _flatten_inline(c, new_marks)]
+            new_marks: list[dict[str, Any]] = [
+                *marks,
+                {
+                    "type": "annotation",
+                    "attrs": {"id": node.id, "annotationType": node.annotation_type},
+                },
+            ]
+            return [
+                child for c in node.children for child in _flatten_inline(c, new_marks)
+            ]
 
         case _:
             return []
