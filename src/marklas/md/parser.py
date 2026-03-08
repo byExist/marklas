@@ -228,7 +228,7 @@ def _parse_block(token: dict[str, Any]) -> blocks.Block | None:
         case "block_quote":
             return _parse_blockquote(token)
         case "thematic_break":
-            return blocks.ThematicBreak()
+            return _parse_thematic_break()
         case "list":
             return _parse_list(token)
         case "paragraph":
@@ -237,8 +237,12 @@ def _parse_block(token: dict[str, Any]) -> blocks.Block | None:
             return _parse_annotated_heading(token)
         case "table":
             return _parse_annotated_table(token)
-        case "panel" | "expand" | "nestedExpand":
-            return _parse_annotated_panel_or_expand(token)
+        case "panel":
+            return _parse_annotated_panel(token)
+        case "expand":
+            return _parse_annotated_expand(token)
+        case "nestedExpand":
+            return _parse_annotated_nested_expand(token)
         case "taskList":
             return _parse_annotated_task_list(token)
         case "decisionList":
@@ -247,8 +251,28 @@ def _parse_block(token: dict[str, Any]) -> blocks.Block | None:
             return _parse_annotated_layout_section(token)
         case "layoutColumn":
             return _parse_annotated_layout_column(token)
+        case "mediaSingle":
+            return _parse_annotated_media_single(token)
+        case "mediaGroup":
+            return _parse_annotated_media_group(token)
+        case "blockCard":
+            return _parse_annotated_block_card(token)
+        case "embedCard":
+            return _parse_annotated_embed_card(token)
+        case "extension":
+            return _parse_annotated_extension(token)
+        case "bodiedExtension":
+            return _parse_annotated_bodied_extension(token)
+        case "syncBlock":
+            return _parse_annotated_sync_block(token)
+        case "bodiedSyncBlock":
+            return _parse_annotated_bodied_sync_block(token)
+        case "blank_line":
+            return blocks.Paragraph(children=[])
+        case "block_html":
+            return None
         case _:
-            return _build_attrs_only_block(token["type"], token.get("attrs", {}))
+            raise ValueError(f"Unknown block type: {token['type']}")
 
 
 def _parse_paragraph(token: dict[str, Any]) -> blocks.Paragraph:
@@ -260,6 +284,10 @@ def _parse_heading(token: dict[str, Any]) -> blocks.Heading:
     level = token["attrs"]["level"]
     children = _parse_inlines(token.get("children", []))
     return blocks.Heading(level=level, children=children)
+
+
+def _parse_thematic_break() -> blocks.ThematicBreak:
+    return blocks.ThematicBreak()
 
 
 def _parse_code_block(token: dict[str, Any]) -> blocks.CodeBlock:
@@ -317,9 +345,9 @@ def _parse_list_item_children(
             case "list":
                 children.append(_parse_list(child))
             case "thematic_break":
-                children.append(blocks.ThematicBreak())
+                children.append(_parse_thematic_break())
             case _:
-                pass
+                raise ValueError(f"Unknown list item child type: {child['type']}")
     return children
 
 
@@ -405,11 +433,81 @@ def _parse_annotated_table(token: dict[str, Any]) -> blocks.Block:
     return inner_blocks[0] if inner_blocks else blocks.Paragraph(children=[])
 
 
-def _parse_annotated_panel_or_expand(token: dict[str, Any]) -> blocks.Block:
+def _parse_annotated_panel(token: dict[str, Any]) -> blocks.Panel:
     attrs = token.get("attrs", {})
     inner_blocks = _parse_blocks(token.get("children", []))
     children = _unwrap_blockquote(inner_blocks)
-    return _build_block_with_children(token["type"], attrs, children)
+    return blocks.Panel(
+        children=children,
+        panel_type=attrs.get("panelType", "info"),
+        panel_icon=attrs.get("panelIcon"),
+        panel_icon_id=attrs.get("panelIconId"),
+        panel_icon_text=attrs.get("panelIconText"),
+        panel_color=attrs.get("panelColor"),
+    )
+
+
+def _parse_annotated_expand(token: dict[str, Any]) -> blocks.Expand:
+    attrs = token.get("attrs", {})
+    inner_blocks = _parse_blocks(token.get("children", []))
+    children = _unwrap_blockquote(inner_blocks)
+    return blocks.Expand(children=children, title=attrs.get("title"))
+
+
+def _parse_annotated_nested_expand(token: dict[str, Any]) -> blocks.NestedExpand:
+    attrs = token.get("attrs", {})
+    inner_blocks = _parse_blocks(token.get("children", []))
+    children = _unwrap_blockquote(inner_blocks)
+    return blocks.NestedExpand(children=children, title=attrs.get("title"))
+
+
+def _parse_annotated_media_single(token: dict[str, Any]) -> blocks.MediaSingle:
+    attrs = token.get("attrs", {})
+    media = _build_media(attrs.get("media", {}))
+    return blocks.MediaSingle(
+        media=media,
+        layout=attrs.get("layout"),
+        width=attrs.get("width"),
+        width_type=attrs.get("widthType"),
+    )
+
+
+def _parse_annotated_media_group(token: dict[str, Any]) -> blocks.MediaGroup:
+    attrs = token.get("attrs", {})
+    media_list = [_build_media(m) for m in attrs.get("mediaList", [])]
+    return blocks.MediaGroup(media_list=media_list)
+
+
+def _parse_annotated_block_card(token: dict[str, Any]) -> blocks.BlockCard:
+    attrs = token.get("attrs", {})
+    return blocks.BlockCard(url=attrs.get("url"), data=attrs.get("data"))
+
+
+def _parse_annotated_embed_card(token: dict[str, Any]) -> blocks.EmbedCard:
+    attrs = token.get("attrs", {})
+    return blocks.EmbedCard(
+        url=attrs.get("url", ""),
+        layout=attrs.get("layout", ""),
+        width=attrs.get("width"),
+        original_width=attrs.get("originalWidth"),
+        original_height=attrs.get("originalHeight"),
+    )
+
+
+def _parse_annotated_extension(token: dict[str, Any]) -> blocks.Extension:
+    return blocks.Extension(raw=token.get("attrs", {}))
+
+
+def _parse_annotated_bodied_extension(token: dict[str, Any]) -> blocks.BodiedExtension:
+    return blocks.BodiedExtension(raw=token.get("attrs", {}))
+
+
+def _parse_annotated_sync_block(token: dict[str, Any]) -> blocks.SyncBlock:
+    return blocks.SyncBlock(raw=token.get("attrs", {}))
+
+
+def _parse_annotated_bodied_sync_block(token: dict[str, Any]) -> blocks.BodiedSyncBlock:
+    return blocks.BodiedSyncBlock(raw=token.get("attrs", {}))
 
 
 def _parse_annotated_task_list(token: dict[str, Any]) -> blocks.TaskList:
@@ -487,41 +585,39 @@ def _parse_cell_block(token: dict[str, Any]) -> blocks.Block:
         case "heading":
             return _parse_cell_heading(attrs, inner)
         case "thematicBreak":
-            return blocks.ThematicBreak()
+            return _parse_cell_thematic_break()
         case "bulletList":
             return _parse_cell_list("ul", attrs, inner)
         case "orderedList":
             return _parse_cell_list("ol", attrs, inner)
         case "panel":
-            inner_content = _strip_html_wrapper(inner, "blockquote")
-            children = _parse_cell_blocks(inner_content)
-            return _build_block_with_children(tag, attrs, children)
-        case "expand" | "nestedExpand":
-            inner_content = _strip_html_wrapper(inner, "blockquote")
-            children = _parse_cell_blocks(inner_content)
-            return _build_block_with_children(tag, attrs, children)
+            return _parse_cell_panel(attrs, inner)
+        case "expand":
+            return _parse_cell_expand(attrs, inner)
+        case "nestedExpand":
+            return _parse_cell_nested_expand(attrs, inner)
         case "taskList":
-            inner_content = _strip_html_wrapper(inner, "ul")
-            li_groups = _split_by_tag(inner_content, "li")
-            items: list[blocks.TaskItem] = []
-            for li_toks in li_groups:
-                state, inls = _parse_cell_checklist_item(li_toks)
-                items.append(blocks.TaskItem(children=inls, state=state or "TODO"))
-            return blocks.TaskList(items=items)
+            return _parse_cell_task_list(inner)
         case "decisionList":
-            inner_content = _strip_html_wrapper(inner, "ul")
-            li_groups = _split_by_tag(inner_content, "li")
-            ditems: list[blocks.DecisionItem] = []
-            for li_toks in li_groups:
-                state, inls = _parse_cell_checklist_item(li_toks)
-                dstate = "DECIDED" if state == "DONE" else (state or "TODO")
-                ditems.append(blocks.DecisionItem(children=inls, state=dstate))
-            return blocks.DecisionList(items=ditems)
+            return _parse_cell_decision_list(inner)
+        case "mediaSingle":
+            return _parse_cell_media_single(attrs)
+        case "mediaGroup":
+            return _parse_cell_media_group(attrs)
+        case "blockCard":
+            return _parse_cell_block_card(attrs)
+        case "embedCard":
+            return _parse_cell_embed_card(attrs)
+        case "extension":
+            return _parse_cell_extension(attrs)
+        case "bodiedExtension":
+            return _parse_cell_bodied_extension(attrs)
+        case "syncBlock":
+            return _parse_cell_sync_block(attrs)
+        case "bodiedSyncBlock":
+            return _parse_cell_bodied_sync_block(attrs)
         case _:
-            result = _build_attrs_only_block(tag, attrs)
-            if result is not None:
-                return result
-            return blocks.Paragraph(children=[inlines.Text(text="")])
+            raise ValueError(f"Unknown cell block type: {tag}")
 
 
 def _parse_cell_paragraph(
@@ -580,6 +676,107 @@ def _parse_cell_list(
     if html_tag == "ol":
         return blocks.OrderedList(items=items, start=start, tight=True)
     return blocks.BulletList(items=items, tight=True)
+
+
+def _parse_cell_thematic_break() -> blocks.ThematicBreak:
+    return blocks.ThematicBreak()
+
+
+def _parse_cell_panel(
+    attrs: dict[str, Any], tokens: list[dict[str, Any]]
+) -> blocks.Panel:
+    inner_content = _strip_html_wrapper(tokens, "blockquote")
+    children = _parse_cell_blocks(inner_content)
+    return blocks.Panel(
+        children=children,
+        panel_type=attrs.get("panelType", "info"),
+        panel_icon=attrs.get("panelIcon"),
+        panel_icon_id=attrs.get("panelIconId"),
+        panel_icon_text=attrs.get("panelIconText"),
+        panel_color=attrs.get("panelColor"),
+    )
+
+
+def _parse_cell_expand(
+    attrs: dict[str, Any], tokens: list[dict[str, Any]]
+) -> blocks.Expand:
+    inner_content = _strip_html_wrapper(tokens, "blockquote")
+    children = _parse_cell_blocks(inner_content)
+    return blocks.Expand(children=children, title=attrs.get("title"))
+
+
+def _parse_cell_nested_expand(
+    attrs: dict[str, Any], tokens: list[dict[str, Any]]
+) -> blocks.NestedExpand:
+    inner_content = _strip_html_wrapper(tokens, "blockquote")
+    children = _parse_cell_blocks(inner_content)
+    return blocks.NestedExpand(children=children, title=attrs.get("title"))
+
+
+def _parse_cell_task_list(tokens: list[dict[str, Any]]) -> blocks.TaskList:
+    inner_content = _strip_html_wrapper(tokens, "ul")
+    li_groups = _split_by_tag(inner_content, "li")
+    items: list[blocks.TaskItem] = []
+    for li_toks in li_groups:
+        state, inls = _parse_cell_checklist_item(li_toks)
+        items.append(blocks.TaskItem(children=inls, state=state or "TODO"))
+    return blocks.TaskList(items=items)
+
+
+def _parse_cell_decision_list(tokens: list[dict[str, Any]]) -> blocks.DecisionList:
+    inner_content = _strip_html_wrapper(tokens, "ul")
+    li_groups = _split_by_tag(inner_content, "li")
+    items: list[blocks.DecisionItem] = []
+    for li_toks in li_groups:
+        state, inls = _parse_cell_checklist_item(li_toks)
+        dstate = "DECIDED" if state == "DONE" else (state or "TODO")
+        items.append(blocks.DecisionItem(children=inls, state=dstate))
+    return blocks.DecisionList(items=items)
+
+
+def _parse_cell_media_single(attrs: dict[str, Any]) -> blocks.MediaSingle:
+    media = _build_media(attrs.get("media", {}))
+    return blocks.MediaSingle(
+        media=media,
+        layout=attrs.get("layout"),
+        width=attrs.get("width"),
+        width_type=attrs.get("widthType"),
+    )
+
+
+def _parse_cell_media_group(attrs: dict[str, Any]) -> blocks.MediaGroup:
+    media_list = [_build_media(m) for m in attrs.get("mediaList", [])]
+    return blocks.MediaGroup(media_list=media_list)
+
+
+def _parse_cell_block_card(attrs: dict[str, Any]) -> blocks.BlockCard:
+    return blocks.BlockCard(url=attrs.get("url"), data=attrs.get("data"))
+
+
+def _parse_cell_embed_card(attrs: dict[str, Any]) -> blocks.EmbedCard:
+    return blocks.EmbedCard(
+        url=attrs.get("url", ""),
+        layout=attrs.get("layout", ""),
+        width=attrs.get("width"),
+        original_width=attrs.get("originalWidth"),
+        original_height=attrs.get("originalHeight"),
+    )
+
+
+def _parse_cell_extension(attrs: dict[str, Any]) -> blocks.Extension:
+    return blocks.Extension(raw=attrs)
+
+
+def _parse_cell_bodied_extension(attrs: dict[str, Any]) -> blocks.BodiedExtension:
+    return blocks.BodiedExtension(raw=attrs)
+
+
+def _parse_cell_sync_block(attrs: dict[str, Any]) -> blocks.SyncBlock:
+    return blocks.SyncBlock(raw=attrs)
+
+
+def _parse_cell_bodied_sync_block(attrs: dict[str, Any]) -> blocks.BodiedSyncBlock:
+    return blocks.BodiedSyncBlock(raw=attrs)
 
 
 def _parse_cell_checklist_item(
@@ -667,7 +864,7 @@ def _parse_inline(token: dict[str, Any]) -> inlines.Inline | None:
         case "inlineExtension":
             return inlines.InlineExtension(raw=token.get("attrs", {}))
         case _:
-            return _parse_annotated_inline_fallback(token)
+            raise ValueError(f"Unknown inline type: {token['type']}")
 
 
 def _parse_link(token: dict[str, Any]) -> inlines.Link:
@@ -790,15 +987,6 @@ def _parse_annotated_placeholder(token: dict[str, Any]) -> inlines.Placeholder:
     return inlines.Placeholder(text=text)
 
 
-def _parse_annotated_inline_fallback(token: dict[str, Any]) -> inlines.Inline:
-    inner = _parse_inlines(token.get("children", []))
-    if len(inner) == 1:
-        return inner[0]
-    return inlines.Text(
-        text="".join(c.text if isinstance(c, inlines.Text) else "" for c in inner)
-    )
-
-
 # ---------------------------------------------------------------------------
 # Shared builders
 # ---------------------------------------------------------------------------
@@ -815,70 +1003,6 @@ def _build_media(d: dict[str, Any]) -> blocks.Media:
         height=d.get("height"),
     )
 
-
-def _build_block_with_children(
-    tag: str, attrs: dict[str, Any], children: list[blocks.Block]
-) -> blocks.Block:
-    """Build difference-set blocks that have inner children.
-
-    Shared between block-level and cell-level annotation processing.
-    """
-    match tag:
-        case "panel":
-            return blocks.Panel(
-                children=children,
-                panel_type=attrs.get("panelType", "info"),
-                panel_icon=attrs.get("panelIcon"),
-                panel_icon_id=attrs.get("panelIconId"),
-                panel_icon_text=attrs.get("panelIconText"),
-                panel_color=attrs.get("panelColor"),
-            )
-        case "expand":
-            return blocks.Expand(children=children, title=attrs.get("title"))
-        case "nestedExpand":
-            return blocks.NestedExpand(children=children, title=attrs.get("title"))
-        case _:
-            return blocks.Paragraph(children=[])
-
-
-def _build_attrs_only_block(tag: str, attrs: dict[str, Any]) -> blocks.Block | None:
-    """Build blocks that are fully described by attrs (no inner content needed).
-
-    Shared between block-level and cell-level annotation processing.
-    Returns None if the tag is not recognized.
-    """
-    match tag:
-        case "mediaSingle":
-            media = _build_media(attrs.get("media", {}))
-            return blocks.MediaSingle(
-                media=media,
-                layout=attrs.get("layout"),
-                width=attrs.get("width"),
-                width_type=attrs.get("widthType"),
-            )
-        case "mediaGroup":
-            media_list = [_build_media(m) for m in attrs.get("mediaList", [])]
-            return blocks.MediaGroup(media_list=media_list)
-        case "blockCard":
-            return blocks.BlockCard(url=attrs.get("url"), data=attrs.get("data"))
-        case "embedCard":
-            return blocks.EmbedCard(
-                url=attrs.get("url", ""),
-                layout=attrs.get("layout", ""),
-                width=attrs.get("width"),
-                original_width=attrs.get("originalWidth"),
-                original_height=attrs.get("originalHeight"),
-            )
-        case "extension":
-            return blocks.Extension(raw=attrs)
-        case "bodiedExtension":
-            return blocks.BodiedExtension(raw=attrs)
-        case "syncBlock":
-            return blocks.SyncBlock(raw=attrs)
-        case "bodiedSyncBlock":
-            return blocks.BodiedSyncBlock(raw=attrs)
-        case _:
-            return None
 
 
 # ---------------------------------------------------------------------------
