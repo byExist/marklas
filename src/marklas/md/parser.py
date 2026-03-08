@@ -4,7 +4,6 @@ from __future__ import annotations
 
 import json
 import re
-from dataclasses import dataclass
 from typing import Any, Literal, cast
 
 import mistune
@@ -13,26 +12,24 @@ from marklas.nodes import blocks, inlines
 
 type _Alignment = Literal["left", "center", "right"] | None
 
-# ── ADF comment parsing ──────────────────────────────────────────────
 
-_ADF_COMMENT_RE = re.compile(r"<!--\s*(/?)adf:(\w+)\s*(.*?)-->")
-_ADF_COMMENT_SPLIT_RE = re.compile(r"(<!--\s*/?adf:\w+\s*.*?-->)")
+def parse(markdown: str) -> blocks.Document:
+    tokens = cast(list[dict[str, Any]], _tokenize(markdown))
+    children = _parse_blocks(tokens)
+    return blocks.Document(children=children)
 
 
-def _split_inline_adf(raw: str) -> list[inlines.Inline]:
-    """Split inline ADF comments and text from block_html raw."""
-    parts = _ADF_COMMENT_SPLIT_RE.split(raw.strip())
-    children: list[inlines.Inline] = []
-    for part in parts:
-        if not part:
-            continue
-        parsed = _parse_adf_comment(part)
-        if parsed:
-            closing, tag, attrs = parsed
-            children.append(_AdfInlineComment(tag=tag, attrs=attrs, closing=closing))
-        else:
-            children.append(inlines.Text(text=part))
-    return children
+_tokenize = mistune.create_markdown(
+    renderer="ast",
+    plugins=["table", "strikethrough", "task_lists"],
+)
+
+
+# ---------------------------------------------------------------------------
+# Pass 1: Annotation matching
+# ---------------------------------------------------------------------------
+
+_ADF_COMMENT_RE = re.compile(r"<!--\s*(/?)adf:(\w+)\s*(.*?)-->", re.DOTALL)
 
 
 def _parse_adf_comment(raw: str) -> tuple[bool, str, dict[str, Any]] | None:
@@ -48,607 +45,1026 @@ def _parse_adf_comment(raw: str) -> tuple[bool, str, dict[str, Any]] | None:
     return bool(closing), tag, attrs
 
 
-# ── Marker nodes ────────────────────────────────────────────────────
+_ADF_COMMENT_SPLIT_RE = re.compile(r"(<!--\s*/?adf:\w+\s*.*?-->)")
 
 
-@dataclass
-class _AdfBlockComment(blocks.Block):
-    tag: str = ""
-    attrs: dict[str, Any] | None = None
-    closing: bool = False
+def _match_block_annotations(tokens: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Match block-level `<!-- adf:tag -->...<!-- /adf:tag -->` pairs into single tokens.
+
+    Converts flat token list into a tree where annotation pairs become
+    `{"type": tag, "attrs": {...}, "children": [...], "_annotated": True}` tokens.
+
+    Also handles single-line block_html where mistune merges open+content+close
+    into one token (e.g. `<!-- adf:mention {...} -->...<!-- /adf:mention -->`).
+    These are split, re-tokenized, and annotation-matched inline.
+    """
+    stack: list[tuple[str, dict[str, Any], list[dict[str, Any]]]] = []
+    result: list[dict[str, Any]] = []
+
+    for token in tokens:
+        target = stack[-1][2] if stack else result
+
+        if token["type"] == "block_html":
+            raw = token["raw"]
+            parsed = _parse_adf_comment(raw)
+            if parsed:
+                closing, tag, attrs = parsed
+                if not closing:
+                    stack.append((tag, attrs, []))
+                else:
+                    if stack and stack[-1][0] == tag:
+                        stag, sattrs, inner = stack.pop()
+                        merged: dict[str, Any] = {
+                            "type": stag,
+                            "attrs": sattrs,
+                            "children": inner,
+                            "_annotated": True,
+                        }
+                        (stack[-1][2] if stack else result).append(merged)
+                continue
+            inline_children = _split_block_html(raw)
+            if inline_children is not None:
+                target.append({"type": "paragraph", "children": inline_children})
+                continue
+
+        target.append(token)
+
+    while stack:
+        _, _, inner = stack.pop()
+        (stack[-1][2] if stack else result).extend(inner)
+
+    return result
 
 
-@dataclass
-class _AdfInlineComment(inlines.Inline):
-    tag: str = ""
-    attrs: dict[str, Any] | None = None
-    closing: bool = False
+def _split_block_html(raw: str) -> list[dict[str, Any]] | None:
+    """Split a block_html containing inline annotations into matched inline tokens.
 
-
-# ── Phase 1: mistune AST renderer ────────────────────────────────────
-
-
-class _ASTRenderer(mistune.BaseRenderer):
-    """Custom mistune renderer: converts tokens directly to AST nodes."""
-
-    def _render_children(self, token: dict[str, Any], state: Any) -> list[Any]:
-        result: list[Any] = []
-        for child in token.get("children", []):
-            node: Any = self.render_token(child, state)
-            if node is not None:
-                result.append(node)
-        return result
-
-    def _flatten_text(self, token: dict[str, Any]) -> str:
-        if "raw" in token:
-            return token["raw"]
-        parts: list[str] = []
-        for child in token.get("children", []):
-            parts.append(self._flatten_text(child))
-        return "".join(parts)
-
-    def __call__(self, tokens: Any, state: Any) -> blocks.Document:  # type: ignore[override]
-        children: list[blocks.Block] = []
-        for tok in tokens:
-            node: Any = self.render_token(tok, state)
-            if node is not None:
-                children.append(node)
-        return blocks.Document(children=children)
-
-    # ── Block methods ────────────────────────────────────────────────
-
-    def paragraph(self, token: dict[str, Any], state: Any) -> blocks.Paragraph:
-        return blocks.Paragraph(children=self._render_children(token, state))
-
-    def block_text(self, token: dict[str, Any], state: Any) -> blocks.Paragraph:
-        return blocks.Paragraph(children=self._render_children(token, state))
-
-    def heading(self, token: dict[str, Any], state: Any) -> blocks.Heading:
-        return blocks.Heading(
-            level=token["attrs"]["level"],
-            children=self._render_children(token, state),
-        )
-
-    def block_code(self, token: dict[str, Any], state: Any) -> blocks.CodeBlock:
-        code = token["raw"]
-        if code.endswith("\n"):
-            code = code[:-1]
-        attrs: dict[str, Any] = token.get("attrs") or {}
-        return blocks.CodeBlock(code=code, language=attrs.get("info"))
-
-    def block_quote(self, token: dict[str, Any], state: Any) -> blocks.BlockQuote:
-        return blocks.BlockQuote(children=self._render_children(token, state))
-
-    def thematic_break(self, token: dict[str, Any], state: Any) -> blocks.ThematicBreak:
-        return blocks.ThematicBreak()
-
-    def list(
-        self, token: dict[str, Any], state: Any
-    ) -> blocks.BulletList | blocks.OrderedList:
-        items = self._render_children(token, state)
-        tight = token.get("tight", True)
-        attrs = token["attrs"]
-        if attrs["ordered"]:
-            return blocks.OrderedList(
-                items=items, start=attrs.get("start", 1), tight=tight
-            )
-        return blocks.BulletList(items=items, tight=tight)
-
-    def list_item(self, token: dict[str, Any], state: Any) -> blocks.ListItem:
-        return blocks.ListItem(children=self._render_children(token, state))
-
-    def task_list_item(self, token: dict[str, Any], state: Any) -> blocks.ListItem:
-        return blocks.ListItem(
-            children=self._render_children(token, state),
-            checked=token["attrs"]["checked"],
-        )
-
-    def table(self, token: dict[str, Any], state: Any) -> blocks.Table:
-        head: list[blocks.TableCell] = []
-        body: list[list[blocks.TableCell]] = []
-        alignments: list[_Alignment] = []
-
-        for child in token.get("children", []):
-            if child["type"] == "table_head":
-                for cell_tok in child.get("children", []):
-                    cell_inlines = self._render_children(cell_tok, state)
-                    head.append(
-                        blocks.TableCell(
-                            children=[blocks.Paragraph(children=cell_inlines)]
-                        )
-                    )
-                    alignments.append(cell_tok.get("attrs", {}).get("align"))
-            elif child["type"] == "table_body":
-                for row_tok in child.get("children", []):
-                    row: list[blocks.TableCell] = []
-                    for cell_tok in row_tok.get("children", []):
-                        cell_inlines = self._render_children(cell_tok, state)
-                        row.append(
-                            blocks.TableCell(
-                                children=[blocks.Paragraph(children=cell_inlines)]
-                            )
-                        )
-                    body.append(row)
-
-        if head and _is_empty_head(head):
-            head = []
-        return blocks.Table(head=head, body=body, alignments=alignments)
-
-    def blank_line(self, token: dict[str, Any], state: Any) -> None:
+    Returns None if the raw HTML doesn't contain ADF annotations.
+    """
+    stripped = raw.strip()
+    if "<!-- adf:" not in stripped:
         return None
 
-    def block_html(
-        self, token: dict[str, Any], state: Any
-    ) -> _AdfBlockComment | blocks.Paragraph | None:
-        raw = token["raw"]
-        # Single ADF comment → block marker
-        parsed = _parse_adf_comment(raw)
+    parts = _ADF_COMMENT_SPLIT_RE.split(stripped)
+    synthetic_tokens: list[dict[str, Any]] = []
+    for part in parts:
+        if not part:
+            continue
+        parsed = _parse_adf_comment(part)
         if parsed:
-            closing, tag, attrs = parsed
-            return _AdfBlockComment(tag=tag, attrs=attrs, closing=closing)
-        # Inline ADF comments spanning a full line are parsed as block_html
-        # → split into inline children and wrap in Paragraph
-        if "<!-- adf:" in raw or "<!-- /adf:" in raw:
-            children = _split_inline_adf(raw)
-            if children:
-                return blocks.Paragraph(children=children)
+            synthetic_tokens.append({"type": "inline_html", "raw": part})
+        else:
+            inner_tokens = cast(list[dict[str, Any]], _tokenize(part))
+            for tok in inner_tokens:
+                if tok["type"] == "paragraph":
+                    children = cast(list[dict[str, Any]], tok.get("children", []))
+                    synthetic_tokens.extend(children)
+
+    if not synthetic_tokens:
         return None
 
-    # ── Inline methods ───────────────────────────────────────────────
-
-    def text(self, token: dict[str, Any], state: Any) -> inlines.Text:
-        return inlines.Text(text=token["raw"])
-
-    def strong(self, token: dict[str, Any], state: Any) -> inlines.Strong:
-        return inlines.Strong(children=self._render_children(token, state))
-
-    def emphasis(self, token: dict[str, Any], state: Any) -> inlines.Emphasis:
-        return inlines.Emphasis(children=self._render_children(token, state))
-
-    def strikethrough(self, token: dict[str, Any], state: Any) -> inlines.Strikethrough:
-        return inlines.Strikethrough(children=self._render_children(token, state))
-
-    def link(self, token: dict[str, Any], state: Any) -> inlines.Link:
-        return inlines.Link(
-            url=token["attrs"]["url"],
-            children=self._render_children(token, state),
-            title=token["attrs"].get("title"),
-        )
-
-    def image(self, token: dict[str, Any], state: Any) -> inlines.Image:
-        return inlines.Image(
-            url=token["attrs"]["url"],
-            alt=self._flatten_text(token),
-            title=token["attrs"].get("title"),
-        )
-
-    def codespan(self, token: dict[str, Any], state: Any) -> inlines.CodeSpan:
-        return inlines.CodeSpan(code=token["raw"])
-
-    def linebreak(self, token: dict[str, Any], state: Any) -> inlines.HardBreak:
-        return inlines.HardBreak()
-
-    def softbreak(self, token: dict[str, Any], state: Any) -> inlines.SoftBreak:
-        return inlines.SoftBreak()
-
-    def inline_html(
-        self, token: dict[str, Any], state: Any
-    ) -> _AdfInlineComment | None:
-        parsed = _parse_adf_comment(token["raw"])
-        if parsed:
-            closing, tag, attrs = parsed
-            return _AdfInlineComment(tag=tag, attrs=attrs, closing=closing)
-        return None
+    return _match_inline_annotations(synthetic_tokens)
 
 
-_md = mistune.create_markdown(
-    renderer=_ASTRenderer(),
-    plugins=["table", "strikethrough", "task_lists"],
-)
+def _match_inline_annotations(tokens: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Match inline-level `<!-- adf:tag -->...<!-- /adf:tag -->` pairs into single tokens."""
+    stack: list[tuple[str, dict[str, Any], list[dict[str, Any]]]] = []
+    result: list[dict[str, Any]] = []
+
+    for token in tokens:
+        target = stack[-1][2] if stack else result
+
+        if token["type"] == "inline_html":
+            parsed = _parse_adf_comment(token["raw"])
+            if parsed:
+                closing, tag, attrs = parsed
+                if not closing:
+                    stack.append((tag, attrs, []))
+                else:
+                    if stack and stack[-1][0] == tag:
+                        stag, sattrs, inner = stack.pop()
+                        merged: dict[str, Any] = {
+                            "type": stag,
+                            "attrs": sattrs,
+                            "children": inner,
+                            "_annotated": True,
+                        }
+                        (stack[-1][2] if stack else result).append(merged)
+                continue
+            continue
+
+        target.append(token)
+
+    while stack:
+        _, _, inner = stack.pop()
+        (stack[-1][2] if stack else result).extend(inner)
+
+    return result
 
 
-# ── Phase 2: comment-element pairing ─────────────────────────────────
+def _match_cell_annotations(tokens: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Match cell-level `<!-- adf:tag -->...<!-- /adf:tag -->` pairs into single tokens.
+
+    Cell tokens are inline tokens from mistune. Annotation pairs may wrap
+    HTML block representations (e.g. `<code>...</code>`, `<ul>...</ul>`).
+    """
+    stack: list[tuple[str, dict[str, Any], list[dict[str, Any]]]] = []
+    result: list[dict[str, Any]] = []
+
+    for tok in tokens:
+        target = stack[-1][2] if stack else result
+
+        if tok.get("type") == "inline_html":
+            parsed = _parse_adf_comment(tok["raw"])
+            if parsed:
+                closing, tag, attrs = parsed
+                if not closing:
+                    stack.append((tag, attrs, []))
+                else:
+                    if stack and stack[-1][0] == tag:
+                        stag, sattrs, inner = stack.pop()
+                        merged: dict[str, Any] = {
+                            "type": stag,
+                            "attrs": sattrs,
+                            "children": inner,
+                            "_annotated": True,
+                        }
+                        (stack[-1][2] if stack else result).append(merged)
+                continue
+
+        target.append(tok)
+
+    while stack:
+        _, _, inner = stack.pop()
+        (stack[-1][2] if stack else result).extend(inner)
+
+    return result
 
 
-def _pair_block_annotations(children: list[blocks.Block]) -> list[blocks.Block]:
+# ---------------------------------------------------------------------------
+# Pass 2: Block level
+# ---------------------------------------------------------------------------
+
+
+def _parse_blocks(tokens: list[dict[str, Any]]) -> list[blocks.Block]:
+    matched = _match_block_annotations(tokens)
     result: list[blocks.Block] = []
-    i = 0
-    while i < len(children):
-        child = children[i]
-        if isinstance(child, _AdfBlockComment) and not child.closing:
-            tag = child.tag
-            attrs = child.attrs or {}
-            inner: list[blocks.Block] = []
-            i += 1
-            found_closing = False
-            while i < len(children):
-                c = children[i]
-                if isinstance(c, _AdfBlockComment) and c.closing and c.tag == tag:
-                    found_closing = True
-                    break
-                inner.append(c)
-                i += 1
-            if found_closing:
-                result.append(_build_block_node(tag, attrs, inner))
-            else:
-                result.extend(inner)
-        elif isinstance(child, _AdfBlockComment) and child.closing:
-            pass  # Ignore unpaired closing comment
-        else:
-            result.append(child)
-        i += 1
+    for token in matched:
+        node = _parse_block(token)
+        if node is not None:
+            result.append(node)
     return result
 
 
-def _pair_inline_annotations(
-    children: list[inlines.Inline],
-) -> list[inlines.Inline]:
-    result: list[inlines.Inline] = []
-    i = 0
-    while i < len(children):
-        child = children[i]
-        if isinstance(child, _AdfInlineComment) and not child.closing:
-            tag = child.tag
-            attrs = child.attrs or {}
-            inner: list[inlines.Inline] = []
-            i += 1
-            found_closing = False
-            while i < len(children):
-                c = children[i]
-                if isinstance(c, _AdfInlineComment) and c.closing and c.tag == tag:
-                    found_closing = True
-                    break
-                inner.append(c)
-                i += 1
-            if found_closing:
-                inner = _pair_inline_annotations(inner)  # Recurse: nested inline comments
-                result.append(_build_inline_node(tag, attrs, inner))
-            else:
-                result.extend(inner)
-        elif isinstance(child, _AdfInlineComment) and child.closing:
-            pass
-        else:
-            match child:
-                case inlines.Strong() | inlines.Emphasis() | inlines.Strikethrough() | inlines.Link():
-                    child.children = _pair_inline_annotations(child.children)
-                case _:
-                    pass
-            result.append(child)
-        i += 1
-    return result
+def _parse_block(token: dict[str, Any]) -> blocks.Block | None:
+    annotated = token.get("_annotated")
+    match token["type"]:
+        case "paragraph" if not annotated:
+            return _parse_paragraph(token)
+        case "heading" if not annotated:
+            return _parse_heading(token)
+        case "table" if not annotated:
+            return _parse_table(token)
+        case "block_code":
+            return _parse_code_block(token)
+        case "block_quote":
+            return _parse_blockquote(token)
+        case "thematic_break":
+            return blocks.ThematicBreak()
+        case "list":
+            return _parse_list(token)
+        case "paragraph":
+            return _parse_annotated_paragraph(token)
+        case "heading":
+            return _parse_annotated_heading(token)
+        case "table":
+            return _parse_annotated_table(token)
+        case "panel" | "expand" | "nestedExpand":
+            return _parse_annotated_panel_or_expand(token)
+        case "taskList":
+            return _parse_annotated_task_list(token)
+        case "decisionList":
+            return _parse_annotated_decision_list(token)
+        case "layoutSection":
+            return _parse_annotated_layout_section(token)
+        case "layoutColumn":
+            return _parse_annotated_layout_column(token)
+        case _:
+            return _build_attrs_only_block(token["type"], token.get("attrs", {}))
 
 
-def _post_process(children: list[blocks.Block]) -> list[blocks.Block]:
-    children = _pair_block_annotations(children)
-    for child in children:
-        _apply_inline_annotations(child)
+def _parse_paragraph(token: dict[str, Any]) -> blocks.Paragraph:
+    children = _parse_inlines(token.get("children", []))
+    return blocks.Paragraph(children=children)
+
+
+def _parse_heading(token: dict[str, Any]) -> blocks.Heading:
+    level = token["attrs"]["level"]
+    children = _parse_inlines(token.get("children", []))
+    return blocks.Heading(level=level, children=children)
+
+
+def _parse_code_block(token: dict[str, Any]) -> blocks.CodeBlock:
+    code = token.get("raw", "")
+    if code.endswith("\n"):
+        code = code[:-1]
+    info = token.get("attrs", {}).get("info", "")
+    language = info or None
+    return blocks.CodeBlock(code=code, language=language)
+
+
+def _parse_blockquote(token: dict[str, Any]) -> blocks.BlockQuote:
+    children = _parse_blocks(token.get("children", []))
+    return blocks.BlockQuote(children=children)
+
+
+def _parse_list(token: dict[str, Any]) -> blocks.BulletList | blocks.OrderedList:
+    ordered = token["attrs"]["ordered"]
+    tight = token.get("tight", True)
+    items: list[blocks.ListItem] = []
+    start = 1
+
+    if ordered:
+        start_val = token["attrs"].get("start")
+        if start_val is not None:
+            start = start_val
+
+    for child in token.get("children", []):
+        if child["type"] not in ("list_item", "task_list_item"):
+            continue
+        item_children = _parse_list_item_children(child, tight)
+        checked = child.get("attrs", {}).get("checked")
+        items.append(blocks.ListItem(children=item_children, checked=checked))
+
+    if ordered:
+        return blocks.OrderedList(items=items, start=start, tight=tight)
+    return blocks.BulletList(items=items, tight=tight)
+
+
+def _parse_list_item_children(
+    item_token: dict[str, Any], tight: bool
+) -> list[blocks.Block]:
+    children: list[blocks.Block] = []
+    for child in item_token.get("children", []):
+        match child["type"]:
+            case "paragraph":
+                children.append(_parse_paragraph(child))
+            case "block_text":
+                inls = _parse_inlines(child.get("children", []))
+                children.append(blocks.Paragraph(children=inls))
+            case "block_code":
+                children.append(_parse_code_block(child))
+            case "block_quote":
+                children.append(_parse_blockquote(child))
+            case "list":
+                children.append(_parse_list(child))
+            case "thematic_break":
+                children.append(blocks.ThematicBreak())
+            case _:
+                pass
     return children
 
 
-def _apply_inline_annotations(block: blocks.Block) -> None:
-    """Recursively pair inline comments inside blocks."""
-    match block:
-        case blocks.Paragraph():
-            block.children = _pair_inline_annotations(block.children)
-        case blocks.Heading():
-            block.children = _pair_inline_annotations(block.children)
-        case blocks.BlockQuote():
-            block.children = _post_process(block.children)
-        case blocks.BulletList():
-            for item in block.items:
-                item.children = _post_process(item.children)
-        case blocks.OrderedList():
-            for item in block.items:
-                item.children = _post_process(item.children)
-        case blocks.Table():
-            for cell in block.head:
-                cell.children = _post_process(cell.children)
-            for row in block.body:
-                for cell in row:
-                    cell.children = _post_process(cell.children)
-        case _:
-            pass
+def _parse_table(token: dict[str, Any]) -> blocks.Table:
+    head: list[blocks.TableCell] = []
+    body: list[list[blocks.TableCell]] = []
+    alignments: list[_Alignment] = []
+    for child in token.get("children", []):
+        if child["type"] == "table_head":
+            for cell_tok in child.get("children", []):
+                align = cell_tok.get("attrs", {}).get("align")
+                alignments.append(align)
+                cell_children = _parse_cell_blocks(cell_tok.get("children", []))
+                head.append(blocks.TableCell(children=cell_children))
+        elif child["type"] == "table_body":
+            for row_tok in child.get("children", []):
+                row: list[blocks.TableCell] = []
+                for cell_tok in row_tok.get("children", []):
+                    cell_children = _parse_cell_blocks(cell_tok.get("children", []))
+                    row.append(blocks.TableCell(children=cell_children))
+                body.append(row)
+
+    if head and all(
+        not cell.children
+        or (
+            len(cell.children) == 1
+            and isinstance(cell.children[0], blocks.Paragraph)
+            and len(cell.children[0].children) == 1
+            and isinstance(cell.children[0].children[0], inlines.Text)
+            and not cell.children[0].children[0].text.strip()
+        )
+        for cell in head
+    ):
+        head = []
+
+    return blocks.Table(head=head, body=body, alignments=alignments)
 
 
-# ── Node builders ────────────────────────────────────────────────────
+def _parse_annotated_paragraph(token: dict[str, Any]) -> blocks.Paragraph:
+    attrs = token.get("attrs", {})
+    inner_blocks = _parse_blocks(token.get("children", []))
+    if inner_blocks and isinstance(inner_blocks[0], blocks.Paragraph):
+        p = inner_blocks[0]
+        p.alignment = attrs.get("align")
+        p.indentation = attrs.get("indentation")
+        return p
+    inls = _flatten_inlines(inner_blocks)
+    return blocks.Paragraph(
+        children=inls,
+        alignment=attrs.get("align"),
+        indentation=attrs.get("indentation"),
+    )
 
 
-def _build_block_node(
-    tag: str, attrs: dict[str, Any], inner: list[blocks.Block]
-) -> blocks.Block:
+def _parse_annotated_heading(token: dict[str, Any]) -> blocks.Heading:
+    attrs = token.get("attrs", {})
+    inner_blocks = _parse_blocks(token.get("children", []))
+    if inner_blocks and isinstance(inner_blocks[0], blocks.Heading):
+        h = inner_blocks[0]
+        h.alignment = attrs.get("align")
+        h.indentation = attrs.get("indentation")
+        return h
+    inls = _flatten_inlines(inner_blocks)
+    return blocks.Heading(
+        level=attrs.get("level", 1),
+        children=inls,
+        alignment=attrs.get("align"),
+        indentation=attrs.get("indentation"),
+    )
+
+
+def _parse_annotated_table(token: dict[str, Any]) -> blocks.Block:
+    attrs = token.get("attrs", {})
+    inner_blocks = _parse_blocks(token.get("children", []))
+    if inner_blocks and isinstance(inner_blocks[0], blocks.Table):
+        t = inner_blocks[0]
+        t.display_mode = attrs.get("displayMode")
+        t.is_number_column_enabled = attrs.get("isNumberColumnEnabled")
+        t.layout = attrs.get("layout")
+        t.width = attrs.get("width")
+        _apply_cell_attrs(t, attrs.get("cells"))
+        return t
+    return inner_blocks[0] if inner_blocks else blocks.Paragraph(children=[])
+
+
+def _parse_annotated_panel_or_expand(token: dict[str, Any]) -> blocks.Block:
+    attrs = token.get("attrs", {})
+    inner_blocks = _parse_blocks(token.get("children", []))
+    children = _unwrap_blockquote(inner_blocks)
+    return _build_block_with_children(token["type"], attrs, children)
+
+
+def _parse_annotated_task_list(token: dict[str, Any]) -> blocks.TaskList:
+    inner_blocks = _parse_blocks(token.get("children", []))
+    items = _extract_task_items(inner_blocks)
+    return blocks.TaskList(items=items)
+
+
+def _parse_annotated_decision_list(token: dict[str, Any]) -> blocks.DecisionList:
+    inner_blocks = _parse_blocks(token.get("children", []))
+    items = _extract_decision_items(inner_blocks)
+    return blocks.DecisionList(items=items)
+
+
+def _parse_annotated_layout_section(token: dict[str, Any]) -> blocks.LayoutSection:
+    inner_blocks = _parse_blocks(token.get("children", []))
+    columns = [b for b in inner_blocks if isinstance(b, blocks.LayoutColumn)]
+    return blocks.LayoutSection(columns=columns)
+
+
+def _parse_annotated_layout_column(token: dict[str, Any]) -> blocks.LayoutColumn:
+    attrs = token.get("attrs", {})
+    inner_blocks = _parse_blocks(token.get("children", []))
+    return blocks.LayoutColumn(children=inner_blocks, width=attrs.get("width"))
+
+
+# ---------------------------------------------------------------------------
+# Pass 2: Inline block level (table cells)
+# ---------------------------------------------------------------------------
+
+
+def _parse_cell_blocks(tokens: list[dict[str, Any]]) -> list[blocks.Block]:
+    """Parse table cell inline tokens into blocks.
+
+    Uses annotation matching to group tokens, then dispatches each group.
+    Unannotated tokens become Paragraph (plain GFM).
+    """
+    matched = _match_cell_annotations(tokens)
+    result: list[blocks.Block] = []
+    loose: list[dict[str, Any]] = []
+
+    def _flush_loose() -> None:
+        if not loose:
+            return
+        children = _parse_inlines(loose)
+        if children:
+            result.append(blocks.Paragraph(children=children))
+        loose.clear()
+
+    for tok in matched:
+        if tok.get("_annotated"):
+            _flush_loose()
+            block = _parse_cell_block(tok)
+            result.append(block)
+        else:
+            loose.append(tok)
+
+    _flush_loose()
+    return result
+
+
+def _parse_cell_block(token: dict[str, Any]) -> blocks.Block:
+    """Dispatch an annotation-matched cell token to the appropriate handler."""
+    tag = token["type"]
+    attrs = token.get("attrs", {})
+    inner = token.get("children", [])
+
     match tag:
-        case "panel":
-            children = _unwrap_blockquote(inner)
-            children = _post_process(children)
-            return blocks.Panel(
-                children=children,
-                panel_type=attrs["panelType"],
-                panel_icon=attrs.get("panelIcon"),
-                panel_icon_id=attrs.get("panelIconId"),
-                panel_icon_text=attrs.get("panelIconText"),
-                panel_color=attrs.get("panelColor"),
-            )
-
-        case "expand":
-            children = _unwrap_blockquote(inner)
-            children = _post_process(children)
-            return blocks.Expand(children=children, title=attrs.get("title"))
-
-        case "nestedExpand":
-            children = _unwrap_blockquote(inner)
-            children = _post_process(children)
-            return blocks.NestedExpand(children=children, title=attrs.get("title"))
-
-        case "taskList":
-            items = _parse_task_items(inner)
-            return blocks.TaskList(items=items)
-
-        case "decisionList":
-            items = _parse_decision_items(inner)
-            return blocks.DecisionList(items=items)
-
-        case "layoutSection":
-            inner = _pair_block_annotations(inner)
-            columns = [c for c in inner if isinstance(c, blocks.LayoutColumn)]
-            return blocks.LayoutSection(columns=columns)
-
-        case "layoutColumn":
-            children = _post_process(inner)
-            return blocks.LayoutColumn(children=children, width=attrs.get("width"))
-
-        case "mediaSingle":
-            media = _parse_media_attrs(attrs.get("media", {}))
-            return blocks.MediaSingle(
-                media=media,
-                layout=attrs.get("layout"),
-                width=attrs.get("width"),
-                width_type=attrs.get("widthType"),
-            )
-
-        case "mediaGroup":
-            media_list = [
-                _parse_media_attrs(m) for m in attrs.get("mediaList", [])
-            ]
-            return blocks.MediaGroup(media_list=media_list)
-
-        case "blockCard":
-            return blocks.BlockCard(url=attrs.get("url"), data=attrs.get("data"))
-
-        case "embedCard":
-            return blocks.EmbedCard(
-                url=attrs["url"],
-                layout=attrs["layout"],
-                width=attrs.get("width"),
-                original_width=attrs.get("originalWidth"),
-                original_height=attrs.get("originalHeight"),
-            )
-
         case "paragraph":
-            para = (
-                inner[0]
-                if inner and isinstance(inner[0], blocks.Paragraph)
-                else blocks.Paragraph(children=[])
-            )
-            para.alignment = attrs.get("align")
-            para.indentation = attrs.get("indentation")
-            return para
-
+            return _parse_cell_paragraph(attrs, inner)
+        case "codeBlock":
+            return _parse_cell_code_block(attrs, inner)
+        case "blockQuote":
+            return _parse_cell_blockquote(attrs, inner)
         case "heading":
-            heading = (
-                inner[0]
-                if inner and isinstance(inner[0], blocks.Heading)
-                else blocks.Heading(level=1, children=[])
-            )
-            heading.alignment = attrs.get("align")
-            heading.indentation = attrs.get("indentation")
-            return heading
-
-        case "table":
-            table = next((c for c in inner if isinstance(c, blocks.Table)), None)
-            if table is None:
-                return inner[0] if inner else blocks.Paragraph(children=[])
-            table.display_mode = attrs.get("displayMode")
-            table.is_number_column_enabled = attrs.get("isNumberColumnEnabled")
-            table.layout = attrs.get("layout")
-            table.width = attrs.get("width")
-            cell_attrs_grid: list[list[dict[str, Any] | None]] | None = attrs.get(
-                "cells"
-            )
-            if cell_attrs_grid:
-                _apply_cell_attrs_grid(table, cell_attrs_grid)
-            return table
-
+            return _parse_cell_heading(attrs, inner)
+        case "thematicBreak":
+            return blocks.ThematicBreak()
+        case "bulletList":
+            return _parse_cell_list("ul", attrs, inner)
+        case "orderedList":
+            return _parse_cell_list("ol", attrs, inner)
+        case "panel":
+            inner_content = _strip_html_wrapper(inner, "blockquote")
+            children = _parse_cell_blocks(inner_content)
+            return _build_block_with_children(tag, attrs, children)
+        case "expand" | "nestedExpand":
+            inner_content = _strip_html_wrapper(inner, "blockquote")
+            children = _parse_cell_blocks(inner_content)
+            return _build_block_with_children(tag, attrs, children)
+        case "taskList":
+            inner_content = _strip_html_wrapper(inner, "ul")
+            li_groups = _split_by_tag(inner_content, "li")
+            items: list[blocks.TaskItem] = []
+            for li_toks in li_groups:
+                state, inls = _parse_cell_checklist_item(li_toks)
+                items.append(blocks.TaskItem(children=inls, state=state or "TODO"))
+            return blocks.TaskList(items=items)
+        case "decisionList":
+            inner_content = _strip_html_wrapper(inner, "ul")
+            li_groups = _split_by_tag(inner_content, "li")
+            ditems: list[blocks.DecisionItem] = []
+            for li_toks in li_groups:
+                state, inls = _parse_cell_checklist_item(li_toks)
+                dstate = "DECIDED" if state == "DONE" else (state or "TODO")
+                ditems.append(blocks.DecisionItem(children=inls, state=dstate))
+            return blocks.DecisionList(items=ditems)
         case _:
-            return inner[0] if inner else blocks.Paragraph(children=[])
+            result = _build_attrs_only_block(tag, attrs)
+            if result is not None:
+                return result
+            return blocks.Paragraph(children=[inlines.Text(text="")])
 
 
-def _build_inline_node(
-    tag: str, attrs: dict[str, Any], inner: list[inlines.Inline]
-) -> inlines.Inline:
-    match tag:
-        # Standalone inlines — restore from attrs, ignore inner (fallback)
+def _parse_cell_paragraph(
+    attrs: dict[str, Any], tokens: list[dict[str, Any]]
+) -> blocks.Paragraph:
+    children = _parse_inlines(tokens)
+    return blocks.Paragraph(
+        children=children,
+        alignment=attrs.get("align"),
+        indentation=attrs.get("indentation"),
+    )
+
+
+def _parse_cell_code_block(
+    attrs: dict[str, Any], tokens: list[dict[str, Any]]
+) -> blocks.CodeBlock:
+    """<code>text<br>text</code> → CodeBlock"""
+    inner = _strip_html_wrapper(tokens, "code")
+    code = _inner_tokens_to_text(inner)
+    code = code.replace("<br>", "\n")
+    return blocks.CodeBlock(code=code, language=attrs.get("language"))
+
+
+def _parse_cell_blockquote(
+    _attrs: dict[str, Any], tokens: list[dict[str, Any]]
+) -> blocks.BlockQuote:
+    """<blockquote>content</blockquote> → BlockQuote"""
+    inner = _strip_html_wrapper(tokens, "blockquote")
+    children = _parse_cell_blocks(inner)
+    return blocks.BlockQuote(children=children)
+
+
+def _parse_cell_heading(
+    attrs: dict[str, Any], tokens: list[dict[str, Any]]
+) -> blocks.Heading:
+    """<h3>inlines</h3> → Heading"""
+    level = attrs.get("level", 1)
+    tag = f"h{level}"
+    inner = _strip_html_wrapper(tokens, tag)
+    children = _parse_inlines(inner)
+    return blocks.Heading(level=level, children=children)
+
+
+def _parse_cell_list(
+    html_tag: str, attrs: dict[str, Any], tokens: list[dict[str, Any]]
+) -> blocks.BulletList | blocks.OrderedList:
+    """<ul><li>...</li></ul> or <ol><li>...</li></ol> → List"""
+    inner = _strip_html_wrapper(tokens, html_tag)
+    li_groups = _split_by_tag(inner, "li")
+    items: list[blocks.ListItem] = []
+    for li_tokens in li_groups:
+        item_blocks = _parse_cell_blocks(li_tokens)
+        items.append(blocks.ListItem(children=item_blocks))
+
+    start = attrs.get("start", 1)
+    if html_tag == "ol":
+        return blocks.OrderedList(items=items, start=start, tight=True)
+    return blocks.BulletList(items=items, tight=True)
+
+
+def _parse_cell_checklist_item(
+    tokens: list[dict[str, Any]],
+) -> tuple[str | None, list[inlines.Inline]]:
+    """Parse [x]/[ ] prefix from cell list item tokens."""
+    inls = _parse_inlines(tokens)
+    if inls and isinstance(inls[0], inlines.Text):
+        text = inls[0].text
+        if text.startswith("[x] "):
+            inls[0] = inlines.Text(text=text[4:])
+            if not inls[0].text:
+                inls = inls[1:]
+            return "DONE", inls
+        elif text.startswith("[ ] "):
+            inls[0] = inlines.Text(text=text[4:])
+            if not inls[0].text:
+                inls = inls[1:]
+            return "TODO", inls
+    return None, inls
+
+
+# ---------------------------------------------------------------------------
+# Pass 2: Inline level
+# ---------------------------------------------------------------------------
+
+
+def _parse_inlines(tokens: list[dict[str, Any]]) -> list[inlines.Inline]:
+    matched = _match_inline_annotations(tokens)
+    result: list[inlines.Inline] = []
+    for token in matched:
+        node = _parse_inline(token)
+        if node is not None:
+            result.append(node)
+    return result
+
+
+def _parse_inline(token: dict[str, Any]) -> inlines.Inline | None:
+    match token["type"]:
+        case "text":
+            return inlines.Text(text=token["raw"])
+        case "strong":
+            children = _parse_inlines(token.get("children", []))
+            return inlines.Strong(children=children)
+        case "emphasis":
+            children = _parse_inlines(token.get("children", []))
+            return inlines.Emphasis(children=children)
+        case "strikethrough":
+            children = _parse_inlines(token.get("children", []))
+            return inlines.Strikethrough(children=children)
+        case "link":
+            return _parse_link(token)
+        case "image":
+            return _parse_image(token)
+        case "codespan":
+            return inlines.CodeSpan(code=token["raw"])
+        case "linebreak":
+            return inlines.HardBreak()
+        case "softbreak":
+            return inlines.SoftBreak()
         case "mention":
-            return inlines.Mention(
-                id=attrs["id"],
-                text=attrs.get("text"),
-                access_level=attrs.get("accessLevel"),
-                user_type=attrs.get("userType"),
-            )
+            return _parse_annotated_mention(token)
         case "emoji":
-            return inlines.Emoji(
-                short_name=attrs["shortName"],
-                text=attrs.get("text"),
-                id=attrs.get("id"),
-            )
+            return _parse_annotated_emoji(token)
         case "date":
-            return inlines.Date(timestamp=attrs["timestamp"])
+            return _parse_annotated_date(token)
         case "status":
-            return inlines.Status(
-                text=attrs["text"],
-                color=attrs["color"],
-                style=attrs.get("style"),
-            )
+            return _parse_annotated_status(token)
         case "inlineCard":
-            url = attrs.get("url")
-            if url is None and not attrs.get("data"):
-                url = _extract_url_from_inner(inner)
-            return inlines.InlineCard(url=url, data=attrs.get("data"))
+            return _parse_annotated_inline_card(token)
         case "mediaInline":
-            return inlines.MediaInline(
-                id=attrs.get("id"),
-                collection=attrs.get("collection"),
-                media_type=attrs.get("mediaType", "file"),
-                alt=attrs.get("alt"),
-                width=attrs.get("width"),
-                height=attrs.get("height"),
-            )
-        # Wrapping marks — use inner as children
+            return _parse_annotated_media_inline(token)
         case "underline":
-            return inlines.Underline(children=inner)
+            return _parse_annotated_underline(token)
         case "textColor":
-            return inlines.TextColor(color=attrs["color"], children=inner)
+            return _parse_annotated_text_color(token)
         case "backgroundColor":
-            return inlines.BackgroundColor(color=attrs["color"], children=inner)
+            return _parse_annotated_background_color(token)
         case "subSup":
-            return inlines.SubSup(type=attrs["type"], children=inner)
+            return _parse_annotated_subsup(token)
         case "annotation":
-            return inlines.Annotation(
-                id=attrs["id"],
-                children=inner,
-                annotation_type=attrs.get("annotationType", "inlineComment"),
-            )
+            return _parse_annotated_annotation(token)
+        case "placeholder":
+            return _parse_annotated_placeholder(token)
+        case "inlineExtension":
+            return inlines.InlineExtension(raw=token.get("attrs", {}))
         case _:
-            return inlines.Text(text="")
+            return _parse_annotated_inline_fallback(token)
 
 
-def _is_empty_head(head: list[blocks.TableCell]) -> bool:
-    """Check if all header row cells contain empty text. For headerless table restoration."""
-    for cell in head:
-        for child in cell.children:
-            if not isinstance(child, blocks.Paragraph):
-                return False
-            for inline in child.children:
-                if not isinstance(inline, inlines.Text) or inline.text.strip():
-                    return False
-    return True
+def _parse_link(token: dict[str, Any]) -> inlines.Link:
+    url = token.get("attrs", {}).get("url") or token.get("link", "")
+    title = token.get("attrs", {}).get("title")
+    children = _parse_inlines(token.get("children", []))
+    return inlines.Link(url=url, children=children, title=title)
 
 
-# ── Utilities ───────────────────────────────────────────────────────
+def _parse_image(token: dict[str, Any]) -> inlines.Image:
+    attrs = token.get("attrs", {})
+    url = attrs.get("url", attrs.get("src", ""))
+    alt = token.get("alt", attrs.get("alt", ""))
+    title = attrs.get("title")
+    if not alt and token.get("children"):
+        alt_parts: list[str] = []
+        for c in cast(list[dict[str, Any]], token["children"]):
+            if c["type"] == "text":
+                alt_parts.append(c["raw"])
+        alt = "".join(alt_parts)
+    return inlines.Image(url=url, alt=alt, title=title)
 
 
-_MARKDOWN_LINK_RE = re.compile(r"\[.*?\]\((.*?)\)")
+def _parse_annotated_mention(token: dict[str, Any]) -> inlines.Mention:
+    attrs = token.get("attrs", {})
+    return inlines.Mention(
+        id=attrs.get("id", ""),
+        text=attrs.get("text"),
+        access_level=attrs.get("accessLevel"),
+        user_type=attrs.get("userType"),
+    )
 
 
-def _extract_url_from_inner(inner: list[inlines.Inline]) -> str | None:
-    """Extract URL from inner nodes for inlineCard compact format.
-    mistune treats text between inline comments as raw Text, so regex extraction is needed."""
-    for node in inner:
-        if isinstance(node, inlines.Link):
-            return node.url
-        if isinstance(node, inlines.Text):
-            m = _MARKDOWN_LINK_RE.search(node.text)
-            if m:
-                return m.group(1)
-    return None
+def _parse_annotated_emoji(token: dict[str, Any]) -> inlines.Emoji:
+    attrs = token.get("attrs", {})
+    return inlines.Emoji(
+        short_name=attrs.get("shortName", ""),
+        text=attrs.get("text"),
+        id=attrs.get("id"),
+    )
 
 
-def _unwrap_blockquote(inner: list[blocks.Block]) -> list[blocks.Block]:
-    """Unwrap BlockQuote inside annotation and extract children."""
-    if len(inner) == 1 and isinstance(inner[0], blocks.BlockQuote):
-        return inner[0].children
-    return inner
+def _parse_annotated_date(token: dict[str, Any]) -> inlines.Date:
+    attrs = token.get("attrs", {})
+    return inlines.Date(timestamp=attrs.get("timestamp", ""))
 
 
-def _parse_media_attrs(attrs: dict[str, Any]) -> blocks.Media:
-    return blocks.Media(
-        media_type=attrs.get("mediaType", "file"),
-        url=attrs.get("url"),
+def _parse_annotated_status(token: dict[str, Any]) -> inlines.Status:
+    attrs = token.get("attrs", {})
+    return inlines.Status(
+        text=attrs.get("text", ""),
+        color=attrs.get("color", ""),
+        style=attrs.get("style"),
+    )
+
+
+def _parse_annotated_inline_card(token: dict[str, Any]) -> inlines.InlineCard:
+    attrs = token.get("attrs", {})
+    url = attrs.get("url")
+    if not url:
+        inner = _parse_inlines(token.get("children", []))
+        for child in inner:
+            if isinstance(child, inlines.Link):
+                url = child.url
+                break
+    return inlines.InlineCard(url=url, data=attrs.get("data"))
+
+
+def _parse_annotated_media_inline(token: dict[str, Any]) -> inlines.MediaInline:
+    attrs = token.get("attrs", {})
+    return inlines.MediaInline(
         id=attrs.get("id"),
         collection=attrs.get("collection"),
+        media_type=attrs.get("mediaType", "file"),
         alt=attrs.get("alt"),
         width=attrs.get("width"),
         height=attrs.get("height"),
     )
 
 
-def _parse_task_items(inner: list[blocks.Block]) -> list[blocks.TaskItem]:
+def _parse_annotated_underline(token: dict[str, Any]) -> inlines.Underline:
+    children = _parse_inlines(token.get("children", []))
+    return inlines.Underline(children=children)
+
+
+def _parse_annotated_text_color(token: dict[str, Any]) -> inlines.TextColor:
+    attrs = token.get("attrs", {})
+    children = _parse_inlines(token.get("children", []))
+    return inlines.TextColor(color=attrs.get("color", ""), children=children)
+
+
+def _parse_annotated_background_color(token: dict[str, Any]) -> inlines.BackgroundColor:
+    attrs = token.get("attrs", {})
+    children = _parse_inlines(token.get("children", []))
+    return inlines.BackgroundColor(color=attrs.get("color", ""), children=children)
+
+
+def _parse_annotated_subsup(token: dict[str, Any]) -> inlines.SubSup:
+    attrs = token.get("attrs", {})
+    children = _parse_inlines(token.get("children", []))
+    return inlines.SubSup(type=attrs.get("type", "sub"), children=children)
+
+
+def _parse_annotated_annotation(token: dict[str, Any]) -> inlines.Annotation:
+    attrs = token.get("attrs", {})
+    children = _parse_inlines(token.get("children", []))
+    return inlines.Annotation(
+        id=attrs.get("id", ""),
+        children=children,
+        annotation_type=attrs.get("annotationType", "inlineComment"),
+    )
+
+
+def _parse_annotated_placeholder(token: dict[str, Any]) -> inlines.Placeholder:
+    inner = _parse_inlines(token.get("children", []))
+    text = ""
+    for child in inner:
+        if isinstance(child, inlines.Text):
+            text += child.text
+    return inlines.Placeholder(text=text)
+
+
+def _parse_annotated_inline_fallback(token: dict[str, Any]) -> inlines.Inline:
+    inner = _parse_inlines(token.get("children", []))
+    if len(inner) == 1:
+        return inner[0]
+    return inlines.Text(
+        text="".join(c.text if isinstance(c, inlines.Text) else "" for c in inner)
+    )
+
+
+# ---------------------------------------------------------------------------
+# Shared builders
+# ---------------------------------------------------------------------------
+
+
+def _build_media(d: dict[str, Any]) -> blocks.Media:
+    return blocks.Media(
+        media_type=d.get("mediaType", "file"),
+        url=d.get("url"),
+        id=d.get("id"),
+        collection=d.get("collection"),
+        alt=d.get("alt"),
+        width=d.get("width"),
+        height=d.get("height"),
+    )
+
+
+def _build_block_with_children(
+    tag: str, attrs: dict[str, Any], children: list[blocks.Block]
+) -> blocks.Block:
+    """Build difference-set blocks that have inner children.
+
+    Shared between block-level and cell-level annotation processing.
+    """
+    match tag:
+        case "panel":
+            return blocks.Panel(
+                children=children,
+                panel_type=attrs.get("panelType", "info"),
+                panel_icon=attrs.get("panelIcon"),
+                panel_icon_id=attrs.get("panelIconId"),
+                panel_icon_text=attrs.get("panelIconText"),
+                panel_color=attrs.get("panelColor"),
+            )
+        case "expand":
+            return blocks.Expand(children=children, title=attrs.get("title"))
+        case "nestedExpand":
+            return blocks.NestedExpand(children=children, title=attrs.get("title"))
+        case _:
+            return blocks.Paragraph(children=[])
+
+
+def _build_attrs_only_block(tag: str, attrs: dict[str, Any]) -> blocks.Block | None:
+    """Build blocks that are fully described by attrs (no inner content needed).
+
+    Shared between block-level and cell-level annotation processing.
+    Returns None if the tag is not recognized.
+    """
+    match tag:
+        case "mediaSingle":
+            media = _build_media(attrs.get("media", {}))
+            return blocks.MediaSingle(
+                media=media,
+                layout=attrs.get("layout"),
+                width=attrs.get("width"),
+                width_type=attrs.get("widthType"),
+            )
+        case "mediaGroup":
+            media_list = [_build_media(m) for m in attrs.get("mediaList", [])]
+            return blocks.MediaGroup(media_list=media_list)
+        case "blockCard":
+            return blocks.BlockCard(url=attrs.get("url"), data=attrs.get("data"))
+        case "embedCard":
+            return blocks.EmbedCard(
+                url=attrs.get("url", ""),
+                layout=attrs.get("layout", ""),
+                width=attrs.get("width"),
+                original_width=attrs.get("originalWidth"),
+                original_height=attrs.get("originalHeight"),
+            )
+        case "extension":
+            return blocks.Extension(raw=attrs)
+        case "bodiedExtension":
+            return blocks.BodiedExtension(raw=attrs)
+        case "syncBlock":
+            return blocks.SyncBlock(raw=attrs)
+        case "bodiedSyncBlock":
+            return blocks.BodiedSyncBlock(raw=attrs)
+        case _:
+            return None
+
+
+# ---------------------------------------------------------------------------
+# Helpers
+# ---------------------------------------------------------------------------
+
+
+def _unwrap_blockquote(inner: list[blocks.Block]) -> list[blocks.Block]:
+    """Legacy: if inner is a single BlockQuote, unwrap its children."""
+    if len(inner) == 1 and isinstance(inner[0], blocks.BlockQuote):
+        return inner[0].children
+    return inner
+
+
+def _flatten_inlines(block_nodes: list[blocks.Block]) -> list[inlines.Inline]:
+    """Extract inlines from a list of blocks (typically single Paragraph)."""
+    result: list[inlines.Inline] = []
+    for b in block_nodes:
+        if isinstance(b, blocks.Paragraph):
+            result.extend(b.children)
+    return result
+
+
+def _extract_task_items(inner: list[blocks.Block]) -> list[blocks.TaskItem]:
+    """Extract TaskItems from bullet list rendered inside annotation."""
     items: list[blocks.TaskItem] = []
     for block in inner:
         if isinstance(block, blocks.BulletList):
             for li in block.items:
-                child_inlines = _extract_inlines(li.children)
-                child_inlines = _pair_inline_annotations(child_inlines)
                 state = "DONE" if li.checked else "TODO"
-                items.append(
-                    blocks.TaskItem(
-                        children=child_inlines,
-                        state=state,
-                    )
-                )
+                inls = _flatten_inlines(li.children)
+                items.append(blocks.TaskItem(children=inls, state=state))
+        elif isinstance(block, blocks.Paragraph):
+            text_content = block.children
+            state, inls = _check_task_prefix(text_content)
+            items.append(blocks.TaskItem(children=inls, state=state))
     return items
 
 
-def _parse_decision_items(inner: list[blocks.Block]) -> list[blocks.DecisionItem]:
+def _extract_decision_items(
+    inner: list[blocks.Block],
+) -> list[blocks.DecisionItem]:
+    """Extract DecisionItems from bullet list rendered inside annotation."""
     items: list[blocks.DecisionItem] = []
     for block in inner:
         if isinstance(block, blocks.BulletList):
             for li in block.items:
-                child_inlines = _extract_inlines(li.children)
-                child_inlines = _pair_inline_annotations(child_inlines)
                 state = "DECIDED" if li.checked else ""
-                items.append(
-                    blocks.DecisionItem(
-                        children=child_inlines,
-                        state=state,
-                    )
-                )
+                inls = _flatten_inlines(li.children)
+                items.append(blocks.DecisionItem(children=inls, state=state))
+        elif isinstance(block, blocks.Paragraph):
+            text_content = block.children
+            state, inls = _check_decision_prefix(text_content)
+            items.append(blocks.DecisionItem(children=inls, state=state))
     return items
 
 
-def _extract_inlines(children: list[blocks.Block]) -> list[inlines.Inline]:
-    """Extract inlines from ListItem.children (list[Block])."""
-    result: list[inlines.Inline] = []
-    for child in children:
-        if isinstance(child, blocks.Paragraph):
-            result.extend(child.children)
-    return result
+def _check_task_prefix(
+    nodes: list[inlines.Inline],
+) -> tuple[str, list[inlines.Inline]]:
+    """Check for [x]/[ ] prefix in inline nodes."""
+    if nodes and isinstance(nodes[0], inlines.Text):
+        text = nodes[0].text
+        if text.startswith("[x] "):
+            rest = text[4:]
+            new_nodes = ([inlines.Text(text=rest)] if rest else []) + list(nodes[1:])
+            return "DONE", new_nodes
+        elif text.startswith("[ ] "):
+            rest = text[4:]
+            new_nodes = ([inlines.Text(text=rest)] if rest else []) + list(nodes[1:])
+            return "TODO", new_nodes
+    return "TODO", list(nodes)
 
 
-def _apply_cell_attrs_grid(
-    table: blocks.Table, grid: list[list[Any]]
-) -> None:
-    """Apply compact cell attrs. list=colwidth, dict=full attrs, None=defaults."""
+def _check_decision_prefix(
+    nodes: list[inlines.Inline],
+) -> tuple[str, list[inlines.Inline]]:
+    """Check for [x]/[ ] prefix in inline nodes for decisions."""
+    if nodes and isinstance(nodes[0], inlines.Text):
+        text = nodes[0].text
+        if text.startswith("[x] "):
+            rest = text[4:]
+            new_nodes = ([inlines.Text(text=rest)] if rest else []) + list(nodes[1:])
+            return "DECIDED", new_nodes
+        elif text.startswith("[ ] "):
+            rest = text[4:]
+            new_nodes = ([inlines.Text(text=rest)] if rest else []) + list(nodes[1:])
+            return "", new_nodes
+    return "", list(nodes)
+
+
+def _apply_cell_attrs(table: blocks.Table, cell_attrs: list[list[Any]] | None) -> None:
+    """Apply compact cell attrs to table cells."""
+    if not cell_attrs:
+        return
     all_rows = [table.head, *table.body]
-    for row_idx, row_attrs in enumerate(grid):
+    for row_idx, row_attr in enumerate(cell_attrs):
         if row_idx >= len(all_rows):
             break
-        for col_idx, cell_attr in enumerate(row_attrs):
-            if col_idx >= len(all_rows[row_idx]) or cell_attr is None:
+        row = all_rows[row_idx]
+        for col_idx, attr in enumerate(row_attr):
+            if col_idx >= len(row):
+                break
+            cell = row[col_idx]
+            if attr is None:
                 continue
-            cell = all_rows[row_idx][col_idx]
-            if isinstance(cell_attr, list):
-                cell.col_width = cell_attr
-            elif isinstance(cell_attr, dict):
-                ca = cast(dict[str, Any], cell_attr)
-                cell.colspan = ca.get("colspan")
-                cell.rowspan = ca.get("rowspan")
-                cell.col_width = ca.get("colwidth")
-                cell.background = ca.get("background")
-                if ca.get("header") and not isinstance(cell, blocks.TableHeader):
-                    header_cell = blocks.TableHeader(
+            if isinstance(attr, list):
+                cell.col_width = attr
+            elif isinstance(attr, dict):
+                d = cast(dict[str, Any], attr)
+                if d.get("colspan"):
+                    cell.colspan = d["colspan"]
+                if d.get("rowspan"):
+                    cell.rowspan = d["rowspan"]
+                if d.get("colwidth"):
+                    cell.col_width = d["colwidth"]
+                if d.get("background"):
+                    cell.background = d["background"]
+                if d.get("header"):
+                    header = blocks.TableHeader(
                         children=cell.children,
                         colspan=cell.colspan,
                         rowspan=cell.rowspan,
                         col_width=cell.col_width,
                         background=cell.background,
                     )
-                    all_rows[row_idx][col_idx] = header_cell
+                    row[col_idx] = header
 
 
-# ── Public API ───────────────────────────────────────────────────────
+def _strip_html_wrapper(tokens: list[dict[str, Any]], tag: str) -> list[dict[str, Any]]:
+    """Remove opening and closing HTML tags from token list."""
+    start = 0
+    end = len(tokens)
+    if tokens and tokens[0].get("type") == "inline_html":
+        raw = tokens[0]["raw"].strip().lower()
+        if raw.startswith(f"<{tag}") and raw.endswith(">"):
+            start = 1
+    if end > start and tokens[end - 1].get("type") == "inline_html":
+        raw = tokens[end - 1]["raw"].strip().lower()
+        if raw == f"</{tag}>":
+            end -= 1
+    return tokens[start:end]
 
 
-def parse(markdown: str) -> blocks.Document:
-    doc = cast(blocks.Document, _md(markdown))
-    doc.children = _post_process(doc.children)
-    return doc
+def _split_by_tag(tokens: list[dict[str, Any]], tag: str) -> list[list[dict[str, Any]]]:
+    """Split tokens by <tag>...</tag> pairs, returning inner content of each."""
+    groups: list[list[dict[str, Any]]] = []
+    current: list[dict[str, Any]] | None = None
+
+    for tok in tokens:
+        if tok.get("type") == "inline_html":
+            raw = tok["raw"].strip().lower()
+            if (
+                raw.startswith(f"<{tag}")
+                and raw.endswith(">")
+                and not raw.startswith(f"</{tag}")
+            ):
+                current = []
+                continue
+            elif raw == f"</{tag}>":
+                if current is not None:
+                    groups.append(current)
+                    current = None
+                continue
+        if current is not None:
+            current.append(tok)
+
+    return groups
+
+
+def _inner_tokens_to_text(tokens: list[dict[str, Any]]) -> str:
+    """Extract plain text from inner tokens (for code blocks)."""
+    parts: list[str] = []
+    for tok in tokens:
+        if tok["type"] == "text":
+            parts.append(tok["raw"])
+        elif tok["type"] == "inline_html":
+            raw = tok["raw"].strip()
+            if raw.lower() == "<br>":
+                parts.append("<br>")
+            else:
+                parts.append(raw)
+        elif tok["type"] == "codespan":
+            parts.append(tok["raw"])
+        else:
+            parts.append(tok.get("raw", ""))
+    return "".join(parts)

@@ -350,7 +350,13 @@ def test_table_basic():
             )
         ]
     )
-    expected = "| A | B |\n| --- | --- |\n| 1 | 2 |\n"
+    expected = (
+        "| <!-- adf:paragraph -->A<!-- /adf:paragraph -->"
+        " | <!-- adf:paragraph -->B<!-- /adf:paragraph --> |\n"
+        "| --- | --- |\n"
+        "| <!-- adf:paragraph -->1<!-- /adf:paragraph -->"
+        " | <!-- adf:paragraph -->2<!-- /adf:paragraph --> |\n"
+    )
     assert render(doc) == expected
 
 
@@ -374,7 +380,12 @@ def test_table_with_alignment():
             )
         ]
     )
-    expected = "| L | C | R |\n| :--- | :---: | ---: |\n"
+    expected = (
+        "| <!-- adf:paragraph -->L<!-- /adf:paragraph -->"
+        " | <!-- adf:paragraph -->C<!-- /adf:paragraph -->"
+        " | <!-- adf:paragraph -->R<!-- /adf:paragraph --> |\n"
+        "| :--- | :---: | ---: |\n"
+    )
     assert render(doc) == expected
 
 
@@ -399,7 +410,7 @@ def test_table_cell_hardbreak():
             )
         ]
     )
-    expected = "| a<br>b |\n| --- |\n"
+    expected = "| <!-- adf:paragraph -->a<br>b<!-- /adf:paragraph --> |\n| --- |\n"
     assert render(doc) == expected
 
 
@@ -419,7 +430,11 @@ def test_table_cell_multi_paragraph():
             )
         ]
     )
-    expected = "| first<br>second |\n| --- |\n"
+    expected = (
+        "| <!-- adf:paragraph -->first<!-- /adf:paragraph -->"
+        "<!-- adf:paragraph -->second<!-- /adf:paragraph --> |\n"
+        "| --- |\n"
+    )
     assert render(doc) == expected
 
 
@@ -447,7 +462,7 @@ def test_table_cell_non_paragraph_blocks():
         ]
     )
     result = render(doc)
-    assert "<ul><li>item1</li><li>item2</li></ul>" in result
+    assert "<!-- adf:bulletList --><ul><li><!-- adf:paragraph -->item1<!-- /adf:paragraph --></li><li><!-- adf:paragraph -->item2<!-- /adf:paragraph --></li></ul><!-- /adf:bulletList -->" in result
 
 
 def test_table_cell_block_with_hardbreak():
@@ -479,7 +494,7 @@ def test_table_cell_block_with_hardbreak():
     result = render(doc)
     # HardBreak가 <br>로 변환, 고아 \ 없어야 함
     assert "\\ " not in result
-    assert "> a<br>> b" in result
+    assert "<blockquote><!-- adf:paragraph -->a<br>b<!-- /adf:paragraph --></blockquote>" in result
 
 
 def test_table_with_attrs():
@@ -778,7 +793,7 @@ def test_inline_extension_placeholder():
             )
         ]
     )
-    assert render(doc) == "`\u2699 inline macro`\n"
+    assert render(doc) == "`\u2699 Confluence macro`\n"
 
 
 # ── 차집합 인라인 annotation ─────────────────────────────────────────
@@ -1311,5 +1326,5 @@ def test_headerless_table_renders_empty_header():
     lines = result.strip().split("\n")
     assert lines[0] == "|  |  |"
     assert lines[1] == "| --- | --- |"
-    assert lines[2] == "| A1 | B1 |"
-    assert lines[3] == "| A2 | B2 |"
+    assert lines[2] == "| <!-- adf:paragraph -->A1<!-- /adf:paragraph --> | <!-- adf:paragraph -->B1<!-- /adf:paragraph --> |"
+    assert lines[3] == "| <!-- adf:paragraph -->A2<!-- /adf:paragraph --> | <!-- adf:paragraph -->B2<!-- /adf:paragraph --> |"

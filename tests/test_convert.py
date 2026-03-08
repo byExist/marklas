@@ -704,7 +704,7 @@ def test_extension_no_roundtrip():
         ],
     }
     md = to_md(adf)
-    assert "Confluence macro" in md
+    assert "jira" in md
     restored = to_adf(md)
     # Extension raw는 복원되지 않음 — paragraph로 fallback
     assert restored["content"][0]["type"] == "paragraph"
@@ -1006,4 +1006,123 @@ def test_headerless_table_roundtrip():
             }
         ],
     }
+    assert_roundtrip(adf)
+
+
+# ── Table cell inline block 라운드트립 ────────────────────────────────
+
+
+def _table_with_cell_content(cell_content: list[dict[str, Any]]) -> dict[str, Any]:
+    """Helper: 1x1 table with given cell content blocks."""
+    return {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "table",
+                "content": [
+                    {
+                        "type": "tableRow",
+                        "content": [
+                            {
+                                "type": "tableHeader",
+                                "content": [
+                                    {"type": "paragraph", "content": [{"type": "text", "text": "H"}]}
+                                ],
+                            },
+                        ],
+                    },
+                    {
+                        "type": "tableRow",
+                        "content": [
+                            {
+                                "type": "tableCell",
+                                "content": cell_content,
+                            },
+                        ],
+                    },
+                ],
+            }
+        ],
+    }
+
+
+def test_table_cell_code_block_roundtrip():
+    adf = _table_with_cell_content([
+        {"type": "codeBlock", "attrs": {"language": "python"}, "content": [{"type": "text", "text": "x = 1"}]},
+    ])
+    assert_roundtrip(adf)
+
+
+def test_table_cell_bullet_list_roundtrip():
+    adf = _table_with_cell_content([
+        {
+            "type": "bulletList",
+            "content": [
+                {"type": "listItem", "content": [
+                    {"type": "paragraph", "content": [{"type": "text", "text": "a"}]}
+                ]},
+                {"type": "listItem", "content": [
+                    {"type": "paragraph", "content": [{"type": "text", "text": "b"}]}
+                ]},
+            ],
+        },
+    ])
+    assert_roundtrip(adf)
+
+
+def test_table_cell_ordered_list_roundtrip():
+    adf = _table_with_cell_content([
+        {
+            "type": "orderedList",
+            "content": [
+                {"type": "listItem", "content": [
+                    {"type": "paragraph", "content": [{"type": "text", "text": "first"}]}
+                ]},
+                {"type": "listItem", "content": [
+                    {"type": "paragraph", "content": [{"type": "text", "text": "second"}]}
+                ]},
+            ],
+        },
+    ])
+    assert_roundtrip(adf)
+
+
+def test_table_cell_blockquote_roundtrip():
+    adf = _table_with_cell_content([
+        {
+            "type": "blockquote",
+            "content": [
+                {"type": "paragraph", "content": [{"type": "text", "text": "quoted"}]},
+            ],
+        },
+    ])
+    assert_roundtrip(adf)
+
+
+def test_table_cell_heading_roundtrip():
+    adf = _table_with_cell_content([
+        {
+            "type": "heading",
+            "attrs": {"level": 2},
+            "content": [{"type": "text", "text": "title"}],
+        },
+    ])
+    assert_roundtrip(adf)
+
+
+def test_table_cell_thematic_break_roundtrip():
+    adf = _table_with_cell_content([
+        {"type": "rule"},
+    ])
+    assert_roundtrip(adf)
+
+
+def test_table_cell_mixed_blocks_roundtrip():
+    """Paragraph + CodeBlock in same cell."""
+    adf = _table_with_cell_content([
+        {"type": "paragraph", "content": [{"type": "text", "text": "before"}]},
+        {"type": "codeBlock", "content": [{"type": "text", "text": "code"}]},
+        {"type": "paragraph", "content": [{"type": "text", "text": "after"}]},
+    ])
     assert_roundtrip(adf)
