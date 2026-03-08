@@ -112,11 +112,18 @@ def _split_block_html(raw: str) -> list[dict[str, Any]] | None:
         if parsed:
             synthetic_tokens.append({"type": "inline_html", "raw": part})
         else:
+            # Preserve leading/trailing whitespace that _tokenize strips
+            leading = part[: len(part) - len(part.lstrip())]
+            trailing = part[len(part.rstrip()) :]
+            if leading:
+                synthetic_tokens.append({"type": "text", "raw": leading})
             inner_tokens = cast(list[dict[str, Any]], _tokenize(part))
             for tok in inner_tokens:
                 if tok["type"] == "paragraph":
                     children = cast(list[dict[str, Any]], tok.get("children", []))
                     synthetic_tokens.extend(children)
+            if trailing:
+                synthetic_tokens.append({"type": "text", "raw": trailing})
 
     if not synthetic_tokens:
         return None
@@ -346,6 +353,14 @@ def _parse_list_item_children(
                 children.append(_parse_list(child))
             case "thematic_break":
                 children.append(_parse_thematic_break())
+            case "blank_line":
+                pass
+            case "block_html":
+                inline_children = _split_block_html(child["raw"])
+                if inline_children is not None:
+                    inls = _parse_inlines(inline_children)
+                    if inls:
+                        children.append(blocks.Paragraph(children=inls))
             case _:
                 raise ValueError(f"Unknown list item child type: {child['type']}")
     return children
@@ -539,18 +554,35 @@ def _parse_annotated_layout_column(token: dict[str, Any]) -> blocks.LayoutColumn
 # ---------------------------------------------------------------------------
 
 
+def _br_to_linebreak(tok: dict[str, Any]) -> dict[str, Any]:
+    if tok.get("type") == "inline_html" and tok["raw"].strip().lower() in (
+        "<br>",
+        "<br/>",
+        "<br />",
+    ):
+        return {"type": "linebreak"}
+    return tok
+
+
 def _parse_cell_blocks(tokens: list[dict[str, Any]]) -> list[blocks.Block]:
     """Parse table cell inline tokens into blocks.
 
     Uses annotation matching to group tokens, then dispatches each group.
     Unannotated tokens become Paragraph (plain GFM).
     """
-    matched = _match_cell_annotations(tokens)
+    # Rewrite <br> inline_html → linebreak before annotation matching so that
+    # HardBreak survives inside annotated paragraph children.
+    rewritten = [_br_to_linebreak(t) for t in tokens]
+    matched = _match_cell_annotations(rewritten)
     result: list[blocks.Block] = []
     loose: list[dict[str, Any]] = []
 
     def _flush_loose() -> None:
         if not loose:
+            return
+        # linebreak-only loose tokens are block separators — skip them
+        if all(t.get("type") == "linebreak" for t in loose):
+            loose.clear()
             return
         children = _parse_inlines(loose)
         if children:
@@ -810,7 +842,15 @@ def _parse_inlines(tokens: list[dict[str, Any]]) -> list[inlines.Inline]:
     for token in matched:
         node = _parse_inline(token)
         if node is not None:
-            result.append(node)
+            # Merge adjacent Text nodes (mistune may split e.g. "[" separately)
+            if (
+                isinstance(node, inlines.Text)
+                and result
+                and isinstance(result[-1], inlines.Text)
+            ):
+                result[-1] = inlines.Text(text=result[-1].text + node.text)
+            else:
+                result.append(node)
     return result
 
 
@@ -1210,12 +1250,10 @@ def _inner_tokens_to_text(tokens: list[dict[str, Any]]) -> str:
     for tok in tokens:
         if tok["type"] == "text":
             parts.append(tok["raw"])
+        elif tok["type"] == "linebreak":
+            parts.append("<br>")
         elif tok["type"] == "inline_html":
-            raw = tok["raw"].strip()
-            if raw.lower() == "<br>":
-                parts.append("<br>")
-            else:
-                parts.append(raw)
+            parts.append(tok["raw"].strip())
         elif tok["type"] == "codespan":
             parts.append(tok["raw"])
         else:
