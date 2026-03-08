@@ -275,7 +275,7 @@ def _parse_block(token: dict[str, Any]) -> blocks.Block | None:
         case "bodiedSyncBlock":
             return _parse_annotated_bodied_sync_block(token)
         case "blank_line":
-            return blocks.Paragraph(children=[])
+            return None
         case "block_html":
             return None
         case _:

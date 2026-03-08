@@ -127,6 +127,8 @@ def _render_paragraph(node: blocks.Paragraph) -> str:
             align=node.alignment,
             indentation=node.indentation,
         )
+    if not content and _annotate_ctx.get():
+        return _annotate_block(node, content)
     return content
 
 
