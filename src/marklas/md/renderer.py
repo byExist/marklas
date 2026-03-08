@@ -3,18 +3,25 @@
 from __future__ import annotations
 
 import json
+from contextvars import ContextVar
 from datetime import UTC, datetime
 from typing import Any
 
 from marklas.nodes import blocks, inlines
 
+_annotate_ctx: ContextVar[bool] = ContextVar("annotate", default=True)
+
 
 # ── Public API ───────────────────────────────────────────────────────
 
 
-def render(doc: blocks.Document) -> str:
-    parts = [_render_block(child) for child in doc.children]
-    return "\n\n".join(parts) + "\n" if parts else ""
+def render(doc: blocks.Document, *, annotate: bool = True) -> str:
+    token = _annotate_ctx.set(annotate)
+    try:
+        parts = [_render_block(child) for child in doc.children]
+        return "\n\n".join(parts) + "\n" if parts else ""
+    finally:
+        _annotate_ctx.reset(token)
 
 
 # ── Annotation helpers ───────────────────────────────────────────────
@@ -30,6 +37,8 @@ def _filter_none(d: dict[str, Any]) -> dict[str, Any]:
 
 
 def _annotate_block(node: object, content: str, **attrs: Any) -> str:
+    if not _annotate_ctx.get():
+        return content
     tag = _to_tag(node)
     filtered = {k: v for k, v in attrs.items() if v is not None}
     attr_json = f" {json.dumps(filtered, ensure_ascii=False)}" if filtered else ""
@@ -37,6 +46,8 @@ def _annotate_block(node: object, content: str, **attrs: Any) -> str:
 
 
 def _annotate_inline(node: object, content: str, **attrs: Any) -> str:
+    if not _annotate_ctx.get():
+        return content
     tag = _to_tag(node)
     filtered = {k: v for k, v in attrs.items() if v is not None}
     attr_json = f" {json.dumps(filtered, ensure_ascii=False)}" if filtered else ""

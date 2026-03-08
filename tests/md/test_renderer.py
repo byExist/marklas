@@ -1116,6 +1116,178 @@ def test_annotate_inline_with_attrs_json():
 # ── Headerless table ────────────────────────────────────────────────
 
 
+# ── annotate=False ──────────────────────────────────────────────────
+
+
+def test_annotate_false_panel():
+    """annotate=False strips panel annotation, renders content only."""
+    doc = blocks.Document(
+        children=[
+            blocks.Panel(
+                panel_type="info",
+                children=[blocks.Paragraph(children=[inlines.Text(text="note")])],
+            )
+        ]
+    )
+    result = render(doc, annotate=False)
+    assert "<!-- adf:" not in result
+    assert "note" in result
+
+
+def test_annotate_false_task_list():
+    """annotate=False strips taskList annotation, renders checklist only."""
+    doc = blocks.Document(
+        children=[
+            blocks.TaskList(
+                items=[
+                    blocks.TaskItem(
+                        children=[inlines.Text(text="done")], state="DONE", local_id="t1"
+                    ),
+                    blocks.TaskItem(
+                        children=[inlines.Text(text="todo")], state="TODO", local_id="t2"
+                    ),
+                ]
+            )
+        ]
+    )
+    result = render(doc, annotate=False)
+    assert "<!-- adf:" not in result
+    assert "- [x] done" in result
+    assert "- [ ] todo" in result
+
+
+def test_annotate_false_mention():
+    """annotate=False strips mention annotation, renders fallback only."""
+    doc = blocks.Document(
+        children=[
+            blocks.Paragraph(
+                children=[inlines.Mention(id="user-1", text="@Alice")]
+            )
+        ]
+    )
+    result = render(doc, annotate=False)
+    assert "<!-- adf:" not in result
+    assert "`@Alice`" in result
+
+
+def test_annotate_false_text_color():
+    """annotate=False strips textColor annotation, renders text only."""
+    doc = blocks.Document(
+        children=[
+            blocks.Paragraph(
+                children=[
+                    inlines.TextColor(
+                        color="#ff0000", children=[inlines.Text(text="red")]
+                    )
+                ]
+            )
+        ]
+    )
+    result = render(doc, annotate=False)
+    assert "<!-- adf:" not in result
+    assert "red" in result
+
+
+def test_annotate_false_table_with_attrs():
+    """annotate=False strips table attrs annotation, renders plain table."""
+    doc = blocks.Document(
+        children=[
+            blocks.Table(
+                head=[
+                    blocks.TableCell(
+                        children=[blocks.Paragraph(children=[inlines.Text(text="H")])],
+                        colspan=2,
+                    ),
+                ],
+                body=[],
+                layout="default",
+            )
+        ]
+    )
+    result = render(doc, annotate=False)
+    assert "<!-- adf:" not in result
+    assert "| H |" in result
+
+
+def test_annotate_false_paragraph_alignment():
+    """annotate=False strips paragraph alignment annotation, renders text only."""
+    doc = blocks.Document(
+        children=[
+            blocks.Paragraph(
+                children=[inlines.Text(text="centered")],
+                alignment="center",
+            )
+        ]
+    )
+    result = render(doc, annotate=False)
+    assert "<!-- adf:" not in result
+    assert "centered" in result
+
+
+def test_annotate_false_nested():
+    """annotate=False strips all nested annotations."""
+    doc = blocks.Document(
+        children=[
+            blocks.Panel(
+                panel_type="info",
+                children=[
+                    blocks.TaskList(
+                        items=[
+                            blocks.TaskItem(
+                                children=[inlines.Text(text="task")],
+                                state="DONE",
+                                local_id="t1",
+                            ),
+                        ]
+                    )
+                ],
+            )
+        ]
+    )
+    result = render(doc, annotate=False)
+    assert "<!-- adf:" not in result
+    assert "- [x] task" in result
+
+
+def test_annotate_false_mixed_intersection_and_difference():
+    """annotate=False strips annotation from difference-set inside intersection mark."""
+    doc = blocks.Document(
+        children=[
+            blocks.Paragraph(
+                children=[
+                    inlines.Strong(
+                        children=[
+                            inlines.TextColor(
+                                color="#ff0000",
+                                children=[inlines.Text(text="bold red")],
+                            )
+                        ]
+                    )
+                ]
+            )
+        ]
+    )
+    result = render(doc, annotate=False)
+    assert "<!-- adf:" not in result
+    assert "**bold red**" in result
+
+
+def test_annotate_true_default():
+    """annotate defaults to True, matching existing behavior."""
+    doc = blocks.Document(
+        children=[
+            blocks.Panel(
+                panel_type="info",
+                children=[blocks.Paragraph(children=[inlines.Text(text="note")])],
+            )
+        ]
+    )
+    assert render(doc) == render(doc, annotate=True)
+
+
+# ── Headerless table ────────────────────────────────────────────────
+
+
 def test_headerless_table_renders_empty_header():
     """head=[]이면 빈 헤더 행을 생성하여 유효한 MD 테이블 출력."""
     doc = blocks.Document(

@@ -861,6 +861,104 @@ def test_table_column_headers_roundtrip():
     }
     assert_roundtrip(adf)
 
+# ── annotate=False (to_md) ─────────────────────────────────────────
+
+
+def test_to_md_annotate_false_no_comments():
+    """annotate=False strips annotation comments from difference-set nodes."""
+    adf: dict[str, Any] = {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "panel",
+                "attrs": {"panelType": "warning"},
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [{"type": "text", "text": "경고"}],
+                    }
+                ],
+            }
+        ],
+    }
+    md = to_md(adf, annotate=False)
+    assert "<!-- adf:" not in md
+    assert "경고" in md
+
+
+def test_to_md_annotate_false_inline():
+    """annotate=False strips inline difference-set annotations."""
+    adf: dict[str, Any] = {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "paragraph",
+                "content": [
+                    {"type": "text", "text": "hello "},
+                    {"type": "mention", "attrs": {"id": "user-1", "text": "@John"}},
+                ],
+            }
+        ],
+    }
+    md = to_md(adf, annotate=False)
+    assert "<!-- adf:" not in md
+    assert "`@John`" in md
+
+
+def test_to_md_annotate_false_mixed():
+    """annotate=False strips all annotations from mixed block + inline difference-set."""
+    adf: dict[str, Any] = {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "panel",
+                "attrs": {"panelType": "info"},
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [
+                            {"type": "text", "text": "see "},
+                            {
+                                "type": "emoji",
+                                "attrs": {"shortName": ":smile:", "text": "\U0001f604"},
+                            },
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
+    md = to_md(adf, annotate=False)
+    assert "<!-- adf:" not in md
+    assert "see" in md
+    assert "\U0001f604" in md
+
+
+def test_to_md_annotate_true_default():
+    """annotate defaults to True, matching existing behavior."""
+    adf: dict[str, Any] = {
+        "type": "doc",
+        "version": 1,
+        "content": [
+            {
+                "type": "panel",
+                "attrs": {"panelType": "info"},
+                "content": [
+                    {
+                        "type": "paragraph",
+                        "content": [{"type": "text", "text": "note"}],
+                    }
+                ],
+            }
+        ],
+    }
+    assert to_md(adf) == to_md(adf, annotate=True)
+    assert "<!-- adf:panel" in to_md(adf)
+
+
 def test_headerless_table_roundtrip():
     """headerless table (모든 셀이 tableCell)이 MD 라운드트립을 통해 보존된다."""
     adf: dict[str, Any] = {
