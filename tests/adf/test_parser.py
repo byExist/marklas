@@ -8,7 +8,7 @@ def _doc(*content: dict[str, Any]) -> dict[str, Any]:
     return {"type": "doc", "version": 1, "content": list(content)}
 
 
-# ── 교집합 파싱 ───────────────────────────────────────────────────────
+# ── Intersection parsing ──────────────────────────────────────────────
 
 
 def test_paragraph():
@@ -284,7 +284,7 @@ def test_nested_marks():
     assert t.text == "x"
 
 
-# ── 차집합 블록 파싱 ─────────────────────────────────────────────────
+# ── Difference-set block parsing ──────────────────────────────────────
 
 
 def test_panel():
@@ -538,11 +538,11 @@ def test_unknown_block():
     assert e.raw["type"] == "unknownBlock"
 
 
-# ── 차집합 인라인 파싱 ───────────────────────────────────────────────
+# ── Difference-set inline parsing ─────────────────────────────────────
 
 
 def _first_inline(doc: dict[str, Any]) -> inlines.Inline:
-    """parse(doc)의 첫 번째 paragraph의 첫 번째 inline을 반환."""
+    """Return the first inline of the first paragraph from parse(doc)."""
     p = parse(doc).children[0]
     assert isinstance(p, blocks.Paragraph)
     return p.children[0]
@@ -959,7 +959,7 @@ def test_table_attrs():
 
 
 def test_table_header_cell_type():
-    """tableHeader 셀은 TableHeader로, tableCell은 TableCell로 파싱."""
+    """tableHeader cells are parsed as TableHeader, tableCell as TableCell."""
     doc = _doc(
         {
             "type": "table",
@@ -1011,7 +1011,7 @@ def test_table_header_cell_type():
     )
     table = parse(doc).children[0]
     assert isinstance(table, blocks.Table)
-    # head: 첫 행의 tableHeader
+    # head: tableHeader from first row
     assert isinstance(table.head[0], blocks.TableHeader)
     # body row 0: tableHeader (column header)
     assert isinstance(table.body[0][0], blocks.TableHeader)

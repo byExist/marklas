@@ -60,7 +60,7 @@ from marklas.nodes.blocks import (
 )
 
 
-# --- 교집합 노드 인스턴스화 ---
+# --- Intersection node instantiation ---
 
 
 def test_intersection_blocks():
@@ -101,7 +101,7 @@ def test_intersection_inlines():
     assert isinstance(SoftBreak(), Inline)
 
 
-# --- 차집합 블록 인스턴스화 ---
+# --- Difference-set block instantiation ---
 
 
 def test_panel():
@@ -170,7 +170,7 @@ def test_placeholder_blocks():
     assert BodiedSyncBlock(raw=raw).raw == raw
 
 
-# --- 차집합 인라인 인스턴스화 ---
+# --- Difference-set inline instantiation ---
 
 
 def test_mention():
@@ -218,7 +218,7 @@ def test_placeholder_inlines():
     assert InlineExtension(raw=raw).raw == raw
 
 
-# --- 기존 노드 변경 확인 ---
+# --- Existing node modification verification ---
 
 
 def test_table_cell_children_are_blocks():

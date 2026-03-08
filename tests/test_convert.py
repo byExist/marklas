@@ -1,4 +1,4 @@
-"""통합 테스트: to_adf / to_md 라운드트립"""
+"""Integration tests: to_adf / to_md roundtrip"""
 
 from __future__ import annotations
 
@@ -7,11 +7,11 @@ from typing import Any, cast
 from marklas import to_adf, to_md
 
 
-# ── 헬퍼 ──────────────────────────────────────────────────────────────
+# ── Helpers ──────────────────────────────────────────────────────────────
 
 
 def _strip_local_ids(obj: Any) -> Any:
-    """localId 필드를 재귀적으로 제거하여 구조적 동등성만 비교."""
+    """Recursively strip localId fields for structural equality comparison."""
     if isinstance(obj, dict):
         return {
             k: _strip_local_ids(v)
@@ -24,24 +24,24 @@ def _strip_local_ids(obj: Any) -> Any:
 
 
 def assert_roundtrip(adf: dict[str, Any]) -> None:
-    """to_md → to_adf 라운드트립 검증. localId 무시."""
+    """Verify to_md → to_adf roundtrip. Ignores localId."""
     md = to_md(adf)
     restored = to_adf(md)
     assert _strip_local_ids(restored["content"]) == _strip_local_ids(adf["content"])
 
 
-# ── 교집합 ─────────────────────────────────────────────────────────────
+# ── Intersection ─────────────────────────────────────────────────────────────
 
 
 def test_intersection_unchanged():
-    """교집합 노드만 있으면 annotation 없음"""
+    """Intersection-only nodes produce no annotations"""
     md = "**Hello**"
     result = to_adf(md)
     assert result["content"][0]["content"][0]["marks"] == [{"type": "strong"}]
 
 
 def test_intersection_adf_to_md():
-    """교집합 노드만 있으면 주석 없는 깨끗한 Markdown"""
+    """Intersection-only nodes produce clean Markdown without annotations"""
     adf: dict[str, Any] = {
         "type": "doc",
         "version": 1,
@@ -59,7 +59,7 @@ def test_intersection_adf_to_md():
     assert md.strip() == "**hello**"
 
 
-# ── 블록 라운드트립 ───────────────────────────────────────────────────
+# ── Block roundtrip ───────────────────────────────────────────────────
 
 
 def test_roundtrip_panel():
@@ -296,7 +296,7 @@ def test_roundtrip_embed_card():
     assert_roundtrip(adf)
 
 
-# ── 인라인 라운드트립 ─────────────────────────────────────────────────
+# ── Inline roundtrip ─────────────────────────────────────────────────
 
 
 def test_roundtrip_mention():
@@ -387,7 +387,7 @@ def test_roundtrip_inline_card():
     assert_roundtrip(adf)
 
 
-# ── 인라인 marks (래핑) 라운드트립 ────────────────────────────────────
+# ── Inline marks (wrapping) roundtrip ────────────────────────────────────
 
 
 def test_roundtrip_underline():
@@ -510,7 +510,7 @@ def test_roundtrip_annotation():
     assert_roundtrip(adf)
 
 
-# ── Block marks 라운드트립 ────────────────────────────────────────────
+# ── Block marks roundtrip ────────────────────────────────────────────
 
 
 def test_roundtrip_paragraph_alignment():
@@ -544,7 +544,7 @@ def test_roundtrip_heading_indentation():
     assert_roundtrip(adf)
 
 
-# ── Table attrs 라운드트립 ────────────────────────────────────────────
+# ── Table attrs roundtrip ────────────────────────────────────────────
 
 
 def test_roundtrip_table_attrs():
@@ -602,11 +602,11 @@ def test_roundtrip_table_attrs():
     assert_roundtrip(adf)
 
 
-# ── 중첩 라운드트립 ──────────────────────────────────────────────────
+# ── Nested roundtrip ──────────────────────────────────────────────────
 
 
 def test_roundtrip_panel_with_task_list():
-    """Panel 내부에 TaskList가 중첩된 케이스"""
+    """TaskList nested inside Panel"""
     adf: dict[str, Any] = {
         "type": "doc",
         "version": 1,
@@ -634,7 +634,7 @@ def test_roundtrip_panel_with_task_list():
 
 
 def test_roundtrip_layout_with_panel():
-    """LayoutSection 내부에 Panel이 중첩된 케이스"""
+    """Panel nested inside LayoutSection"""
     adf: dict[str, Any] = {
         "type": "doc",
         "version": 1,
@@ -675,11 +675,11 @@ def test_roundtrip_layout_with_panel():
     assert_roundtrip(adf)
 
 
-# ── Placeholder (라운드트립 포기 확인) ────────────────────────────────
+# ── Placeholder (verify no roundtrip) ────────────────────────────────
 
 
 def test_extension_no_roundtrip():
-    """Extension은 라운드트립 불가. MD에서 placeholder로 렌더링되고 복원되지 않음."""
+    """Extension cannot roundtrip. Rendered as placeholder in MD and not restored."""
     adf: dict[str, Any] = {
         "type": "doc",
         "version": 1,
@@ -696,7 +696,7 @@ def test_extension_no_roundtrip():
     md = to_md(adf)
     assert "jira" in md
     restored = to_adf(md)
-    # Extension raw는 복원되지 않음 — paragraph로 fallback
+    # Extension raw is not restored — falls back to paragraph
     assert restored["content"][0]["type"] == "paragraph"
 
 
@@ -704,14 +704,14 @@ def test_extension_no_roundtrip():
 
 
 def test_broken_annotation_no_closing():
-    """닫는 주석이 없으면 교집합 범위로 fallback"""
+    """Falls back to intersection scope when closing annotation is missing"""
     md = '<!-- adf:panel {"panelType":"warning"} -->\ncontent\n<!-- BROKEN -->\n'
     result = to_adf(md)
     assert result["content"][0]["type"] == "paragraph"
 
 
 def test_broken_annotation_invalid_json():
-    """JSON 파싱 실패 시 마커 무시 — panel 노드가 생성되지 않음"""
+    """Marker ignored on JSON parse failure — no panel node created"""
     md = "<!-- adf:panel {INVALID} -->\ncontent\n<!-- /adf:panel -->\n"
     result = to_adf(md)
     types = [c["type"] for c in result["content"]]
@@ -719,7 +719,7 @@ def test_broken_annotation_invalid_json():
 
 
 def test_roundtrip_expand_with_table():
-    """Expand 내부 테이블 라운드트립."""
+    """Table inside Expand roundtrip."""
     adf: dict[str, Any] = {
         "type": "doc",
         "version": 1,
@@ -773,7 +773,7 @@ def test_roundtrip_expand_with_table():
 
 
 def test_roundtrip_underline_inside_strong():
-    """Strong 내부 underline mark 라운드트립."""
+    """Underline mark inside Strong roundtrip."""
     adf: dict[str, Any] = {
         "type": "doc",
         "version": 1,
@@ -796,14 +796,14 @@ def test_roundtrip_underline_inside_strong():
 
 
 def test_broken_annotation_mismatched_tags():
-    """여는/닫는 태그가 다르면 fallback"""
+    """Falls back when open/close tags mismatch"""
     md = '<!-- adf:panel {"panelType":"info"} -->\ncontent\n<!-- /adf:expand -->\n'
     result = to_adf(md)
     assert result["content"][0]["type"] == "paragraph"
 
 
 def test_table_column_headers_roundtrip():
-    """body 행의 tableHeader 셀이 MD 라운드트립을 통해 보존된다."""
+    """tableHeader cells in body rows are preserved through MD roundtrip."""
     adf: dict[str, Any] = {
         "type": "doc",
         "version": 1,
@@ -963,7 +963,7 @@ def test_to_md_annotate_true_default():
 
 
 def test_headerless_table_roundtrip():
-    """headerless table (모든 셀이 tableCell)이 MD 라운드트립을 통해 보존된다."""
+    """Headerless table (all cells are tableCell) is preserved through MD roundtrip."""
     adf: dict[str, Any] = {
         "type": "doc",
         "version": 1,
@@ -1024,7 +1024,7 @@ def test_headerless_table_roundtrip():
     assert_roundtrip(adf)
 
 
-# ── Table cell inline block 라운드트립 ────────────────────────────────
+# ── Table cell inline block roundtrip ────────────────────────────────
 
 
 def _table_with_cell_content(cell_content: list[dict[str, Any]]) -> dict[str, Any]:
@@ -1192,7 +1192,7 @@ def test_table_cell_mixed_blocks_roundtrip():
 
 
 def test_table_cell_pipe_roundtrip():
-    """셀 내 | 문자가 라운드트립에서 보존되어야 한다."""
+    """Pipe character in cell should be preserved through roundtrip."""
     adf = _table_with_cell_content(
         [{"type": "paragraph", "content": [{"type": "text", "text": "a | b"}]}]
     )
@@ -1200,8 +1200,8 @@ def test_table_cell_pipe_roundtrip():
 
 
 def test_empty_paragraph_roundtrip():
-    """빈 Paragraph가 라운드트립에서 보존되어야 한다."""
-    adf = {
+    """Empty Paragraph should be preserved through roundtrip."""
+    adf: dict[str, Any] = {
         "type": "doc",
         "version": 1,
         "content": [
@@ -1222,7 +1222,7 @@ def test_empty_paragraph_roundtrip():
 
 
 def test_table_cell_hardbreak_roundtrip():
-    """셀 내 HardBreak이 라운드트립에서 보존되어야 한다."""
+    """HardBreak in cell should be preserved through roundtrip."""
     adf = _table_with_cell_content(
         [
             {
@@ -1240,7 +1240,7 @@ def test_table_cell_hardbreak_roundtrip():
 
 def test_code_block_in_nested_list_roundtrip():
     """Code block inside nested list item should survive roundtrip."""
-    adf = {
+    adf: dict[str, Any] = {
         "type": "doc",
         "version": 1,
         "content": [
@@ -1284,7 +1284,7 @@ def test_code_block_in_nested_list_roundtrip():
 
 def test_list_with_inline_annotation_roundtrip():
     """List item inline annotation should survive roundtrip."""
-    adf = {
+    adf: dict[str, Any] = {
         "type": "doc",
         "version": 1,
         "content": [

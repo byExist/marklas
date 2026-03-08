@@ -1,4 +1,4 @@
-"""MD renderer 테스트: AST → Markdown"""
+"""MD renderer tests: AST → Markdown"""
 
 from __future__ import annotations
 
@@ -8,7 +8,7 @@ from marklas.md.renderer import render
 from marklas.nodes import blocks, inlines
 
 
-# ── 교집합 블록 렌더링 ───────────────────────────────────────────────
+# ── Intersection block rendering ───────────────────────────────────────────────
 
 
 def test_paragraph():
@@ -146,7 +146,7 @@ def test_empty_document():
     assert render(doc) == ""
 
 
-# ── 교집합 인라인 렌더링 ─────────────────────────────────────────────
+# ── Intersection inline rendering ─────────────────────────────────────────────
 
 
 def test_strong():
@@ -439,7 +439,7 @@ def test_table_cell_multi_paragraph():
 
 
 def test_table_cell_non_paragraph_blocks():
-    """리스트가 테이블 셀에서 HTML <ul>/<ol>로 렌더링."""
+    """Lists render as HTML <ul>/<ol> in table cells."""
     doc = blocks.Document(
         children=[
             blocks.Table(
@@ -479,7 +479,7 @@ def test_table_cell_non_paragraph_blocks():
 
 
 def test_table_cell_block_with_hardbreak():
-    """비-Paragraph 블록 내 HardBreak가 고아 \\가 아닌 <br>로 변환."""
+    """HardBreak in non-Paragraph blocks converts to <br> instead of orphan backslash."""
     doc = blocks.Document(
         children=[
             blocks.Table(
@@ -505,7 +505,7 @@ def test_table_cell_block_with_hardbreak():
         ]
     )
     result = render(doc)
-    # HardBreak가 <br>로 변환, 고아 \ 없어야 함
+    # HardBreak converted to <br>, no orphan backslash
     assert "\\ " not in result
     assert (
         "<blockquote><!-- adf:paragraph -->a<br>b<!-- /adf:paragraph --></blockquote>"
@@ -535,7 +535,7 @@ def test_table_with_attrs():
     assert '"colspan": 2' in result
 
 
-# ── 차집합 블록 annotation ───────────────────────────────────────────
+# ── Difference-set block annotation ───────────────────────────────────────────
 
 
 def test_panel():
@@ -751,7 +751,7 @@ def test_embed_card():
     assert '"width": 80.0' in result
 
 
-# ── Placeholder 전용 ─────────────────────────────────────────────────
+# ── Placeholder only ─────────────────────────────────────────────────
 
 
 def test_extension_placeholder():
@@ -812,7 +812,7 @@ def test_inline_extension_placeholder():
     assert render(doc) == "`\u2699 Confluence macro`\n"
 
 
-# ── 차집합 인라인 annotation ─────────────────────────────────────────
+# ── Difference-set inline annotation ─────────────────────────────────────────
 
 
 def test_mention():
@@ -1038,7 +1038,7 @@ def test_heading_indentation():
     assert "## indented" in result
 
 
-# ── 중첩 ─────────────────────────────────────────────────────────────
+# ── Nesting ─────────────────────────────────────────────────────────────
 
 
 def test_panel_with_task_list():
@@ -1072,7 +1072,7 @@ def test_panel_with_task_list():
     assert "- [ ] task 2" in result
 
 
-# ── _annotate_block / _annotate_inline 정확성 ────────────────────────
+# ── _annotate_block / _annotate_inline correctness ────────────────────────
 
 
 def test_annotate_block_no_attrs():
@@ -1114,7 +1114,7 @@ def test_annotate_block_with_attrs_json():
         ]
     )
     result = render(doc)
-    # JSON attrs가 파싱 가능한지 확인
+    # Verify JSON attrs are parseable
     lines = result.split("\n")
     open_tag = lines[0]
     assert open_tag.startswith("<!-- adf:panel ")
@@ -1134,7 +1134,7 @@ def test_annotate_inline_with_attrs_json():
         ]
     )
     result = render(doc)
-    # 인라인 annotation JSON 파싱
+    # Parse inline annotation JSON
     start = result.index("<!-- adf:textColor ") + len("<!-- adf:textColor ")
     end = result.index(" -->t")
     json_str = result[start:end]
@@ -1320,7 +1320,7 @@ def test_annotate_true_default():
 
 
 def test_headerless_table_renders_empty_header():
-    """head=[]이면 빈 헤더 행을 생성하여 유효한 MD 테이블 출력."""
+    """head=[] generates empty header row for valid MD table output."""
     doc = blocks.Document(
         children=[
             blocks.Table(
@@ -1372,7 +1372,7 @@ def test_headerless_table_renders_empty_header():
 
 
 def test_table_cell_pipe_escaped():
-    """셀 내용의 | 가 \\| 로 이스케이프 되어야 한다."""
+    """Pipe characters in cell content must be escaped as \\|."""
     doc = blocks.Document(
         children=[
             blocks.Table(
@@ -1392,7 +1392,7 @@ def test_table_cell_pipe_escaped():
 
 
 def test_empty_paragraph_annotated():
-    """annotated 모드에서 빈 Paragraph에 annotation이 감싸져야 한다."""
+    """Empty Paragraph should be wrapped with annotation in annotated mode."""
     doc = blocks.Document(
         children=[
             blocks.Heading(level=1, children=[inlines.Text(text="A")]),
@@ -1405,7 +1405,7 @@ def test_empty_paragraph_annotated():
 
 
 def test_empty_paragraph_plain():
-    """plain 모드에서 빈 Paragraph는 annotation 없이 빈 줄이어야 한다."""
+    """Empty Paragraph should be an empty line without annotation in plain mode."""
     doc = blocks.Document(
         children=[
             blocks.Heading(level=1, children=[inlines.Text(text="A")]),

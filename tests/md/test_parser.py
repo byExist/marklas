@@ -1,4 +1,4 @@
-"""MD parser 테스트: Markdown → AST"""
+"""MD parser tests: Markdown → AST"""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ from marklas.md.renderer import render
 from marklas.nodes import blocks, inlines
 
 
-# ── 교집합 블록 파싱 ───────────────────────────────────────────────
+# ── Intersection block parsing ───────────────────────────────────────────────
 
 
 def test_paragraph():
@@ -132,7 +132,7 @@ def test_table_alignments():
     assert t.alignments == ["left", "center", "right"]
 
 
-# ── 교집합 인라인 파싱 ─────────────────────────────────────────────
+# ── Intersection inline parsing ─────────────────────────────────────────────
 
 
 def test_strong():
@@ -204,12 +204,12 @@ def test_nested_marks():
     doc = parse("***both***\n")
     p = doc.children[0]
     assert isinstance(p, blocks.Paragraph)
-    # mistune의 파싱 순서에 따라 Strong > Emphasis 또는 반대
+    # Depends on mistune parse order: Strong > Emphasis or vice versa
     outer = p.children[0]
     assert isinstance(outer, (inlines.Strong, inlines.Emphasis))
 
 
-# ── 블록 주석 복원 ──────────────────────────────────────────────────
+# ── Block annotation restoration ──────────────────────────────────────────────────
 
 
 def test_panel_annotation():
@@ -256,7 +256,7 @@ def test_nested_expand_annotation():
 
 
 def test_expand_with_table():
-    """Expand 내부 테이블이 올바르게 파싱되는지 확인."""
+    """Table inside Expand should be parsed correctly."""
     md = (
         '<!-- adf:expand {"title": "Details"} -->\n'
         "| A | B |\n"
@@ -271,7 +271,7 @@ def test_expand_with_table():
 
 
 def test_panel_with_table():
-    """Panel 내부 테이블이 올바르게 파싱되는지 확인."""
+    """Table inside Panel should be parsed correctly."""
     md = (
         '<!-- adf:panel {"panelType": "info"} -->\n'
         "| H |\n"
@@ -286,7 +286,7 @@ def test_panel_with_table():
 
 
 def test_expand_blockquote_legacy():
-    """기존 형식 (blockquote 래핑)도 하위 호환으로 파싱."""
+    """Legacy format (blockquote wrapping) should be parsed for backward compatibility."""
     md = '<!-- adf:expand {"title": "Old"} -->\n> legacy\n<!-- /adf:expand -->\n'
     doc = parse(md)
     expand = doc.children[0]
@@ -295,7 +295,7 @@ def test_expand_blockquote_legacy():
 
 
 def test_inline_annotation_inside_strong():
-    """Strong 내부의 인라인 주석이 정상 페어링되는지 확인."""
+    """Inline annotations inside Strong should be paired correctly."""
     md = "**bold <!-- adf:underline -->text<!-- /adf:underline --> bold**\n"
     doc = parse(md)
     p = doc.children[0]
@@ -312,7 +312,7 @@ def test_inline_annotation_inside_strong():
 
 
 def test_inline_annotation_inside_emphasis():
-    """Emphasis 내부의 인라인 주석이 정상 페어링되는지 확인."""
+    """Inline annotations inside Emphasis should be paired correctly."""
     md = "*em <!-- adf:underline -->text<!-- /adf:underline --> em*\n"
     doc = parse(md)
     p = doc.children[0]
@@ -330,7 +330,7 @@ def test_task_list_annotation():
     assert len(tl.items) == 2
     assert tl.items[0].state == "DONE"
     assert tl.items[1].state == "TODO"
-    # children에서 Text 확인
+    # Verify Text in children
     assert isinstance(tl.items[0].children[0], inlines.Text)
     assert tl.items[0].children[0].text == "done task"
 
@@ -455,7 +455,7 @@ def test_table_annotation():
     assert t.head[0].colspan == 2
 
 
-# ── 인라인 주석 복원 ────────────────────────────────────────────────
+# ── Inline annotation restoration ────────────────────────────────────────────────
 
 
 def test_mention_annotation():
@@ -592,7 +592,7 @@ def test_annotation_inline():
     assert a.id == "ann-1"
 
 
-# ── 중첩 주석 ───────────────────────────────────────────────────────
+# ── Nested annotations ───────────────────────────────────────────────────────
 
 
 def test_panel_with_task_list():
@@ -635,16 +635,16 @@ def test_nested_inline_annotations():
 def test_missing_closing_annotation():
     md = '<!-- adf:panel {"panelType": "info"} -->\n> content\n'
     doc = parse(md)
-    # 닫는 주석 없으면 내부 요소가 그대로 유지
+    # Without closing annotation, inner elements are preserved as-is
     assert len(doc.children) >= 1
-    # Panel이 아닌 BlockQuote 또는 다른 블록으로 유지
+    # Remains as BlockQuote or other block, not Panel
     assert not isinstance(doc.children[0], blocks.Panel)
 
 
 def test_orphan_closing_annotation():
     md = "hello\n<!-- /adf:panel -->\n"
     doc = parse(md)
-    # 짝 없는 닫는 주석은 무시되고, 원래 콘텐츠만 유지
+    # Orphan closing annotation is ignored, original content preserved
     assert len(doc.children) >= 1
     assert isinstance(doc.children[0], blocks.Paragraph)
 
@@ -652,11 +652,11 @@ def test_orphan_closing_annotation():
 def test_invalid_json_annotation():
     md = "<!-- adf:panel {invalid json} -->\n> content\n<!-- /adf:panel -->\n"
     doc = parse(md)
-    # JSON 파싱 실패 → 마커 무시, 원래 blockquote 유지
+    # JSON parse failure → marker ignored, original blockquote preserved
     assert not isinstance(doc.children[0], blocks.Panel)
 
 
-# ── 라운드트립 (render → parse) ──────────────────────────────────────
+# ── Roundtrip (render → parse) ──────────────────────────────────────
 
 
 def test_roundtrip_paragraph():
@@ -740,7 +740,7 @@ def test_roundtrip_underline():
 
 
 def test_empty_header_row_parsed_as_headerless():
-    """빈 헤더 행이 있는 MD 테이블은 head=[]로 파싱."""
+    """MD table with empty header row should be parsed as head=[]."""
     md = "|  |  |\n| --- | --- |\n| A1 | B1 |\n| A2 | B2 |\n"
     doc = parse(md)
     table = doc.children[0]
@@ -749,11 +749,11 @@ def test_empty_header_row_parsed_as_headerless():
     assert len(table.body) == 2
 
 
-# ── 라운드트립 수정 관련 테스트 ───────────────────────────────────────
+# ── Roundtrip fix tests ───────────────────────────────────────
 
 
 def test_blank_line_not_parsed_as_paragraph():
-    """블록 사이 빈 줄이 빈 Paragraph로 파싱되면 안 된다."""
+    """Blank lines between blocks should not be parsed as empty Paragraphs."""
     md = "# A\n\n# B\n"
     doc = parse(md)
     assert len(doc.children) == 2
@@ -761,7 +761,7 @@ def test_blank_line_not_parsed_as_paragraph():
 
 
 def test_annotated_empty_paragraph_preserved():
-    """annotated 빈 Paragraph는 보존되어야 한다."""
+    """Annotated empty Paragraph should be preserved."""
     md = "# A\n\n<!-- adf:paragraph -->\n\n<!-- /adf:paragraph -->\n\n# B\n"
     doc = parse(md)
     assert len(doc.children) == 3
@@ -772,7 +772,7 @@ def test_annotated_empty_paragraph_preserved():
 
 
 def test_blank_line_in_list_item_ignored():
-    """리스트 아이템 내 blank_line은 무시되어야 한다."""
+    """blank_line inside list item should be ignored."""
     md = "- item one\n\n- item two\n"
     doc = parse(md)
     assert len(doc.children) == 1
@@ -782,7 +782,7 @@ def test_blank_line_in_list_item_ignored():
 
 
 def test_block_html_annotation_in_list_item():
-    """리스트 아이템 내 inline annotation이 파싱되어야 한다."""
+    """Inline annotation in list item should be parsed."""
     md = '- <!-- adf:status {"text": "Done", "color": "green", "style": "bold"} -->`Done`<!-- /adf:status -->\n'
     doc = parse(md)
     bl = doc.children[0]
@@ -793,7 +793,7 @@ def test_block_html_annotation_in_list_item():
 
 
 def test_br_to_linebreak_in_table_cell():
-    """테이블 셀 내 <br>이 HardBreak으로 파싱되어야 한다."""
+    """<br> in table cell should be parsed as HardBreak."""
     md = (
         "<!-- adf:table {} -->\n"
         "| <!-- adf:paragraph -->a<br>b<!-- /adf:paragraph --> |\n"
@@ -813,25 +813,25 @@ def test_br_to_linebreak_in_table_cell():
 
 
 def test_split_block_html_preserves_whitespace():
-    """_split_block_html이 annotation 사이 공백을 보존해야 한다."""
+    """_split_block_html should preserve whitespace between annotations."""
     md = "<!-- adf:strong -->bold<!-- /adf:strong --> text\n"
     doc = parse(md)
     p = doc.children[0]
     assert isinstance(p, blocks.Paragraph)
-    # " text" 부분의 공백이 보존되어야 한다
+    # Whitespace in " text" part should be preserved
     texts = [c for c in p.children if isinstance(c, inlines.Text)]
     combined = "".join(t.text for t in texts)
     assert " text" in combined
 
 
 def test_adjacent_text_nodes_merged():
-    """mistune이 분리한 인접 Text 노드가 병합되어야 한다."""
-    # "[" 문자가 포함되면 mistune이 텍스트를 분리함
+    """Adjacent Text nodes split by mistune should be merged."""
+    # mistune splits text when "[" character is present
     md = '<!-- adf:backgroundColor {"color": "#fff"} -->text[1]end<!-- /adf:backgroundColor -->\n'
     doc = parse(md)
     p = doc.children[0]
     assert isinstance(p, blocks.Paragraph)
-    # backgroundColor 안의 텍스트가 하나의 Text로 병합
+    # Text inside backgroundColor should be merged into one Text
     bg = p.children[0]
     assert isinstance(bg, inlines.BackgroundColor)
     text_children = [c for c in bg.children if isinstance(c, inlines.Text)]
@@ -879,6 +879,7 @@ def test_code_block_in_list_item_dedented():
     )
     doc = parse(md)
     bl = doc.children[0]
+    assert isinstance(bl, blocks.BulletList)
     sub_list = bl.items[0].children[1]
     assert isinstance(sub_list, blocks.BulletList)
     code_block = sub_list.items[0].children[0]

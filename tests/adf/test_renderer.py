@@ -1,4 +1,4 @@
-"""ADF renderer 테스트: AST → ADF JSON"""
+"""ADF renderer tests: AST → ADF JSON"""
 
 from __future__ import annotations
 
@@ -27,7 +27,7 @@ def _text(t: str, **kwargs: Any) -> dict[str, Any]:
     return result
 
 
-# ── 교집합 블록 렌더링 ──────────────────────────────────────────────
+# ── Intersection block rendering ──────────────────────────────────────
 
 
 def test_paragraph():
@@ -165,7 +165,7 @@ def test_table():
     assert table["content"][1]["content"][0]["type"] == "tableCell"
 
 
-# ── 교집합 인라인/marks 렌더링 ──────────────────────────────────────
+# ── Intersection inline/marks rendering ───────────────────────────────
 
 
 def test_strong():
@@ -271,7 +271,7 @@ def test_soft_break():
 
 
 def test_image_as_media_single():
-    """Paragraph에 Image 1개만 있으면 mediaSingle로 변환."""
+    """Single Image in Paragraph converts to mediaSingle."""
     doc = blocks.Document(
         children=[blocks.Paragraph(children=[inlines.Image(url="http://img.png")])]
     )
@@ -281,7 +281,7 @@ def test_image_as_media_single():
 
 
 def test_image_inline_fallback():
-    """Paragraph에 다른 인라인과 함께 있으면 link fallback."""
+    """Image with other inlines in Paragraph falls back to link."""
     doc = blocks.Document(
         children=[
             blocks.Paragraph(
@@ -299,7 +299,7 @@ def test_image_inline_fallback():
 
 
 def test_bullet_list_checked_to_task_list():
-    """BulletList(checked) → taskList 변환 (교집합 역매핑)."""
+    """BulletList(checked) → taskList conversion (intersection reverse mapping)."""
     doc = blocks.Document(
         children=[
             blocks.BulletList(
@@ -328,7 +328,7 @@ def test_bullet_list_checked_to_task_list():
 
 
 def test_nested_marks_ordering():
-    """Strong > Em → marks 순서 strong, em."""
+    """Strong > Em → marks order strong, em."""
     doc = blocks.Document(
         children=[
             blocks.Paragraph(
@@ -345,7 +345,7 @@ def test_nested_marks_ordering():
     assert [m["type"] for m in marks] == ["strong", "em"]
 
 
-# ── 차집합 블록 렌더링 ──────────────────────────────────────────────
+# ── Difference-set block rendering ────────────────────────────────────
 
 
 def test_panel():
@@ -447,7 +447,7 @@ def test_task_list():
 
 
 def test_task_list_empty_content():
-    """content가 빈 taskItem에는 content 키가 없어야 한다."""
+    """taskItem with empty content should not have content key."""
     doc = blocks.Document(
         children=[
             blocks.TaskList(
@@ -511,7 +511,7 @@ def test_layout_section():
 
 
 def test_layout_section_default_width():
-    """width가 None이면 균등 분배."""
+    """Equal distribution when width is None."""
     doc = blocks.Document(
         children=[
             blocks.LayoutSection(
@@ -628,7 +628,7 @@ def test_bodied_sync_block_raw():
     assert render(doc)["content"][0] is raw
 
 
-# ── 차집합 인라인 렌더링 ────────────────────────────────────────────
+# ── Difference-set inline rendering ───────────────────────────────────
 
 
 def test_mention():
@@ -738,7 +738,7 @@ def test_inline_extension_raw():
     assert render(doc)["content"][0]["content"][0] is raw
 
 
-# ── 래핑 marks → ADF marks ──────────────────────────────────────────
+# ── Wrapping marks → ADF marks ────────────────────────────────────────
 
 
 def test_underline():
@@ -856,7 +856,7 @@ def test_heading_indentation():
 
 
 def test_paragraph_no_marks():
-    """alignment/indentation 없으면 marks 키 없음."""
+    """No marks key when alignment/indentation absent."""
     doc = blocks.Document(
         children=[blocks.Paragraph(children=[inlines.Text(text="plain")])]
     )
@@ -925,11 +925,11 @@ def test_cell_attrs():
     }
 
 
-# ── ADF 라운드트립 ──────────────────────────────────────────────────
+# ── ADF roundtrip ─────────────────────────────────────────────────────
 
 
 def _strip_local_ids(obj: dict[str, Any]) -> dict[str, Any]:
-    """localId를 재귀적으로 제거하여 라운드트립 비교를 가능하게 한다."""
+    """Recursively strip localId to enable roundtrip comparison."""
     result: dict[str, Any] = {}
     for k, v in obj.items():
         if k == "localId":
@@ -1364,7 +1364,7 @@ def test_roundtrip_block_marks():
 
 
 def test_table_column_headers():
-    """body 행의 TableHeader 셀은 tableHeader 타입으로 렌더링."""
+    """TableHeader cells in body rows render as tableHeader type."""
     doc = blocks.Document(
         children=[
             blocks.Table(
