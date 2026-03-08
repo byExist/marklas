@@ -197,7 +197,7 @@ def _render_list_item_body(children: list[blocks.Block], tight: bool) -> str:
     body = "\n\n".join(parts)
     lines = body.split("\n")
     if len(lines) > 1:
-        return lines[0] + "\n" + "\n".join("    " + l if l else "" for l in lines[1:])
+        return lines[0] + "\n" + "\n".join("    " + ln if ln else "" for ln in lines[1:])
     return body
 
 

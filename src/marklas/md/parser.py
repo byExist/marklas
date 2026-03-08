@@ -10,8 +10,6 @@ import mistune
 
 from marklas.nodes import blocks, inlines
 
-type _Alignment = Literal["left", "center", "right"] | None
-
 
 def parse(markdown: str) -> blocks.Document:
     tokens = cast(list[dict[str, Any]], _tokenize(markdown))
@@ -328,7 +326,7 @@ def _parse_list_item_children(
 def _parse_table(token: dict[str, Any]) -> blocks.Table:
     head: list[blocks.TableCell] = []
     body: list[list[blocks.TableCell]] = []
-    alignments: list[_Alignment] = []
+    alignments: list[Literal["left", "center", "right"] | None] = []
     for child in token.get("children", []):
         if child["type"] == "table_head":
             for cell_tok in child.get("children", []):
