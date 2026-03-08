@@ -117,11 +117,11 @@ restored_adf = to_adf(markdown)            # push back — structure preserved
 
 Markdown is significantly more compact than ADF JSON — critical for LLM-based workflows where every token counts.
 
-| Format | Tokens | Bytes |
-| --- | --- | --- |
-| ADF JSON | 89,374 | 523 KB |
-| Markdown | 21,798 | 49 KB |
-| **Reduction** | **4.1x** | **10.6x** |
+| | ADF JSON | Markdown (annotated) | Markdown (plain) |
+| --- | --- | --- | --- |
+| Tokens | 102,706 | 33,343 | 12,454 |
+| Bytes | 625 KB | 99 KB | 38 KB |
+| **Reduction** | — | **3.1x / 6.3x** | **8.2x / 16.5x** |
 
 *Measured on a real Confluence page using GPT-4o tokenizer (tiktoken).*
 
