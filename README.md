@@ -119,11 +119,10 @@ Markdown is significantly more compact than ADF JSON — critical for LLM-based 
 
 | | ADF JSON | Markdown (annotated) | Markdown (plain) |
 | --- | --- | --- | --- |
-| Tokens | 102,706 | 33,343 | 12,454 |
-| Bytes | 625 KB | 99 KB | 38 KB |
-| **Reduction** | — | **3.1x / 6.3x** | **8.2x / 16.5x** |
+| Tokens | 243,217 | 104,006 | 41,906 |
+| **Reduction** | — | **2.3x** | **5.8x** |
 
-*Measured on a real Confluence page using GPT-4o tokenizer (tiktoken).*
+*Measured on 7 real Confluence pages (pretty-printed JSON) using GPT-4o tokenizer (tiktoken).*
 
 ## Notes
 
