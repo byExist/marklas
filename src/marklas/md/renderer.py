@@ -12,14 +12,6 @@ from marklas.nodes import blocks, inlines
 _annotate_ctx: ContextVar[bool] = ContextVar("annotate", default=True)
 
 
-class UnknownNodeError(Exception):
-    """Raised when a render dispatch encounters an unrecognized AST node."""
-
-    def __init__(self, node: object) -> None:
-        super().__init__(f"Unknown node: {type(node).__name__}")
-        self.node = node
-
-
 def render(doc: blocks.Document, *, annotate: bool = True) -> str:
     token = _annotate_ctx.set(annotate)
     try:
@@ -123,7 +115,7 @@ def _render_block(node: blocks.Block) -> str:
         case blocks.BodiedSyncBlock():
             return _render_bodied_sync_block(node)
         case _:
-            raise UnknownNodeError(node)
+            raise ValueError(f"Unknown node: {type(node).__name__}")
 
 
 def _render_paragraph(node: blocks.Paragraph) -> str:
@@ -250,8 +242,19 @@ def _render_table_row(row: list[blocks.TableCell], col_count: int) -> str:
 
 
 def _render_table_cell(cell: blocks.TableCell) -> str:
+    parts = [_render_cell_block(c) for c in cell.children]
     sep = "" if _annotate_ctx.get() else "<br>"
-    return sep.join(_render_cell_block(c) for c in cell.children)
+    return _escape_cell_pipe(sep.join(parts))
+
+
+def _escape_cell_pipe(text: str) -> str:
+    """Escape unescaped ``|`` inside rendered table-cell content.
+
+    Pipe characters that act as GFM column delimiters are added by the
+    row-level renderer, so any ``|`` produced by cell-block rendering must
+    be escaped to avoid breaking the column count.
+    """
+    return text.replace("|", "\\|")
 
 
 def _collect_table_attrs(node: blocks.Table) -> dict[str, Any]:
@@ -460,7 +463,7 @@ def _render_cell_block(node: blocks.Block) -> str:
         case blocks.BodiedSyncBlock():
             return _render_cell_bodied_sync_block(node)
         case _:
-            raise UnknownNodeError(node)
+            raise ValueError(f"Unknown node: {type(node).__name__}")
 
 
 def _render_cell_inlines(nodes: list[inlines.Inline]) -> str:
@@ -682,7 +685,7 @@ def _render_inline(node: inlines.Inline) -> str:
         case inlines.InlineExtension():
             return _extension_fallback(node.raw)
         case _:
-            raise UnknownNodeError(node)
+            raise ValueError(f"Unknown node: {type(node).__name__}")
 
 
 def _render_link(node: inlines.Link) -> str:
