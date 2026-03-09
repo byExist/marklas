@@ -793,10 +793,10 @@ def test_block_html_annotation_in_list_item():
 
 
 def test_br_to_linebreak_in_table_cell():
-    """<br> in table cell should be parsed as HardBreak."""
+    """<br/> in table cell should be parsed as HardBreak."""
     md = (
         "<!-- adf:table {} -->\n"
-        "| <!-- adf:paragraph -->a<br>b<!-- /adf:paragraph --> |\n"
+        "| <!-- adf:paragraph -->a<br/>b<!-- /adf:paragraph --> |\n"
         "| --- |\n"
         "<!-- /adf:table -->\n"
     )

@@ -554,13 +554,127 @@ def _parse_annotated_layout_column(token: dict[str, Any]) -> blocks.LayoutColumn
 # ---------------------------------------------------------------------------
 
 
-def _br_to_linebreak(tok: dict[str, Any]) -> dict[str, Any]:
-    if tok.get("type") == "inline_html" and tok["raw"].strip().lower() in (
-        "<br>",
-        "<br/>",
-        "<br />",
-    ):
+_HTML_CELL_BLOCK_MAP: dict[str, str] = {
+    "blockquote": "blockQuote",
+    "h1": "heading",
+    "h2": "heading",
+    "h3": "heading",
+    "h4": "heading",
+    "h5": "heading",
+    "h6": "heading",
+    "ul": "bulletList",
+    "ol": "orderedList",
+    "code": "codeBlock",
+}
+
+_HTML_CELL_VOID_MAP: dict[str, str] = {
+    "hr": "thematicBreak",
+}
+
+
+def _match_html_cell_blocks(tokens: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """Match HTML open/close tag pairs for known block types into annotated-style tokens."""
+    result: list[dict[str, Any]] = []
+    i = 0
+    while i < len(tokens):
+        tok = tokens[i]
+        if tok.get("_annotated"):
+            result.append(tok)
+            i += 1
+            continue
+        if tok.get("type") == "inline_html":
+            tag = _extract_html_open_tag(tok["raw"])
+            if tag and tag in _HTML_CELL_VOID_MAP:
+                result.append(
+                    {
+                        "type": _HTML_CELL_VOID_MAP[tag],
+                        "attrs": {},
+                        "children": [],
+                        "_annotated": True,
+                    }
+                )
+                i += 1
+                continue
+            if tag and tag in _HTML_CELL_BLOCK_MAP:
+                close_idx = _find_html_close_idx(tokens, i + 1, tag)
+                if close_idx is not None:
+                    attrs: dict[str, Any] = {}
+                    block_type = _HTML_CELL_BLOCK_MAP[tag]
+                    if block_type == "heading":
+                        attrs["level"] = int(tag[1])
+                    elif block_type == "orderedList":
+                        start = _extract_html_attr(tok["raw"], "start")
+                        if start is not None:
+                            attrs["start"] = int(start)
+                    result.append(
+                        {
+                            "type": block_type,
+                            "attrs": attrs,
+                            "children": tokens[i + 1 : close_idx],
+                            "_annotated": True,
+                        }
+                    )
+                    i = close_idx + 1
+                    continue
+        result.append(tok)
+        i += 1
+    return result
+
+
+def _extract_html_open_tag(raw: str) -> str | None:
+    """Extract tag name from an opening HTML tag, or None."""
+    s = raw.strip().lower()
+    if not s.startswith("<") or s.startswith("</"):
+        return None
+    # e.g. <blockquote>, <ol start="2">
+    tag = s.lstrip("<").split(">")[0].split()[0].rstrip("/")
+    return tag if tag else None
+
+
+_HTML_ATTR_RE = re.compile(r"""(\w+)\s*=\s*(?:"([^"]*)"|'([^']*)')""")
+
+
+def _extract_html_attr(raw: str, name: str) -> str | None:
+    """Extract a named attribute value from an HTML open tag."""
+    for m in _HTML_ATTR_RE.finditer(raw):
+        if m.group(1).lower() == name.lower():
+            return m.group(2) if m.group(2) is not None else m.group(3)
+    return None
+
+
+def _find_html_close_idx(
+    tokens: list[dict[str, Any]], start: int, tag: str
+) -> int | None:
+    """Find matching close tag index, handling nesting."""
+    depth = 1
+    for i in range(start, len(tokens)):
+        tok = tokens[i]
+        if tok.get("_annotated"):
+            continue
+        if tok.get("type") == "inline_html":
+            raw = tok["raw"].strip().lower()
+            if (
+                raw.startswith(f"<{tag}")
+                and raw.endswith(">")
+                and not raw.startswith(f"</{tag}")
+            ):
+                depth += 1
+            elif raw == f"</{tag}>":
+                depth -= 1
+                if depth == 0:
+                    return i
+    return None
+
+
+def _classify_br(tok: dict[str, Any]) -> dict[str, Any]:
+    """Classify ``<br>`` variants: ``<br>`` → block separator, ``<br/>`` → linebreak (hardBreak)."""
+    if tok.get("type") != "inline_html":
+        return tok
+    raw = tok["raw"].strip().lower()
+    if raw == "<br/>":
         return {"type": "linebreak"}
+    if raw == "<br>":
+        return {"type": "block_separator"}
     return tok
 
 
@@ -569,43 +683,74 @@ def _parse_cell_blocks(tokens: list[dict[str, Any]]) -> list[blocks.Block]:
 
     Uses annotation matching to group tokens, then dispatches each group.
     Unannotated tokens become Paragraph (plain GFM).
+    ``<br>`` = block separator, ``<br/>`` = hardBreak (linebreak).
     """
-    # Rewrite <br> inline_html → linebreak before annotation matching so that
-    # HardBreak survives inside annotated paragraph children.
-    rewritten = [_br_to_linebreak(t) for t in tokens]
-    matched = _match_cell_annotations(rewritten)
+    matched = _match_html_cell_blocks(_match_cell_annotations(tokens))
     result: list[blocks.Block] = []
     loose: list[dict[str, Any]] = []
 
     def _flush_loose() -> None:
         if not loose:
             return
-        # linebreak-only loose tokens are block separators — skip them
-        if all(t.get("type") == "linebreak" for t in loose):
-            loose.clear()
-            return
         children = _parse_inlines(loose)
         if children:
             result.append(blocks.Paragraph(children=children))
         loose.clear()
 
+    _CELL_BLOCK_TAGS = {
+        "paragraph",
+        "codeBlock",
+        "blockQuote",
+        "heading",
+        "thematicBreak",
+        "bulletList",
+        "orderedList",
+        "panel",
+        "expand",
+        "nestedExpand",
+        "taskList",
+        "decisionList",
+        "mediaSingle",
+        "mediaGroup",
+        "blockCard",
+        "embedCard",
+        "extension",
+        "bodiedExtension",
+        "syncBlock",
+        "bodiedSyncBlock",
+    }
+
     for tok in matched:
-        if tok.get("_annotated"):
+        if tok.get("_annotated") and tok["type"] in _CELL_BLOCK_TAGS:
             _flush_loose()
             block = _parse_cell_block(tok)
             result.append(block)
-        else:
+        elif tok.get("_annotated"):
+            # Inline annotation (e.g. status, mention) — keep as loose tokens
             loose.append(tok)
+        else:
+            classified = _classify_br(tok)
+            if classified.get("type") == "block_separator":
+                _flush_loose()
+            else:
+                loose.append(classified)
 
     _flush_loose()
     return result
+
+
+def _br_to_linebreak(tok: dict[str, Any]) -> dict[str, Any]:
+    """Convert ``<br/>`` to linebreak inside annotated children."""
+    if tok.get("type") == "inline_html" and tok["raw"].strip().lower() == "<br/>":
+        return {"type": "linebreak"}
+    return tok
 
 
 def _parse_cell_block(token: dict[str, Any]) -> blocks.Block:
     """Dispatch an annotation-matched cell token to the appropriate handler."""
     tag = token["type"]
     attrs = token.get("attrs", {})
-    inner = token.get("children", [])
+    inner = [_br_to_linebreak(t) for t in token.get("children", [])]
 
     match tag:
         case "paragraph":

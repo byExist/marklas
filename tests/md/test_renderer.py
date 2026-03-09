@@ -350,13 +350,7 @@ def test_table_basic():
             )
         ]
     )
-    expected = (
-        "| <!-- adf:paragraph -->A<!-- /adf:paragraph -->"
-        " | <!-- adf:paragraph -->B<!-- /adf:paragraph --> |\n"
-        "| --- | --- |\n"
-        "| <!-- adf:paragraph -->1<!-- /adf:paragraph -->"
-        " | <!-- adf:paragraph -->2<!-- /adf:paragraph --> |\n"
-    )
+    expected = "| A | B |\n| --- | --- |\n| 1 | 2 |\n"
     assert render(doc) == expected
 
 
@@ -380,12 +374,7 @@ def test_table_with_alignment():
             )
         ]
     )
-    expected = (
-        "| <!-- adf:paragraph -->L<!-- /adf:paragraph -->"
-        " | <!-- adf:paragraph -->C<!-- /adf:paragraph -->"
-        " | <!-- adf:paragraph -->R<!-- /adf:paragraph --> |\n"
-        "| :--- | :---: | ---: |\n"
-    )
+    expected = "| L | C | R |\n| :--- | :---: | ---: |\n"
     assert render(doc) == expected
 
 
@@ -410,7 +399,7 @@ def test_table_cell_hardbreak():
             )
         ]
     )
-    expected = "| <!-- adf:paragraph -->a<br>b<!-- /adf:paragraph --> |\n| --- |\n"
+    expected = "| a<br/>b |\n| --- |\n"
     assert render(doc) == expected
 
 
@@ -430,11 +419,7 @@ def test_table_cell_multi_paragraph():
             )
         ]
     )
-    expected = (
-        "| <!-- adf:paragraph -->first<!-- /adf:paragraph -->"
-        "<!-- adf:paragraph -->second<!-- /adf:paragraph --> |\n"
-        "| --- |\n"
-    )
+    expected = "| first<br>second |\n| --- |\n"
     assert render(doc) == expected
 
 
@@ -472,10 +457,7 @@ def test_table_cell_non_paragraph_blocks():
         ]
     )
     result = render(doc)
-    assert (
-        "<!-- adf:bulletList --><ul><li><!-- adf:paragraph -->item1<!-- /adf:paragraph --></li><li><!-- adf:paragraph -->item2<!-- /adf:paragraph --></li></ul><!-- /adf:bulletList -->"
-        in result
-    )
+    assert "<ul><li>item1</li><li>item2</li></ul>" in result
 
 
 def test_table_cell_block_with_hardbreak():
@@ -507,10 +489,7 @@ def test_table_cell_block_with_hardbreak():
     result = render(doc)
     # HardBreak converted to <br>, no orphan backslash
     assert "\\ " not in result
-    assert (
-        "<blockquote><!-- adf:paragraph -->a<br>b<!-- /adf:paragraph --></blockquote>"
-        in result
-    )
+    assert "<blockquote>a<br/>b</blockquote>" in result
 
 
 def test_table_with_attrs():
@@ -1358,14 +1337,8 @@ def test_headerless_table_renders_empty_header():
     lines = result.strip().split("\n")
     assert lines[0] == "|  |  |"
     assert lines[1] == "| --- | --- |"
-    assert (
-        lines[2]
-        == "| <!-- adf:paragraph -->A1<!-- /adf:paragraph --> | <!-- adf:paragraph -->B1<!-- /adf:paragraph --> |"
-    )
-    assert (
-        lines[3]
-        == "| <!-- adf:paragraph -->A2<!-- /adf:paragraph --> | <!-- adf:paragraph -->B2<!-- /adf:paragraph --> |"
-    )
+    assert lines[2] == "| A1 | B1 |"
+    assert lines[3] == "| A2 | B2 |"
 
 
 # ── pipe escape / empty paragraph annotation ──────────────────────────

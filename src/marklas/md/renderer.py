@@ -200,7 +200,7 @@ def _render_list_item_body(children: list[blocks.Block], tight: bool) -> str:
             continue
         rendered = _render_block(child)
         parts.append(rendered)
-    body = "\n\n".join(parts)
+    body = "\n".join(parts)
     lines = body.split("\n")
     if len(lines) > 1:
         return (
@@ -257,8 +257,7 @@ def _render_table_row(row: list[blocks.TableCell], col_count: int) -> str:
 
 def _render_table_cell(cell: blocks.TableCell) -> str:
     parts = [_render_cell_block(c) for c in cell.children]
-    sep = "" if _annotate_ctx.get() else "<br>"
-    return _escape_cell_pipe(sep.join(parts))
+    return _escape_cell_pipe("<br>".join(parts))
 
 
 def _escape_cell_pipe(text: str) -> str:
@@ -482,40 +481,44 @@ def _render_cell_block(node: blocks.Block) -> str:
 
 def _render_cell_inlines(nodes: list[inlines.Inline]) -> str:
     return "".join(
-        "<br>" if isinstance(node, inlines.HardBreak) else _render_inline(node)
+        "<br/>" if isinstance(node, inlines.HardBreak) else _render_inline(node)
         for node in nodes
     )
 
 
 def _render_cell_paragraph(node: blocks.Paragraph) -> str:
     content = _render_cell_inlines(node.children)
-    return _annotate_inline(
-        node,
-        content,
-        align=node.alignment,
-        indentation=node.indentation,
-    )
+    if node.alignment or node.indentation:
+        return _annotate_inline(
+            node,
+            content,
+            align=node.alignment,
+            indentation=node.indentation,
+        )
+    return content.strip()
 
 
 def _render_cell_code_block(node: blocks.CodeBlock) -> str:
     code = node.code.replace("\n", "<br>")
     html = f"<code>{code}</code>"
-    return _annotate_inline(node, html, language=node.language)
+    if node.language:
+        return _annotate_inline(node, html, language=node.language)
+    return html
 
 
 def _render_cell_blockquote(node: blocks.BlockQuote) -> str:
     inner = "<br>".join(_render_cell_block(c) for c in node.children)
-    return _annotate_inline(node, f"<blockquote>{inner}</blockquote>")
+    return f"<blockquote>{inner}</blockquote>"
 
 
 def _render_cell_heading(node: blocks.Heading) -> str:
     tag = f"h{node.level}"
     inner = _render_cell_inlines(node.children)
-    return _annotate_inline(node, f"<{tag}>{inner}</{tag}>", level=node.level)
+    return f"<{tag}>{inner}</{tag}>"
 
 
 def _render_cell_rule() -> str:
-    return _annotate_inline(blocks.ThematicBreak(), "<hr>")
+    return "<hr>"
 
 
 def _render_cell_list(node: blocks.BulletList | blocks.OrderedList) -> str:
@@ -529,10 +532,7 @@ def _render_cell_list(node: blocks.BulletList | blocks.OrderedList) -> str:
     for item in node.items:
         body = "<br>".join(_render_cell_block(c) for c in item.children)
         items.append(f"<li>{body}</li>")
-    html = f"<{tag}{start_attr}>{''.join(items)}</{tag}>"
-    if isinstance(node, blocks.OrderedList) and node.start != 1:
-        return _annotate_inline(node, html, start=node.start)
-    return _annotate_inline(node, html)
+    return f"<{tag}{start_attr}>{''.join(items)}</{tag}>"
 
 
 def _render_cell_panel(node: blocks.Panel) -> str:
