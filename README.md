@@ -15,29 +15,13 @@
 
 ## Why Marklas?
 
-Confluence and Jira store documents in [ADF](https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/) — a rich JSON structure with panels, layouts, mentions, colored text, and more. Standard Markdown can only represent a subset of these features.
-
-**Marklas defines a union AST that covers both specs**, then converts in both directions through it:
+Confluence and Jira store documents in [ADF](https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/) — a verbose JSON structure. Marklas converts it to readable Markdown and back through a union AST:
 
 ```
 Markdown ⇄ Union AST ⇄ ADF
 ```
 
-Nodes shared by both formats (paragraphs, headings, lists, tables, etc.) map directly. ADF-only nodes (panels, mentions, colored text, etc.) are embedded as invisible HTML comment annotations in the Markdown output, so the full structure survives a roundtrip:
-
-```
-ADF → Markdown (with annotations) → ADF   ✅ lossless
-```
-
-Without annotations, standard Markdown elements still convert to valid ADF — just without the ADF-specific extras:
-
-```
-Plain Markdown → ADF   ✅ works (standard elements only)
-```
-
-### How Annotations Work
-
-When ADF contains features that Markdown can't express natively (e.g., panels, mentions, colored text), Marklas wraps a readable Markdown fallback in HTML comment annotations:
+ADF-only features (panels, mentions, colored text, etc.) are preserved as invisible HTML comment annotations, so the full structure survives a roundtrip:
 
 ```markdown
 <!-- adf:panel {"panelType": "info"} -->
@@ -47,7 +31,7 @@ This is an info panel — readable as plain Markdown.
 User <!-- adf:mention {"id": "abc123", "text": "@John"} -->`@John`<!-- /adf:mention --> approved this.
 ```
 
-These annotations are invisible when rendered as Markdown (GitHub, editors, etc.), but Marklas can parse them back to reconstruct the original ADF structure exactly.
+Pass `annotate=False` to strip annotations and get clean Markdown.
 
 ## Installation
 
@@ -59,58 +43,20 @@ pip install marklas
 
 ```python
 from marklas import to_adf, to_md
-```
 
-### Markdown → ADF
+# Markdown → ADF
+adf = to_adf("## Hello\n\nThis is **bold**.")
 
-Any standard Markdown converts to valid ADF:
+# ADF → Markdown (with annotations for lossless roundtrip)
+md = to_md(adf_document)
 
-```python
-adf = to_adf("""
-## Project Update
+# ADF → Markdown (clean, no annotations)
+clean_md = to_md(adf_document, annotate=False)
 
-The release is **on track**. Key changes:
-
-- Refactored auth module
-- Fixed 3 critical bugs
-
-| Component | Status |
-| --------- | ------ |
-| Backend   | Done   |
-| Frontend  | WIP    |
-""")
-```
-
-### ADF → Markdown
-
-ADF-only features (panels, mentions, colored text, etc.) are preserved as HTML comment annotations — invisible in rendered Markdown, but fully restorable:
-
-```python
-md = to_md(adf_with_panel)
-```
-
-```markdown
-<!-- adf:panel {"panelType": "warning"} -->
-Do **not** deploy on Fridays.
-<!-- /adf:panel -->
-```
-
-To get clean Markdown without annotations, pass `annotate=False`. ADF-only attributes are stripped and only standard Markdown elements remain:
-
-```python
-clean_md = to_md(adf_with_panel, annotate=False)
-```
-
-```markdown
-Do **not** deploy on Fridays.
-```
-
-### Roundtrip
-
-```python
-original_adf = fetch_confluence_page()     # complex ADF
-markdown = to_md(original_adf)             # edit in any Markdown editor
-restored_adf = to_adf(markdown)            # push back — structure preserved
+# Roundtrip
+original_adf = fetch_confluence_page()
+markdown = to_md(original_adf)          # edit in any Markdown editor
+restored_adf = to_adf(markdown)         # push back — structure preserved
 ```
 
 ## Token Efficiency
@@ -124,10 +70,12 @@ Markdown is significantly more compact than ADF JSON — critical for LLM-based 
 
 *Measured on 7 real Confluence pages (pretty-printed JSON) using GPT-4o tokenizer (tiktoken).*
 
-## Notes
+## Documentation
 
-- **Table cells**: Non-paragraph content inside table cells (lists, code blocks, etc.) is converted to inline HTML (`<ul>`, `<code>`, `<br>`) to fit within GFM table syntax.
-- **Markdown-only features**: Raw HTML blocks/inlines and other Markdown-specific constructs that have no ADF equivalent are silently dropped during conversion.
+- [ADF ↔ Markdown Mapping Reference](docs/mapping.md) — how each ADF node maps to Markdown
+- [LLM Editing Guide](docs/llm-guide.md) — rules for LLMs/MCP servers editing marklas output
+
+> **Note**: Table cells use inline HTML (`<ul>`, `<code>`, `<br>`) for block-level content. Raw HTML and other Markdown-only constructs are dropped during ADF conversion. See the mapping reference for details.
 
 ## Development
 
