@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Any, Literal, NotRequired, TypedDict
+from typing import Any, Literal, NotRequired, TypeAlias, TypedDict
 
 # ── Marks ──────────────────────────────────────────────────────────────
 
@@ -75,7 +75,7 @@ class AnnotationMark(TypedDict):
     attrs: _AnnotationAttrs
 
 
-type Mark = (
+Mark: TypeAlias = (
     Strong
     | Em
     | Strike
@@ -199,7 +199,7 @@ class MediaInline(TypedDict):
     attrs: _MediaInlineAttrs
 
 
-type Inline = (
+Inline: TypeAlias = (
     Text
     | HardBreak
     | Mention
@@ -503,7 +503,7 @@ class BodiedSyncBlock(TypedDict):
     content: list[Block]
 
 
-type Block = (
+Block: TypeAlias = (
     Paragraph
     | Heading
     | CodeBlock
