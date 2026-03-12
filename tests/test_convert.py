@@ -1238,6 +1238,19 @@ def test_table_cell_hardbreak_roundtrip():
     assert_roundtrip(adf)
 
 
+def test_md_table_header_becomes_tableHeader():
+    """MD table header cells should become ADF tableHeader, not tableCell."""
+    md = "| A | B |\n| --- | --- |\n| 1 | 2 |\n"
+    adf = to_adf(md)
+    table = adf["content"][0]
+    header_row = table["content"][0]
+    body_row = table["content"][1]
+    for cell in header_row["content"]:
+        assert cell["type"] == "tableHeader"
+    for cell in body_row["content"]:
+        assert cell["type"] == "tableCell"
+
+
 def test_code_block_in_nested_list_roundtrip():
     """Code block inside nested list item should survive roundtrip."""
     adf: dict[str, Any] = {

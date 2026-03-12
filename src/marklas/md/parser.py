@@ -376,7 +376,7 @@ def _parse_table(token: dict[str, Any]) -> blocks.Table:
                 align = cell_tok.get("attrs", {}).get("align")
                 alignments.append(align)
                 cell_children = _parse_cell_blocks(cell_tok.get("children", []))
-                head.append(blocks.TableCell(children=cell_children))
+                head.append(blocks.TableHeader(children=cell_children))
         elif child["type"] == "table_body":
             for row_tok in child.get("children", []):
                 row: list[blocks.TableCell] = []

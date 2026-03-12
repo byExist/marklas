@@ -115,6 +115,17 @@ def test_table_basic():
     assert len(t.body[0]) == 2
 
 
+def test_table_head_cells_are_table_header():
+    md = "| A | B |\n| --- | --- |\n| 1 | 2 |\n"
+    doc = parse(md)
+    t = doc.children[0]
+    assert isinstance(t, blocks.Table)
+    for cell in t.head:
+        assert isinstance(cell, blocks.TableHeader)
+    for cell in t.body[0]:
+        assert not isinstance(cell, blocks.TableHeader)
+
+
 def test_table_cell_has_block_children():
     md = "| A |\n| --- |\n"
     doc = parse(md)
