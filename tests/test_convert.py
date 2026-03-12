@@ -675,11 +675,11 @@ def test_roundtrip_layout_with_panel():
     assert_roundtrip(adf)
 
 
-# ── Placeholder (verify no roundtrip) ────────────────────────────────
+# ── Extension roundtrip ───────────────────────────────────────────────
 
 
-def test_extension_no_roundtrip():
-    """Extension cannot roundtrip. Rendered as placeholder in MD and not restored."""
+def test_extension_roundtrip():
+    """Extension roundtrips via annotation comments preserving raw data."""
     adf: dict[str, Any] = {
         "type": "doc",
         "version": 1,
@@ -696,8 +696,8 @@ def test_extension_no_roundtrip():
     md = to_md(adf)
     assert "jira" in md
     restored = to_adf(md)
-    # Extension raw is not restored — falls back to paragraph
-    assert restored["content"][0]["type"] == "paragraph"
+    assert restored["content"][0]["type"] == "extension"
+    assert restored["content"][0]["attrs"]["extensionKey"] == "jira"
 
 
 # ── Graceful degradation ─────────────────────────────────────────────

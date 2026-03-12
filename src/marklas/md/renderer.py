@@ -566,19 +566,31 @@ def _extension_fallback(raw: dict[str, Any]) -> str:
 
 
 def _render_extension(node: blocks.Extension, annotate: bool) -> str:
-    return _extension_fallback(node.raw)
+    content = _extension_fallback(node.raw)
+    if annotate:
+        return _annotate_block(node, content, annotate, raw=node.raw)
+    return content
 
 
 def _render_bodied_extension(node: blocks.BodiedExtension, annotate: bool) -> str:
-    return _extension_fallback(node.raw)
+    content = _extension_fallback(node.raw)
+    if annotate:
+        return _annotate_block(node, content, annotate, raw=node.raw)
+    return content
 
 
 def _render_sync_block(node: blocks.SyncBlock, annotate: bool) -> str:
-    return _extension_fallback(node.raw)
+    content = _extension_fallback(node.raw)
+    if annotate:
+        return _annotate_block(node, content, annotate, raw=node.raw)
+    return content
 
 
 def _render_bodied_sync_block(node: blocks.BodiedSyncBlock, annotate: bool) -> str:
-    return _extension_fallback(node.raw)
+    content = _extension_fallback(node.raw)
+    if annotate:
+        return _annotate_block(node, content, annotate, raw=node.raw)
+    return content
 
 
 # ── Panel dispatch ───────────────────────────────────────────────────
@@ -804,7 +816,10 @@ def _render_tablecell_child(node: blocks.TableCellChild, annotate: bool) -> str:
 
 
 def _render_inlines(nodes: list[inlines.Inline], annotate: bool) -> str:
-    return "".join(_render_inline(n, annotate) for n in nodes)
+    trimmed = nodes
+    while trimmed and isinstance(trimmed[-1], inlines.HardBreak):
+        trimmed = trimmed[:-1]
+    return "".join(_render_inline(n, annotate) for n in trimmed)
 
 
 def _render_inline(node: inlines.Inline, annotate: bool) -> str:
@@ -1026,4 +1041,7 @@ def _render_placeholder(node: inlines.Placeholder, annotate: bool) -> str:
 def _render_inline_extension(node: inlines.InlineExtension, annotate: bool) -> str:
     key = node.raw.get("attrs", {}).get("extensionKey", "")
     label = key or "Confluence macro"
-    return f"`\u2699 {label}`"
+    content = f"`\u2699 {label}`"
+    if annotate:
+        return _annotate_inline(node, content, annotate, raw=node.raw)
+    return content

@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from typing import Any
 
 from marklas.md.renderer import render
 from marklas.nodes import blocks, inlines
@@ -741,31 +742,39 @@ def test_embed_card():
 
 
 def test_extension_placeholder():
-    doc = blocks.Document(
-        children=[blocks.Extension(raw={"type": "extension", "attrs": {}})]
-    )
-    assert render(doc) == "`\u2699 Confluence macro`\n"
+    raw: dict[str, Any] = {"type": "extension", "attrs": {}}
+    doc = blocks.Document(children=[blocks.Extension(raw=raw)])
+    result = render(doc)
+    assert "<!-- adf:extension" in result
+    assert "`\u2699 Confluence macro`" in result
+    assert render(doc, annotate=False) == "`\u2699 Confluence macro`\n"
 
 
 def test_bodied_extension_placeholder():
-    doc = blocks.Document(
-        children=[blocks.BodiedExtension(raw={"type": "bodiedExtension", "attrs": {}})]
-    )
-    assert render(doc) == "`\u2699 Confluence macro`\n"
+    raw: dict[str, Any] = {"type": "bodiedExtension", "attrs": {}}
+    doc = blocks.Document(children=[blocks.BodiedExtension(raw=raw)])
+    result = render(doc)
+    assert "<!-- adf:bodiedExtension" in result
+    assert "`\u2699 Confluence macro`" in result
+    assert render(doc, annotate=False) == "`\u2699 Confluence macro`\n"
 
 
 def test_sync_block_placeholder():
-    doc = blocks.Document(
-        children=[blocks.SyncBlock(raw={"type": "syncBlock", "attrs": {}})]
-    )
-    assert render(doc) == "`\u2699 Confluence macro`\n"
+    raw: dict[str, Any] = {"type": "syncBlock", "attrs": {}}
+    doc = blocks.Document(children=[blocks.SyncBlock(raw=raw)])
+    result = render(doc)
+    assert "<!-- adf:syncBlock" in result
+    assert "`\u2699 Confluence macro`" in result
+    assert render(doc, annotate=False) == "`\u2699 Confluence macro`\n"
 
 
 def test_bodied_sync_block_placeholder():
-    doc = blocks.Document(
-        children=[blocks.BodiedSyncBlock(raw={"type": "bodiedSyncBlock", "attrs": {}})]
-    )
-    assert render(doc) == "`\u2699 Confluence macro`\n"
+    raw: dict[str, Any] = {"type": "bodiedSyncBlock", "attrs": {}}
+    doc = blocks.Document(children=[blocks.BodiedSyncBlock(raw=raw)])
+    result = render(doc)
+    assert "<!-- adf:bodiedSyncBlock" in result
+    assert "`\u2699 Confluence macro`" in result
+    assert render(doc, annotate=False) == "`\u2699 Confluence macro`\n"
 
 
 def test_placeholder_inline():
@@ -784,18 +793,14 @@ def test_placeholder_inline():
 
 
 def test_inline_extension_placeholder():
+    raw: dict[str, Any] = {"type": "inlineExtension", "attrs": {}}
     doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.InlineExtension(
-                        raw={"type": "inlineExtension", "attrs": {}}
-                    )
-                ]
-            )
-        ]
+        children=[blocks.Paragraph(children=[inlines.InlineExtension(raw=raw)])]
     )
-    assert render(doc) == "`\u2699 Confluence macro`\n"
+    result = render(doc)
+    assert "<!-- adf:inlineExtension" in result
+    assert "`\u2699 Confluence macro`" in result
+    assert render(doc, annotate=False) == "`\u2699 Confluence macro`\n"
 
 
 # ── Difference-set inline annotation ─────────────────────────────────────────

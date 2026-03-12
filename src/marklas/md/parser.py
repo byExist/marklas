@@ -920,19 +920,23 @@ def _parse_embed_card(token: Token) -> blocks.EmbedCard:
 
 
 def _parse_extension(token: Token) -> blocks.Extension:
-    return blocks.Extension(raw=token.get("attrs", {}))
+    attrs = token.get("attrs", {})
+    return blocks.Extension(raw=attrs.get("raw", attrs))
 
 
 def _parse_bodied_extension(token: Token) -> blocks.BodiedExtension:
-    return blocks.BodiedExtension(raw=token.get("attrs", {}))
+    attrs = token.get("attrs", {})
+    return blocks.BodiedExtension(raw=attrs.get("raw", attrs))
 
 
 def _parse_sync_block(token: Token) -> blocks.SyncBlock:
-    return blocks.SyncBlock(raw=token.get("attrs", {}))
+    attrs = token.get("attrs", {})
+    return blocks.SyncBlock(raw=attrs.get("raw", attrs))
 
 
 def _parse_bodied_sync_block(token: Token) -> blocks.BodiedSyncBlock:
-    return blocks.BodiedSyncBlock(raw=token.get("attrs", {}))
+    attrs = token.get("attrs", {})
+    return blocks.BodiedSyncBlock(raw=attrs.get("raw", attrs))
 
 
 # ── Table cell normalization ────────────────────────────────────────
@@ -1239,7 +1243,8 @@ def _parse_placeholder(token: Token) -> inlines.Placeholder:
 
 
 def _parse_inline_extension(token: Token) -> inlines.InlineExtension:
-    return inlines.InlineExtension(raw=token.get("attrs", {}))
+    attrs = token.get("attrs", {})
+    return inlines.InlineExtension(raw=attrs.get("raw", attrs))
 
 
 # ── Helpers ─────────────────────────────────────────────────────────
