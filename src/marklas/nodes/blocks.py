@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal
+from typing import Any, Literal, TypeAlias, Union
 from uuid import uuid4
 
 from marklas.nodes.base import Node
@@ -18,7 +18,7 @@ class Block(Node):
 
 @dataclass
 class Document(Node):
-    children: list[Block]
+    children: list[DocChild]
 
 
 @dataclass
@@ -44,7 +44,7 @@ class CodeBlock(Block):
 
 @dataclass
 class BlockQuote(Block):
-    children: list[Block]
+    children: list[BlockQuoteChild]
 
 
 @dataclass
@@ -54,7 +54,7 @@ class ThematicBreak(Block):
 
 @dataclass
 class ListItem(Block):
-    children: list[Block]
+    children: list[ListItemChild]
     checked: bool | None = None
 
 
@@ -73,7 +73,7 @@ class OrderedList(Block):
 
 @dataclass
 class TableCell(Node):
-    children: list[Block]
+    children: list[TableCellChild]
     colspan: int | None = None
     rowspan: int | None = None
     col_width: list[int] | None = None
@@ -103,7 +103,7 @@ class Table(Block):
 
 @dataclass
 class Panel(Block):
-    children: list[Block]
+    children: list[PanelChild]
     panel_type: str  # info, note, tip, warning, error, success, custom
     panel_icon: str | None = None
     panel_icon_id: str | None = None
@@ -113,13 +113,13 @@ class Panel(Block):
 
 @dataclass
 class Expand(Block):
-    children: list[Block]
+    children: list[ExpandChild]
     title: str | None = None
 
 
 @dataclass
 class NestedExpand(Block):
-    children: list[Block]
+    children: list[NestedExpandChild]
     title: str | None = None
 
 
@@ -154,7 +154,7 @@ class DecisionList(Block):
 # inside _pair_block_annotations(list[Block]) during parsing.
 @dataclass
 class LayoutColumn(Block):
-    children: list[Block]
+    children: list[LayoutColumnChild]
     width: float | None = None
 
 
@@ -225,3 +225,142 @@ class SyncBlock(Block):
 @dataclass
 class BodiedSyncBlock(Block):
     raw: dict[str, Any]
+
+
+# --- Container children type aliases (ADF schema constraints) ---
+
+BlockQuoteChild: TypeAlias = Union[
+    Paragraph,
+    BulletList,
+    OrderedList,
+    CodeBlock,
+    MediaGroup,
+    MediaSingle,
+    Extension,
+]
+
+ListItemChild: TypeAlias = Union[
+    Paragraph,
+    BulletList,
+    OrderedList,
+    CodeBlock,
+    MediaSingle,
+    Extension,
+    TaskList,
+]
+
+PanelChild: TypeAlias = Union[
+    Paragraph,
+    Heading,
+    BulletList,
+    OrderedList,
+    CodeBlock,
+    TaskList,
+    DecisionList,
+    ThematicBreak,
+    MediaGroup,
+    MediaSingle,
+    BlockCard,
+    Extension,
+]
+
+TableCellChild: TypeAlias = Union[
+    Paragraph,
+    Heading,
+    BulletList,
+    OrderedList,
+    CodeBlock,
+    TaskList,
+    DecisionList,
+    ThematicBreak,
+    MediaGroup,
+    MediaSingle,
+    Panel,
+    BlockQuote,
+    NestedExpand,
+    BlockCard,
+    EmbedCard,
+    Extension,
+]
+
+NestedExpandChild: TypeAlias = Union[
+    Paragraph,
+    Heading,
+    BulletList,
+    OrderedList,
+    CodeBlock,
+    TaskList,
+    DecisionList,
+    ThematicBreak,
+    MediaGroup,
+    MediaSingle,
+    Panel,
+    BlockQuote,
+    Extension,
+]
+
+ExpandChild: TypeAlias = Union[
+    Paragraph,
+    Heading,
+    BulletList,
+    OrderedList,
+    CodeBlock,
+    TaskList,
+    DecisionList,
+    ThematicBreak,
+    MediaGroup,
+    MediaSingle,
+    Panel,
+    BlockQuote,
+    Table,
+    NestedExpand,
+    BlockCard,
+    EmbedCard,
+    Extension,
+    BodiedExtension,
+]
+
+LayoutColumnChild: TypeAlias = Union[
+    Paragraph,
+    Heading,
+    BulletList,
+    OrderedList,
+    CodeBlock,
+    TaskList,
+    DecisionList,
+    ThematicBreak,
+    MediaGroup,
+    MediaSingle,
+    Panel,
+    BlockQuote,
+    Table,
+    Expand,
+    BlockCard,
+    EmbedCard,
+    BodiedExtension,
+    Extension,
+]
+
+DocChild: TypeAlias = Union[
+    Paragraph,
+    Heading,
+    BulletList,
+    OrderedList,
+    CodeBlock,
+    BlockQuote,
+    Table,
+    Panel,
+    Expand,
+    ThematicBreak,
+    MediaSingle,
+    MediaGroup,
+    BlockCard,
+    EmbedCard,
+    TaskList,
+    DecisionList,
+    LayoutSection,
+    Extension,
+    BodiedExtension,
+    SyncBlock,
+    BodiedSyncBlock,
+]

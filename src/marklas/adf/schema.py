@@ -228,7 +228,7 @@ class Paragraph(TypedDict):
 
 
 class _HeadingAttrs(TypedDict):
-    level: int
+    level: Literal[1, 2, 3, 4, 5, 6]
     localId: NotRequired[str]
 
 
@@ -252,13 +252,13 @@ class CodeBlock(TypedDict):
 
 class Blockquote(TypedDict):
     type: Literal["blockquote"]
-    content: list[Block]
+    content: list[BlockquoteContent]
     attrs: NotRequired[_LocalIdAttrs]
 
 
 class ListItem(TypedDict):
     type: Literal["listItem"]
-    content: list[Block]
+    content: list[ListItemContent]
     attrs: NotRequired[_LocalIdAttrs]
 
 
@@ -313,13 +313,13 @@ class _TableCellAttrs(TypedDict, total=False):
 
 class TableCell(TypedDict):
     type: Literal["tableCell"]
-    content: list[Block]
+    content: list[TableCellContent]
     attrs: NotRequired[_TableCellAttrs]
 
 
 class TableHeader(TypedDict):
     type: Literal["tableHeader"]
-    content: list[Block]
+    content: list[TableCellContent]
     attrs: NotRequired[_TableCellAttrs]
 
 
@@ -388,7 +388,7 @@ class _PanelAttrs(TypedDict):
 class Panel(TypedDict):
     type: Literal["panel"]
     attrs: _PanelAttrs
-    content: list[Block]
+    content: list[PanelContent]
 
 
 class _ExpandAttrs(TypedDict, total=False):
@@ -398,7 +398,7 @@ class _ExpandAttrs(TypedDict, total=False):
 
 class Expand(TypedDict):
     type: Literal["expand"]
-    content: list[Block]
+    content: list[ExpandContent]
     attrs: NotRequired[_ExpandAttrs]
 
 
@@ -409,7 +409,7 @@ class _NestedExpandAttrs(TypedDict, total=False):
 
 class NestedExpand(TypedDict):
     type: Literal["nestedExpand"]
-    content: list[Block]
+    content: list[NestedExpandContent]
     attrs: _NestedExpandAttrs
 
 
@@ -421,7 +421,7 @@ class _LayoutColumnAttrs(TypedDict):
 class LayoutColumn(TypedDict):
     type: Literal["layoutColumn"]
     attrs: _LayoutColumnAttrs
-    content: list[Block]
+    content: list[LayoutColumnContent]
 
 
 class LayoutSection(TypedDict):
@@ -484,7 +484,7 @@ class Extension(TypedDict):
 class BodiedExtension(TypedDict):
     type: Literal["bodiedExtension"]
     attrs: _ExtensionAttrs
-    content: list[Block]
+    content: list[ExpandContent]
 
 
 class _SyncBlockAttrs(TypedDict):
@@ -500,8 +500,146 @@ class SyncBlock(TypedDict):
 class BodiedSyncBlock(TypedDict):
     type: Literal["bodiedSyncBlock"]
     attrs: _SyncBlockAttrs
-    content: list[Block]
+    content: list[DocContent]
 
+
+# ── Container-specific content type aliases (ADF schema constraints) ──
+
+BlockquoteContent: TypeAlias = (
+    Paragraph
+    | BulletList
+    | OrderedList
+    | CodeBlock
+    | MediaGroup
+    | MediaSingle
+    | Extension
+)
+
+ListItemContent: TypeAlias = (
+    Paragraph
+    | BulletList
+    | OrderedList
+    | CodeBlock
+    | MediaSingle
+    | Extension
+    | TaskList
+)
+
+PanelContent: TypeAlias = (
+    Paragraph
+    | Heading
+    | BulletList
+    | OrderedList
+    | CodeBlock
+    | TaskList
+    | DecisionList
+    | Rule
+    | MediaGroup
+    | MediaSingle
+    | BlockCard
+    | Extension
+)
+
+TableCellContent: TypeAlias = (
+    Paragraph
+    | Heading
+    | BulletList
+    | OrderedList
+    | CodeBlock
+    | TaskList
+    | DecisionList
+    | Rule
+    | MediaGroup
+    | MediaSingle
+    | Panel
+    | Blockquote
+    | NestedExpand
+    | BlockCard
+    | EmbedCard
+    | Extension
+)
+
+NestedExpandContent: TypeAlias = (
+    Paragraph
+    | Heading
+    | BulletList
+    | OrderedList
+    | CodeBlock
+    | TaskList
+    | DecisionList
+    | Rule
+    | MediaGroup
+    | MediaSingle
+    | Panel
+    | Blockquote
+    | Extension
+)
+
+ExpandContent: TypeAlias = (
+    Paragraph
+    | Heading
+    | BulletList
+    | OrderedList
+    | CodeBlock
+    | TaskList
+    | DecisionList
+    | Rule
+    | MediaGroup
+    | MediaSingle
+    | Panel
+    | Blockquote
+    | Table
+    | NestedExpand
+    | BlockCard
+    | EmbedCard
+    | Extension
+    | BodiedExtension
+)
+
+LayoutColumnContent: TypeAlias = (
+    Paragraph
+    | Heading
+    | BulletList
+    | OrderedList
+    | CodeBlock
+    | TaskList
+    | DecisionList
+    | Rule
+    | MediaGroup
+    | MediaSingle
+    | Panel
+    | Blockquote
+    | Table
+    | Expand
+    | BlockCard
+    | EmbedCard
+    | BodiedExtension
+    | Extension
+)
+
+DocContent: TypeAlias = (
+    Paragraph
+    | Heading
+    | BulletList
+    | OrderedList
+    | CodeBlock
+    | Blockquote
+    | Table
+    | Panel
+    | Expand
+    | Rule
+    | MediaSingle
+    | MediaGroup
+    | BlockCard
+    | EmbedCard
+    | TaskList
+    | DecisionList
+    | LayoutSection
+    | Extension
+    | BodiedExtension
+    | SyncBlock
+    | BodiedSyncBlock
+)
 
 Block: TypeAlias = (
     Paragraph
@@ -535,7 +673,7 @@ Block: TypeAlias = (
 class Doc(TypedDict):
     type: Literal["doc"]
     version: int
-    content: list[Block]
+    content: list[DocContent]
 
 
 # ── Mark ordering ─────────────────────────────────────────────────────
