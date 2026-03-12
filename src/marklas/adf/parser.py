@@ -1,76 +1,68 @@
 from __future__ import annotations
 
-from typing import Any, Literal, cast
+from typing import Any
 
 from marklas.adf import schema
 from marklas.nodes import blocks, inlines
 
 
 def parse(doc: dict[str, Any]) -> blocks.Document:
-    return blocks.Document(children=_parse_blocks(doc["content"]))
+    return blocks.Document(children=_parse_doc_children(doc["content"]))
 
 
-# ── Block dispatch ────────────────────────────────────────────────────
-
-
-def _parse_blocks(nodes: list[schema.Block]) -> list[blocks.Block]:
-    result: list[blocks.Block] = []
+def _parse_doc_children(nodes: list[schema.DocContent]) -> list[blocks.DocChild]:
+    result: list[blocks.DocChild] = []
     for node in nodes:
-        parsed = _parse_block(node)
+        parsed = _parse_doc_child(node)
         if parsed is not None:
             result.append(parsed)
     return result
 
 
-def _parse_block(node: schema.Block) -> blocks.Block | None:
-    t = node["type"]
-    match t:
+def _parse_doc_child(node: schema.DocContent) -> blocks.DocChild | None:
+    match node["type"]:
         case "paragraph":
-            return _parse_paragraph(cast(schema.Paragraph, node))
+            return _parse_paragraph(node)
         case "heading":
-            return _parse_heading(cast(schema.Heading, node))
+            return _parse_heading(node)
         case "codeBlock":
-            return _parse_code_block(cast(schema.CodeBlock, node))
+            return _parse_code_block(node)
         case "blockquote":
-            return _parse_blockquote(cast(schema.Blockquote, node))
+            return _parse_blockquote(node)
         case "bulletList":
-            return _parse_bullet_list(cast(schema.BulletList, node))
+            return _parse_bullet_list(node)
         case "orderedList":
-            return _parse_ordered_list(cast(schema.OrderedList, node))
+            return _parse_ordered_list(node)
         case "taskList":
-            return _parse_task_list(cast(schema.TaskList, node))
+            return _parse_task_list(node)
         case "decisionList":
-            return _parse_decision_list(cast(schema.DecisionList, node))
+            return _parse_decision_list(node)
         case "rule":
-            return blocks.ThematicBreak()
+            return _parse_rule(node)
         case "table":
-            return _parse_table(cast(schema.Table, node))
+            return _parse_table(node)
         case "mediaSingle":
-            return _parse_media_single(cast(schema.MediaSingle, node))
+            return _parse_media_single(node)
         case "mediaGroup":
-            return _parse_media_group(cast(schema.MediaGroup, node))
+            return _parse_media_group(node)
         case "panel":
-            return _parse_panel(cast(schema.Panel, node))
+            return _parse_panel(node)
         case "expand":
-            return _parse_expand(cast(schema.Expand, node))
-        case "nestedExpand":
-            return _parse_nested_expand(cast(schema.NestedExpand, node))
-        case "layoutSection":
-            return _parse_layout_section(cast(schema.LayoutSection, node))
+            return _parse_expand(node)
         case "blockCard":
-            return _parse_block_card(cast(schema.BlockCard, node))
+            return _parse_block_card(node)
         case "embedCard":
-            return _parse_embed_card(cast(schema.EmbedCard, node))
+            return _parse_embed_card(node)
+        case "layoutSection":
+            return _parse_layout_section(node)
         case "extension":
-            return blocks.Extension(raw=dict(node))
+            return _parse_extension(node)
         case "bodiedExtension":
-            return blocks.BodiedExtension(raw=dict(node))
+            return _parse_bodied_extension(node)
         case "syncBlock":
-            return blocks.SyncBlock(raw=dict(node))
+            return _parse_sync_block(node)
         case "bodiedSyncBlock":
-            return blocks.BodiedSyncBlock(raw=dict(node))
-        case _:
-            return blocks.Extension(raw=dict(node))
+            return _parse_bodied_sync_block(node)
 
 
 # ── Block parsers ─────────────────────────────────────────────────────
@@ -98,7 +90,7 @@ def _parse_paragraph(node: schema.Paragraph) -> blocks.Paragraph:
 
 
 def _parse_heading(node: schema.Heading) -> blocks.Heading:
-    level = cast(Literal[1, 2, 3, 4, 5, 6], node["attrs"]["level"])
+    level = node["attrs"]["level"]
     alignment, indentation = _extract_block_marks(node.get("marks", []))
     return blocks.Heading(
         level=level,
@@ -115,8 +107,49 @@ def _parse_code_block(node: schema.CodeBlock) -> blocks.CodeBlock:
     return blocks.CodeBlock(code=code, language=language)
 
 
+def _parse_rule(_node: schema.Rule) -> blocks.ThematicBreak:
+    return blocks.ThematicBreak()
+
+
+# ── Blockquote ────────────────────────────────────────────────────────
+
+
 def _parse_blockquote(node: schema.Blockquote) -> blocks.BlockQuote:
-    return blocks.BlockQuote(children=_parse_blocks(node["content"]))
+    return blocks.BlockQuote(children=_parse_blockquote_children(node["content"]))
+
+
+def _parse_blockquote_children(
+    nodes: list[schema.BlockquoteContent],
+) -> list[blocks.BlockQuoteChild]:
+    result: list[blocks.BlockQuoteChild] = []
+    for node in nodes:
+        parsed = _parse_blockquote_child(node)
+        if parsed is not None:
+            result.append(parsed)
+    return result
+
+
+def _parse_blockquote_child(
+    node: schema.BlockquoteContent,
+) -> blocks.BlockQuoteChild | None:
+    match node["type"]:
+        case "paragraph":
+            return _parse_paragraph(node)
+        case "bulletList":
+            return _parse_bullet_list(node)
+        case "orderedList":
+            return _parse_ordered_list(node)
+        case "codeBlock":
+            return _parse_code_block(node)
+        case "mediaGroup":
+            return _parse_media_group(node)
+        case "mediaSingle":
+            return _parse_media_single(node)
+        case "extension":
+            return _parse_extension(node)
+
+
+# ── Lists ─────────────────────────────────────────────────────────────
 
 
 def _parse_bullet_list(node: schema.BulletList) -> blocks.BulletList:
@@ -133,7 +166,41 @@ def _parse_ordered_list(node: schema.OrderedList) -> blocks.OrderedList:
 
 
 def _parse_list_item(node: schema.ListItem) -> blocks.ListItem:
-    return blocks.ListItem(children=_parse_blocks(node["content"]))
+    return blocks.ListItem(children=_parse_listitem_children(node["content"]))
+
+
+def _parse_listitem_children(
+    nodes: list[schema.ListItemContent],
+) -> list[blocks.ListItemChild]:
+    result: list[blocks.ListItemChild] = []
+    for node in nodes:
+        parsed = _parse_listitem_child(node)
+        if parsed is not None:
+            result.append(parsed)
+    return result
+
+
+def _parse_listitem_child(
+    node: schema.ListItemContent,
+) -> blocks.ListItemChild | None:
+    match node["type"]:
+        case "paragraph":
+            return _parse_paragraph(node)
+        case "bulletList":
+            return _parse_bullet_list(node)
+        case "orderedList":
+            return _parse_ordered_list(node)
+        case "codeBlock":
+            return _parse_code_block(node)
+        case "mediaSingle":
+            return _parse_media_single(node)
+        case "extension":
+            return _parse_extension(node)
+        case "taskList":
+            return _parse_task_list(node)
+
+
+# ── Task / Decision lists ─────────────────────────────────────────────
 
 
 def _parse_task_list(node: schema.TaskList) -> blocks.TaskList:
@@ -164,10 +231,13 @@ def _parse_decision_list(node: schema.DecisionList) -> blocks.DecisionList:
     return blocks.DecisionList(items=items)
 
 
+# ── Panel ─────────────────────────────────────────────────────────────
+
+
 def _parse_panel(node: schema.Panel) -> blocks.Panel:
-    attrs = node.get("attrs", {})
+    attrs = node["attrs"]
     return blocks.Panel(
-        children=_parse_blocks(node["content"]),
+        children=_parse_panel_children(node["content"]),
         panel_type=attrs["panelType"],
         panel_icon=attrs.get("panelIcon"),
         panel_icon_id=attrs.get("panelIconId"),
@@ -176,79 +246,163 @@ def _parse_panel(node: schema.Panel) -> blocks.Panel:
     )
 
 
+def _parse_panel_children(
+    nodes: list[schema.PanelContent],
+) -> list[blocks.PanelChild]:
+    result: list[blocks.PanelChild] = []
+    for node in nodes:
+        parsed = _parse_panel_child(node)
+        if parsed is not None:
+            result.append(parsed)
+    return result
+
+
+def _parse_panel_child(
+    node: schema.PanelContent,
+) -> blocks.PanelChild | None:
+    match node["type"]:
+        case "paragraph":
+            return _parse_paragraph(node)
+        case "heading":
+            return _parse_heading(node)
+        case "bulletList":
+            return _parse_bullet_list(node)
+        case "orderedList":
+            return _parse_ordered_list(node)
+        case "codeBlock":
+            return _parse_code_block(node)
+        case "taskList":
+            return _parse_task_list(node)
+        case "decisionList":
+            return _parse_decision_list(node)
+        case "rule":
+            return _parse_rule(node)
+        case "mediaGroup":
+            return _parse_media_group(node)
+        case "mediaSingle":
+            return _parse_media_single(node)
+        case "blockCard":
+            return _parse_block_card(node)
+        case "extension":
+            return _parse_extension(node)
+
+
+# ── Expand / NestedExpand ─────────────────────────────────────────────
+
+
 def _parse_expand(node: schema.Expand) -> blocks.Expand:
     attrs = node.get("attrs", {})
     return blocks.Expand(
-        children=_parse_blocks(node["content"]),
+        children=_parse_expand_children(node["content"]),
         title=attrs.get("title"),
     )
+
+
+def _parse_expand_children(
+    nodes: list[schema.ExpandContent],
+) -> list[blocks.ExpandChild]:
+    result: list[blocks.ExpandChild] = []
+    for node in nodes:
+        parsed = _parse_expand_child(node)
+        if parsed is not None:
+            result.append(parsed)
+    return result
+
+
+def _parse_expand_child(
+    node: schema.ExpandContent,
+) -> blocks.ExpandChild | None:
+    match node["type"]:
+        case "paragraph":
+            return _parse_paragraph(node)
+        case "heading":
+            return _parse_heading(node)
+        case "bulletList":
+            return _parse_bullet_list(node)
+        case "orderedList":
+            return _parse_ordered_list(node)
+        case "codeBlock":
+            return _parse_code_block(node)
+        case "taskList":
+            return _parse_task_list(node)
+        case "decisionList":
+            return _parse_decision_list(node)
+        case "rule":
+            return _parse_rule(node)
+        case "mediaGroup":
+            return _parse_media_group(node)
+        case "mediaSingle":
+            return _parse_media_single(node)
+        case "panel":
+            return _parse_panel(node)
+        case "blockquote":
+            return _parse_blockquote(node)
+        case "table":
+            return _parse_table(node)
+        case "nestedExpand":
+            return _parse_nested_expand(node)
+        case "blockCard":
+            return _parse_block_card(node)
+        case "embedCard":
+            return _parse_embed_card(node)
+        case "extension":
+            return _parse_extension(node)
+        case "bodiedExtension":
+            return _parse_bodied_extension(node)
 
 
 def _parse_nested_expand(node: schema.NestedExpand) -> blocks.NestedExpand:
     attrs = node.get("attrs", {})
     return blocks.NestedExpand(
-        children=_parse_blocks(node["content"]),
+        children=_parse_nested_expand_children(node["content"]),
         title=attrs.get("title"),
     )
 
 
-def _parse_layout_section(node: schema.LayoutSection) -> blocks.LayoutSection:
-    columns: list[blocks.LayoutColumn] = []
-    for col in node["content"]:
-        attrs = col.get("attrs", {})
-        columns.append(
-            blocks.LayoutColumn(
-                children=_parse_blocks(col["content"]),
-                width=attrs.get("width"),
-            )
-        )
-    return blocks.LayoutSection(columns=columns)
+def _parse_nested_expand_children(
+    nodes: list[schema.NestedExpandContent],
+) -> list[blocks.NestedExpandChild]:
+    result: list[blocks.NestedExpandChild] = []
+    for node in nodes:
+        parsed = _parse_nested_expand_child(node)
+        if parsed is not None:
+            result.append(parsed)
+    return result
 
 
-def _parse_media(node: schema.Media) -> blocks.Media:
-    attrs = node["attrs"]
-    return blocks.Media(
-        media_type=attrs["type"],
-        url=attrs.get("url"),
-        id=attrs.get("id"),
-        collection=attrs.get("collection"),
-        alt=attrs.get("alt"),
-        width=attrs.get("width"),
-        height=attrs.get("height"),
-    )
+def _parse_nested_expand_child(
+    node: schema.NestedExpandContent,
+) -> blocks.NestedExpandChild | None:
+    match node["type"]:
+        case "paragraph":
+            return _parse_paragraph(node)
+        case "heading":
+            return _parse_heading(node)
+        case "bulletList":
+            return _parse_bullet_list(node)
+        case "orderedList":
+            return _parse_ordered_list(node)
+        case "codeBlock":
+            return _parse_code_block(node)
+        case "taskList":
+            return _parse_task_list(node)
+        case "decisionList":
+            return _parse_decision_list(node)
+        case "rule":
+            return _parse_rule(node)
+        case "mediaGroup":
+            return _parse_media_group(node)
+        case "mediaSingle":
+            return _parse_media_single(node)
+        case "panel":
+            return _parse_panel(node)
+        case "blockquote":
+            return _parse_blockquote(node)
+        case "extension":
+            return _parse_extension(node)
 
 
-def _parse_media_single(node: schema.MediaSingle) -> blocks.MediaSingle:
-    attrs = node.get("attrs", {})
-    media_node = node["content"][0]
-    return blocks.MediaSingle(
-        media=_parse_media(media_node),
-        layout=attrs.get("layout"),
-        width=attrs.get("width"),
-        width_type=attrs.get("widthType"),
-    )
-
-
-def _parse_media_group(node: schema.MediaGroup) -> blocks.MediaGroup:
-    return blocks.MediaGroup(
-        media_list=[_parse_media(m) for m in node["content"]],
-    )
-
-
-def _parse_block_card(node: schema.BlockCard) -> blocks.BlockCard:
-    attrs = node.get("attrs", {})
-    return blocks.BlockCard(url=attrs.get("url"), data=attrs.get("data"))
-
-
-def _parse_embed_card(node: schema.EmbedCard) -> blocks.EmbedCard:
-    attrs = node["attrs"]
-    return blocks.EmbedCard(
-        url=attrs["url"],
-        layout=attrs["layout"],
-        width=attrs.get("width"),
-        original_width=attrs.get("originalWidth"),
-        original_height=attrs.get("originalHeight"),
-    )
+# ── Table ─────────────────────────────────────────────────────────────
 
 
 def _parse_table(node: schema.Table) -> blocks.Table:
@@ -322,7 +476,7 @@ def _parse_table_cell(
     attrs = node.get("attrs", {})
     cls = blocks.TableHeader if node["type"] == "tableHeader" else blocks.TableCell
     return cls(
-        children=_parse_blocks(node["content"]),
+        children=_parse_tablecell_children(node["content"]),
         colspan=attrs.get("colspan"),
         rowspan=attrs.get("rowspan"),
         col_width=attrs.get("colwidth"),
@@ -330,7 +484,196 @@ def _parse_table_cell(
     )
 
 
-# ── Inline dispatch ───────────────────────────────────────────────────
+def _parse_tablecell_children(
+    nodes: list[schema.TableCellContent],
+) -> list[blocks.TableCellChild]:
+    result: list[blocks.TableCellChild] = []
+    for node in nodes:
+        parsed = _parse_tablecell_child(node)
+        if parsed is not None:
+            result.append(parsed)
+    return result
+
+
+def _parse_tablecell_child(
+    node: schema.TableCellContent,
+) -> blocks.TableCellChild | None:
+    match node["type"]:
+        case "paragraph":
+            return _parse_paragraph(node)
+        case "heading":
+            return _parse_heading(node)
+        case "bulletList":
+            return _parse_bullet_list(node)
+        case "orderedList":
+            return _parse_ordered_list(node)
+        case "codeBlock":
+            return _parse_code_block(node)
+        case "taskList":
+            return _parse_task_list(node)
+        case "decisionList":
+            return _parse_decision_list(node)
+        case "rule":
+            return _parse_rule(node)
+        case "mediaGroup":
+            return _parse_media_group(node)
+        case "mediaSingle":
+            return _parse_media_single(node)
+        case "panel":
+            return _parse_panel(node)
+        case "blockquote":
+            return _parse_blockquote(node)
+        case "nestedExpand":
+            return _parse_nested_expand(node)
+        case "blockCard":
+            return _parse_block_card(node)
+        case "embedCard":
+            return _parse_embed_card(node)
+        case "extension":
+            return _parse_extension(node)
+
+
+# ── Layout ────────────────────────────────────────────────────────────
+
+
+def _parse_layout_section(node: schema.LayoutSection) -> blocks.LayoutSection:
+    columns: list[blocks.LayoutColumn] = []
+    for col in node["content"]:
+        attrs = col.get("attrs", {})
+        columns.append(
+            blocks.LayoutColumn(
+                children=_parse_layoutcolumn_children(col["content"]),
+                width=attrs.get("width"),
+            )
+        )
+    return blocks.LayoutSection(columns=columns)
+
+
+def _parse_layoutcolumn_children(
+    nodes: list[schema.LayoutColumnContent],
+) -> list[blocks.LayoutColumnChild]:
+    result: list[blocks.LayoutColumnChild] = []
+    for node in nodes:
+        parsed = _parse_layoutcolumn_child(node)
+        if parsed is not None:
+            result.append(parsed)
+    return result
+
+
+def _parse_layoutcolumn_child(
+    node: schema.LayoutColumnContent,
+) -> blocks.LayoutColumnChild | None:
+    match node["type"]:
+        case "paragraph":
+            return _parse_paragraph(node)
+        case "heading":
+            return _parse_heading(node)
+        case "bulletList":
+            return _parse_bullet_list(node)
+        case "orderedList":
+            return _parse_ordered_list(node)
+        case "codeBlock":
+            return _parse_code_block(node)
+        case "taskList":
+            return _parse_task_list(node)
+        case "decisionList":
+            return _parse_decision_list(node)
+        case "rule":
+            return _parse_rule(node)
+        case "mediaGroup":
+            return _parse_media_group(node)
+        case "mediaSingle":
+            return _parse_media_single(node)
+        case "panel":
+            return _parse_panel(node)
+        case "blockquote":
+            return _parse_blockquote(node)
+        case "table":
+            return _parse_table(node)
+        case "expand":
+            return _parse_expand(node)
+        case "blockCard":
+            return _parse_block_card(node)
+        case "embedCard":
+            return _parse_embed_card(node)
+        case "bodiedExtension":
+            return _parse_bodied_extension(node)
+        case "extension":
+            return _parse_extension(node)
+
+
+# ── Media ─────────────────────────────────────────────────────────────
+
+
+def _parse_media(node: schema.Media) -> blocks.Media:
+    attrs = node["attrs"]
+    return blocks.Media(
+        media_type=attrs["type"],
+        url=attrs.get("url"),
+        id=attrs.get("id"),
+        collection=attrs.get("collection"),
+        alt=attrs.get("alt"),
+        width=attrs.get("width"),
+        height=attrs.get("height"),
+    )
+
+
+def _parse_media_single(node: schema.MediaSingle) -> blocks.MediaSingle:
+    attrs = node.get("attrs", {})
+    media_node = node["content"][0]
+    return blocks.MediaSingle(
+        media=_parse_media(media_node),
+        layout=attrs.get("layout"),
+        width=attrs.get("width"),
+        width_type=attrs.get("widthType"),
+    )
+
+
+def _parse_media_group(node: schema.MediaGroup) -> blocks.MediaGroup:
+    return blocks.MediaGroup(
+        media_list=[_parse_media(m) for m in node["content"]],
+    )
+
+
+# ── Cards ─────────────────────────────────────────────────────────────
+
+
+def _parse_block_card(node: schema.BlockCard) -> blocks.BlockCard:
+    attrs = node.get("attrs", {})
+    return blocks.BlockCard(url=attrs.get("url"), data=attrs.get("data"))
+
+
+def _parse_embed_card(node: schema.EmbedCard) -> blocks.EmbedCard:
+    attrs = node["attrs"]
+    return blocks.EmbedCard(
+        url=attrs["url"],
+        layout=attrs["layout"],
+        width=attrs.get("width"),
+        original_width=attrs.get("originalWidth"),
+        original_height=attrs.get("originalHeight"),
+    )
+
+
+# ── Extension / SyncBlock ────────────────────────────────────────────
+
+
+def _parse_extension(node: schema.Extension) -> blocks.Extension:
+    return blocks.Extension(raw=dict(node))
+
+
+def _parse_bodied_extension(node: schema.BodiedExtension) -> blocks.BodiedExtension:
+    return blocks.BodiedExtension(raw=dict(node))
+
+
+def _parse_sync_block(node: schema.SyncBlock) -> blocks.SyncBlock:
+    return blocks.SyncBlock(raw=dict(node))
+
+
+def _parse_bodied_sync_block(node: schema.BodiedSyncBlock) -> blocks.BodiedSyncBlock:
+    return blocks.BodiedSyncBlock(raw=dict(node))
+
+
+# ── Inline dispatch ──────────────────────────────────────────────────
 
 
 def _parse_inlines(nodes: list[schema.Inline]) -> list[inlines.Inline]:
@@ -366,33 +709,30 @@ def _merge_adjacent(nodes: list[inlines.Inline]) -> list[inlines.Inline]:
 
 
 def _parse_inline(node: schema.Inline) -> list[inlines.Inline]:
-    t = node["type"]
-    match t:
+    match node["type"]:
         case "text":
-            return _parse_text(cast(schema.Text, node))
+            return _parse_text(node)
         case "hardBreak":
             return [inlines.HardBreak()]
         case "mention":
-            return _parse_mention(cast(schema.Mention, node))
+            return _parse_mention(node)
         case "emoji":
-            return _parse_emoji(cast(schema.Emoji, node))
+            return _parse_emoji(node)
         case "date":
-            return _parse_date(cast(schema.Date, node))
+            return _parse_date(node)
         case "status":
-            return _parse_status(cast(schema.Status, node))
+            return _parse_status(node)
         case "inlineCard":
-            return _parse_inline_card(cast(schema.InlineCard, node))
+            return _parse_inline_card(node)
         case "placeholder":
-            return _parse_placeholder(cast(schema.Placeholder, node))
+            return _parse_placeholder(node)
         case "mediaInline":
-            return _parse_media_inline(cast(schema.MediaInline, node))
+            return _parse_media_inline(node)
         case "inlineExtension":
             return [inlines.InlineExtension(raw=dict(node))]
-        case _:
-            return [inlines.InlineExtension(raw=dict(node))]
 
 
-# ── Inline parsers ────────────────────────────────────────────────────
+# ── Inline parsers ───────────────────────────────────────────────────
 
 
 def _parse_text(node: schema.Text) -> list[inlines.Inline]:
@@ -454,19 +794,19 @@ def _parse_placeholder(node: schema.Placeholder) -> list[inlines.Inline]:
 
 def _parse_media_inline(node: schema.MediaInline) -> list[inlines.Inline]:
     attrs = node["attrs"]
-    mi = inlines.MediaInline(
-        id=attrs.get("id"),
-        collection=attrs.get("collection"),
-        media_type=attrs.get("type", "file"),
-        alt=attrs.get("alt"),
-        width=attrs.get("width"),
-        height=attrs.get("height"),
-    )
-    result: list[inlines.Inline] = [mi]
-    return result
+    return [
+        inlines.MediaInline(
+            id=attrs.get("id"),
+            collection=attrs.get("collection"),
+            media_type=attrs.get("type", "file"),
+            alt=attrs.get("alt"),
+            width=attrs.get("width"),
+            height=attrs.get("height"),
+        )
+    ]
 
 
-# ── Mark application ──────────────────────────────────────────────────
+# ── Mark application ────────────────────────────────────────────────
 
 
 def _apply_marks(text: str, marks: list[schema.Mark]) -> list[inlines.Inline]:

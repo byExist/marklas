@@ -322,14 +322,25 @@ def test_expand():
 def test_nested_expand():
     doc = _doc(
         {
-            "type": "nestedExpand",
-            "attrs": {"title": "Inner"},
+            "type": "expand",
+            "attrs": {"title": "Outer"},
             "content": [
-                {"type": "paragraph", "content": [{"type": "text", "text": "x"}]}
+                {
+                    "type": "nestedExpand",
+                    "attrs": {"title": "Inner"},
+                    "content": [
+                        {
+                            "type": "paragraph",
+                            "content": [{"type": "text", "text": "x"}],
+                        }
+                    ],
+                }
             ],
         }
     )
-    ne = parse(doc).children[0]
+    expand = parse(doc).children[0]
+    assert isinstance(expand, blocks.Expand)
+    ne = expand.children[0]
     assert isinstance(ne, blocks.NestedExpand)
     assert ne.title == "Inner"
 
@@ -531,13 +542,6 @@ def test_bodied_sync_block_raw():
     assert e.raw["type"] == "bodiedSyncBlock"
 
 
-def test_unknown_block():
-    doc = _doc({"type": "unknownBlock", "attrs": {"foo": "bar"}})
-    e = parse(doc).children[0]
-    assert isinstance(e, blocks.Extension)
-    assert e.raw["type"] == "unknownBlock"
-
-
 # ── Difference-set inline parsing ─────────────────────────────────────
 
 
@@ -670,18 +674,6 @@ def test_inline_extension_raw():
     ie = _first_inline(doc)
     assert isinstance(ie, inlines.InlineExtension)
     assert ie.raw["type"] == "inlineExtension"
-
-
-def test_unknown_inline():
-    doc = _doc(
-        {
-            "type": "paragraph",
-            "content": [{"type": "unknownInline", "attrs": {"x": 1}}],
-        }
-    )
-    ie = _first_inline(doc)
-    assert isinstance(ie, inlines.InlineExtension)
-    assert ie.raw["type"] == "unknownInline"
 
 
 # ── Marks ─────────────────────────────────────────────────────────────
