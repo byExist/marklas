@@ -259,9 +259,18 @@ def test_expand_annotation():
 
 
 def test_nested_expand_annotation():
-    md = '<!-- adf:nestedExpand {"title": "Inner"} -->\ninner content\n<!-- /adf:nestedExpand -->\n'
+    """nestedExpand is not a DocChild — it must appear inside an expand."""
+    md = (
+        '<!-- adf:expand {"title": "Outer"} -->\n'
+        '<!-- adf:nestedExpand {"title": "Inner"} -->\n'
+        "inner content\n"
+        "<!-- /adf:nestedExpand -->\n"
+        "<!-- /adf:expand -->\n"
+    )
     doc = parse(md)
-    ne = doc.children[0]
+    expand = doc.children[0]
+    assert isinstance(expand, blocks.Expand)
+    ne = expand.children[0]
     assert isinstance(ne, blocks.NestedExpand)
     assert ne.title == "Inner"
 
@@ -281,19 +290,18 @@ def test_expand_with_table():
     assert isinstance(expand.children[0], blocks.Table)
 
 
-def test_panel_with_table():
-    """Table inside Panel should be parsed correctly."""
+def test_panel_with_heading():
+    """Heading inside Panel should be parsed correctly."""
     md = (
         '<!-- adf:panel {"panelType": "info"} -->\n'
-        "| H |\n"
-        "| --- |\n"
-        "| D |\n"
+        "## Title\n"
+        "content\n"
         "<!-- /adf:panel -->\n"
     )
     doc = parse(md)
     panel = doc.children[0]
     assert isinstance(panel, blocks.Panel)
-    assert isinstance(panel.children[0], blocks.Table)
+    assert isinstance(panel.children[0], blocks.Heading)
 
 
 def test_expand_blockquote_legacy():

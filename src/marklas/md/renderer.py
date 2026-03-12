@@ -875,7 +875,7 @@ def _annotate_inline(
     tag = _to_tag(node)
     filtered = {k: v for k, v in attrs.items() if v is not None}
     attr_json = f" {json.dumps(filtered, ensure_ascii=False)}" if filtered else ""
-    return f"<!-- adf:{tag}{attr_json} -->{content}<!-- /adf:{tag} -->"
+    return f"<!-- adf:{tag}{attr_json} --> {content} <!-- /adf:{tag} -->"
 
 
 def _render_strong(node: inlines.Strong, annotate: bool) -> str:

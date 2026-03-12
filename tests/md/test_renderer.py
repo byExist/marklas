@@ -921,7 +921,7 @@ def test_underline():
         ]
     )
     result = render(doc)
-    assert "<!-- adf:underline -->underlined<!-- /adf:underline -->" in result
+    assert "<!-- adf:underline --> underlined <!-- /adf:underline -->" in result
 
 
 def test_text_color():
@@ -1087,7 +1087,7 @@ def test_annotate_inline_no_attrs():
         ]
     )
     result = render(doc)
-    assert "<!-- adf:underline -->u<!-- /adf:underline -->" in result
+    assert "<!-- adf:underline --> u <!-- /adf:underline -->" in result
 
 
 def test_annotate_block_with_attrs_json():
@@ -1122,7 +1122,7 @@ def test_annotate_inline_with_attrs_json():
     result = render(doc)
     # Parse inline annotation JSON
     start = result.index("<!-- adf:textColor ") + len("<!-- adf:textColor ")
-    end = result.index(" -->t")
+    end = result.index(" --> t")
     json_str = result[start:end]
     attrs = json.loads(json_str)
     assert attrs["color"] == "#abc"
