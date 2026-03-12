@@ -572,10 +572,17 @@ def test_expand():
 def test_nested_expand():
     doc = blocks.Document(
         children=[
-            blocks.NestedExpand(
-                title="Inner",
+            blocks.Expand(
+                title="Outer",
                 children=[
-                    blocks.Paragraph(children=[inlines.Text(text="inner content")])
+                    blocks.NestedExpand(
+                        title="Inner",
+                        children=[
+                            blocks.Paragraph(
+                                children=[inlines.Text(text="inner content")]
+                            )
+                        ],
+                    )
                 ],
             )
         ]

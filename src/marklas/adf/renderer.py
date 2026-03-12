@@ -712,7 +712,7 @@ def _apply_cell_attrs(cell: blocks.TableCell, cell_json: dict[str, Any]) -> None
 def _render_inlines(nodes: list[inlines.Inline]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for node in nodes:
-        result.extend(_flatten_inline(node, []))
+        result.extend(_render_inline(node, []))
     return result
 
 
@@ -727,7 +727,7 @@ def _render_inlines_from_blocks(
     return result
 
 
-def _flatten_inline(
+def _render_inline(
     node: inlines.Inline, marks: list[dict[str, Any]]
 ) -> list[dict[str, Any]]:
     match node:
@@ -742,19 +742,19 @@ def _flatten_inline(
         case inlines.Strong():
             new_marks: list[dict[str, Any]] = [*marks, {"type": "strong"}]
             return [
-                child for c in node.children for child in _flatten_inline(c, new_marks)
+                child for c in node.children for child in _render_inline(c, new_marks)
             ]
 
         case inlines.Emphasis():
             new_marks: list[dict[str, Any]] = [*marks, {"type": "em"}]
             return [
-                child for c in node.children for child in _flatten_inline(c, new_marks)
+                child for c in node.children for child in _render_inline(c, new_marks)
             ]
 
         case inlines.Strikethrough():
             new_marks: list[dict[str, Any]] = [*marks, {"type": "strike"}]
             return [
-                child for c in node.children for child in _flatten_inline(c, new_marks)
+                child for c in node.children for child in _render_inline(c, new_marks)
             ]
 
         case inlines.Link():
@@ -763,7 +763,7 @@ def _flatten_inline(
                 link_mark["attrs"]["title"] = node.title
             new_marks: list[dict[str, Any]] = [*marks, link_mark]
             return [
-                child for c in node.children for child in _flatten_inline(c, new_marks)
+                child for c in node.children for child in _render_inline(c, new_marks)
             ]
 
         case inlines.CodeSpan():
@@ -850,7 +850,7 @@ def _flatten_inline(
         case inlines.Underline():
             new_marks: list[dict[str, Any]] = [*marks, {"type": "underline"}]
             return [
-                child for c in node.children for child in _flatten_inline(c, new_marks)
+                child for c in node.children for child in _render_inline(c, new_marks)
             ]
 
         case inlines.TextColor():
@@ -859,7 +859,7 @@ def _flatten_inline(
                 {"type": "textColor", "attrs": {"color": node.color}},
             ]
             return [
-                child for c in node.children for child in _flatten_inline(c, new_marks)
+                child for c in node.children for child in _render_inline(c, new_marks)
             ]
 
         case inlines.BackgroundColor():
@@ -868,7 +868,7 @@ def _flatten_inline(
                 {"type": "backgroundColor", "attrs": {"color": node.color}},
             ]
             return [
-                child for c in node.children for child in _flatten_inline(c, new_marks)
+                child for c in node.children for child in _render_inline(c, new_marks)
             ]
 
         case inlines.SubSup():
@@ -877,7 +877,7 @@ def _flatten_inline(
                 {"type": "subsup", "attrs": {"type": node.type}},
             ]
             return [
-                child for c in node.children for child in _flatten_inline(c, new_marks)
+                child for c in node.children for child in _render_inline(c, new_marks)
             ]
 
         case inlines.Annotation():
@@ -889,5 +889,5 @@ def _flatten_inline(
                 },
             ]
             return [
-                child for c in node.children for child in _flatten_inline(c, new_marks)
+                child for c in node.children for child in _render_inline(c, new_marks)
             ]
