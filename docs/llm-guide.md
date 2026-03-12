@@ -14,12 +14,18 @@ Marklas converts Atlassian Document Format (ADF) to Markdown. The output may con
 - **Edit only the fallback content** between the opening and closing comments.
 - **JSON attributes** inside annotation comments (e.g., `{"panelType": "info"}`) must not be changed.
 
-Example — editing panel content:
+Block annotation example:
 
 ```markdown
 <!-- adf:panel {"panelType": "info"} -->
 Old content here. ← edit this part
 <!-- /adf:panel -->
+```
+
+Inline annotation example (note the spaces around content):
+
+```markdown
+<!-- adf:mention {"id": "abc123", "text": "@John"} --> `@John` <!-- /adf:mention -->
 ```
 
 ## Table Cells
@@ -58,9 +64,9 @@ Standard Markdown elements (paragraphs, headings, bold, italic, links, images, c
 
 These placeholders reference Confluence macros or attachments. Editing them has no effect on roundtrip:
 
-- `` `⚙ extensionKey` `` — Confluence macro
-- `` `📎 attachment` `` — file attachment
-- `` `🔗 card link` `` — smart link
+- `` `⚙ Confluence macro` `` or `` `⚙ {extensionKey}` `` — Confluence macro (extension, bodiedExtension, syncBlock, bodiedSyncBlock, inlineExtension)
+- `` `📎 attachment` `` — file attachment (mediaSingle, mediaGroup, mediaInline)
+- `` `🔗 card link` `` — smart link with data-only blockCard/inlineCard
 
 ## Summary of Restrictions
 
