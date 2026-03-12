@@ -1,65 +1,60 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Any
+from typing import Any, TypeAlias
 
 from marklas.nodes.base import Node
-
-
-@dataclass
-class Inline(Node):
-    pass
 
 
 # --- Intersection ---
 
 
 @dataclass
-class Text(Inline):
+class Text(Node):
     text: str
 
 
 @dataclass
-class Strong(Inline):
+class Strong(Node):
     children: list[Inline]
 
 
 @dataclass
-class Emphasis(Inline):
+class Emphasis(Node):
     children: list[Inline]
 
 
 @dataclass
-class Strikethrough(Inline):
+class Strikethrough(Node):
     children: list[Inline]
 
 
 @dataclass
-class Link(Inline):
+class Link(Node):
     url: str
     children: list[Inline]
     title: str | None = None
 
 
 @dataclass
-class Image(Inline):
+class Image(Node):
     url: str
     alt: str = ""
     title: str | None = None
 
 
 @dataclass
-class CodeSpan(Inline):
+class CodeSpan(Node):
     code: str
 
 
 @dataclass
-class HardBreak(Inline):
+class HardBreak(Node):
     pass
 
 
 @dataclass
-class SoftBreak(Inline):
+class SoftBreak(Node):
     pass
 
 
@@ -67,7 +62,7 @@ class SoftBreak(Inline):
 
 
 @dataclass
-class Mention(Inline):
+class Mention(Node):
     id: str
     text: str | None = None
     access_level: str | None = None
@@ -75,32 +70,32 @@ class Mention(Inline):
 
 
 @dataclass
-class Emoji(Inline):
+class Emoji(Node):
     short_name: str
     text: str | None = None
     id: str | None = None
 
 
 @dataclass
-class Date(Inline):
+class Date(Node):
     timestamp: str
 
 
 @dataclass
-class Status(Inline):
+class Status(Node):
     text: str
     color: str
     style: str | None = None
 
 
 @dataclass
-class InlineCard(Inline):
+class InlineCard(Node):
     url: str | None = None
     data: dict[str, Any] | None = None
 
 
 @dataclass
-class MediaInline(Inline):
+class MediaInline(Node):
     id: str | None = None
     collection: str | None = None
     media_type: str = "file"
@@ -113,30 +108,30 @@ class MediaInline(Inline):
 
 
 @dataclass
-class Underline(Inline):
+class Underline(Node):
     children: list[Inline]
 
 
 @dataclass
-class TextColor(Inline):
+class TextColor(Node):
     color: str
     children: list[Inline]
 
 
 @dataclass
-class BackgroundColor(Inline):
+class BackgroundColor(Node):
     color: str
     children: list[Inline]
 
 
 @dataclass
-class SubSup(Inline):
+class SubSup(Node):
     type: str  # sub, sup
     children: list[Inline]
 
 
 @dataclass
-class Annotation(Inline):
+class Annotation(Node):
     id: str
     children: list[Inline]
     annotation_type: str = "inlineComment"
@@ -146,10 +141,36 @@ class Annotation(Inline):
 
 
 @dataclass
-class Placeholder(Inline):
+class Placeholder(Node):
     text: str
 
 
 @dataclass
-class InlineExtension(Inline):
+class InlineExtension(Node):
     raw: dict[str, Any]
+
+
+Inline: TypeAlias = (
+    Text
+    | Strong
+    | Emphasis
+    | Strikethrough
+    | Link
+    | Image
+    | CodeSpan
+    | HardBreak
+    | SoftBreak
+    | Mention
+    | Emoji
+    | Date
+    | Status
+    | InlineCard
+    | MediaInline
+    | Underline
+    | TextColor
+    | BackgroundColor
+    | SubSup
+    | Annotation
+    | Placeholder
+    | InlineExtension
+)

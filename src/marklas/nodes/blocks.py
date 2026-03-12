@@ -8,11 +8,6 @@ from marklas.nodes.base import Node
 from marklas.nodes.inlines import Inline
 
 
-@dataclass
-class Block(Node):
-    pass
-
-
 # --- Intersection ---
 
 
@@ -22,14 +17,14 @@ class Document(Node):
 
 
 @dataclass
-class Paragraph(Block):
+class Paragraph(Node):
     children: list[Inline]
     alignment: str | None = None  # center, end
     indentation: int | None = None
 
 
 @dataclass
-class Heading(Block):
+class Heading(Node):
     level: Literal[1, 2, 3, 4, 5, 6]
     children: list[Inline]
     alignment: str | None = None
@@ -37,35 +32,35 @@ class Heading(Block):
 
 
 @dataclass
-class CodeBlock(Block):
+class CodeBlock(Node):
     code: str
     language: str | None = None
 
 
 @dataclass
-class BlockQuote(Block):
+class BlockQuote(Node):
     children: list[BlockQuoteChild]
 
 
 @dataclass
-class ThematicBreak(Block):
+class ThematicBreak(Node):
     pass
 
 
 @dataclass
-class ListItem(Block):
+class ListItem(Node):
     children: list[ListItemChild]
     checked: bool | None = None
 
 
 @dataclass
-class BulletList(Block):
+class BulletList(Node):
     items: list[ListItem]
     tight: bool = True
 
 
 @dataclass
-class OrderedList(Block):
+class OrderedList(Node):
     items: list[ListItem]
     start: int = 1
     tight: bool = True
@@ -86,7 +81,7 @@ class TableHeader(TableCell):
 
 
 @dataclass
-class Table(Block):
+class Table(Node):
     head: list[TableCell]
     body: list[list[TableCell]]
     alignments: list[Literal["left", "center", "right"] | None] = field(
@@ -102,7 +97,7 @@ class Table(Block):
 
 
 @dataclass
-class Panel(Block):
+class Panel(Node):
     children: list[PanelChild]
     panel_type: str  # info, note, tip, warning, error, success, custom
     panel_icon: str | None = None
@@ -112,13 +107,13 @@ class Panel(Block):
 
 
 @dataclass
-class Expand(Block):
+class Expand(Node):
     children: list[ExpandChild]
     title: str | None = None
 
 
 @dataclass
-class NestedExpand(Block):
+class NestedExpand(Node):
     children: list[NestedExpandChild]
     title: str | None = None
 
@@ -131,7 +126,7 @@ class TaskItem(Node):
 
 
 @dataclass
-class TaskList(Block):
+class TaskList(Node):
     items: list[TaskItem]
 
 
@@ -143,23 +138,21 @@ class DecisionItem(Node):
 
 
 @dataclass
-class DecisionList(Block):
+class DecisionList(Node):
     items: list[DecisionItem]
 
 
 # Note: width is required in the ADF schema, but may be absent in
 # annotation comments during MD restoration, so it's optional in the AST.
 # ADF renderer uses equal distribution (100/len(columns)) when None.
-# Inherits Block for type compatibility since it appears temporarily
-# inside _pair_block_annotations(list[Block]) during parsing.
 @dataclass
-class LayoutColumn(Block):
+class LayoutColumn(Node):
     children: list[LayoutColumnChild]
     width: float | None = None
 
 
 @dataclass
-class LayoutSection(Block):
+class LayoutSection(Node):
     columns: list[LayoutColumn]
 
 
@@ -177,7 +170,7 @@ class Media(Node):
 # Note: ADF mediaSingle.content is a list but always contains exactly one Media.
 # Additional content like captions is not currently supported (only content[0] is preserved on roundtrip).
 @dataclass
-class MediaSingle(Block):
+class MediaSingle(Node):
     media: Media
     layout: str | None = None
     width: float | None = None
@@ -185,18 +178,18 @@ class MediaSingle(Block):
 
 
 @dataclass
-class MediaGroup(Block):
+class MediaGroup(Node):
     media_list: list[Media]
 
 
 @dataclass
-class BlockCard(Block):
+class BlockCard(Node):
     url: str | None = None
     data: dict[str, Any] | None = None
 
 
 @dataclass
-class EmbedCard(Block):
+class EmbedCard(Node):
     url: str
     layout: str
     width: float | None = None
@@ -208,22 +201,22 @@ class EmbedCard(Block):
 
 
 @dataclass
-class Extension(Block):
+class Extension(Node):
     raw: dict[str, Any]
 
 
 @dataclass
-class BodiedExtension(Block):
+class BodiedExtension(Node):
     raw: dict[str, Any]
 
 
 @dataclass
-class SyncBlock(Block):
+class SyncBlock(Node):
     raw: dict[str, Any]
 
 
 @dataclass
-class BodiedSyncBlock(Block):
+class BodiedSyncBlock(Node):
     raw: dict[str, Any]
 
 
@@ -359,6 +352,33 @@ DocChild: TypeAlias = Union[
     TaskList,
     DecisionList,
     LayoutSection,
+    Extension,
+    BodiedExtension,
+    SyncBlock,
+    BodiedSyncBlock,
+]
+
+Block: TypeAlias = Union[
+    Paragraph,
+    Heading,
+    CodeBlock,
+    BlockQuote,
+    ThematicBreak,
+    ListItem,
+    BulletList,
+    OrderedList,
+    Table,
+    Panel,
+    Expand,
+    NestedExpand,
+    TaskList,
+    DecisionList,
+    LayoutColumn,
+    LayoutSection,
+    MediaSingle,
+    MediaGroup,
+    BlockCard,
+    EmbedCard,
     Extension,
     BodiedExtension,
     SyncBlock,

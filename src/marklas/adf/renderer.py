@@ -891,6 +891,3 @@ def _flatten_inline(
             return [
                 child for c in node.children for child in _flatten_inline(c, new_marks)
             ]
-
-        case _:
-            return []
