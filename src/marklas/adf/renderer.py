@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Sequence
 from typing import Any
 from uuid import uuid4
 
@@ -16,15 +17,11 @@ def _sort_marks(marks: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def render(doc: blocks.Document) -> dict[str, Any]:
-    content = _render_children(doc.children)
+    content = _render_doc_children(doc.children)
     return {"type": "doc", "version": 1, "content": content}
 
 
 # ── Helpers ──────────────────────────────────────────────────────────
-
-
-def _render_children(children: list[blocks.Block]) -> list[dict[str, Any]]:
-    return [b for b in (_render_block(c) for c in children) if b is not None]
 
 
 def _apply_block_marks(
@@ -41,10 +38,16 @@ def _apply_block_marks(
         result["marks"] = marks
 
 
-# ── Block dispatch ───────────────────────────────────────────────────
+# ── Doc dispatch ────────────────────────────────────────────────────
 
 
-def _render_block(node: blocks.Block) -> dict[str, Any] | None:
+def _render_doc_children(
+    children: list[blocks.DocChild],
+) -> list[dict[str, Any]]:
+    return [b for b in (_render_doc_child(c) for c in children) if b is not None]
+
+
+def _render_doc_child(node: blocks.DocChild) -> dict[str, Any] | None:
     match node:
         case blocks.Paragraph():
             return _render_paragraph(node)
@@ -55,7 +58,7 @@ def _render_block(node: blocks.Block) -> dict[str, Any] | None:
         case blocks.BlockQuote():
             return _render_blockquote(node)
         case blocks.ThematicBreak():
-            return {"type": "rule"}
+            return _render_thematic_break(node)
         case blocks.BulletList():
             return _render_bullet_list(node)
         case blocks.OrderedList():
@@ -70,8 +73,6 @@ def _render_block(node: blocks.Block) -> dict[str, Any] | None:
             return _render_panel(node)
         case blocks.Expand():
             return _render_expand(node)
-        case blocks.NestedExpand():
-            return _render_nested_expand(node)
         case blocks.LayoutSection():
             return _render_layout_section(node)
         case blocks.MediaSingle():
@@ -82,18 +83,37 @@ def _render_block(node: blocks.Block) -> dict[str, Any] | None:
             return _render_block_card(node)
         case blocks.EmbedCard():
             return _render_embed_card(node)
-        case (
-            blocks.Extension()
-            | blocks.BodiedExtension()
-            | blocks.SyncBlock()
-            | blocks.BodiedSyncBlock()
-        ):
-            return node.raw
-        case _:
-            return None
+        case blocks.Extension():
+            return _render_extension(node)
+        case blocks.BodiedExtension():
+            return _render_bodied_extension(node)
+        case blocks.SyncBlock():
+            return _render_sync_block(node)
+        case blocks.BodiedSyncBlock():
+            return _render_bodied_sync_block(node)
 
 
 # ── Block renderers ──────────────────────────────────────────────────
+
+
+def _render_thematic_break(_node: blocks.ThematicBreak) -> dict[str, Any]:
+    return {"type": "rule"}
+
+
+def _render_extension(node: blocks.Extension) -> dict[str, Any]:
+    return node.raw
+
+
+def _render_bodied_extension(node: blocks.BodiedExtension) -> dict[str, Any]:
+    return node.raw
+
+
+def _render_sync_block(node: blocks.SyncBlock) -> dict[str, Any]:
+    return node.raw
+
+
+def _render_bodied_sync_block(node: blocks.BodiedSyncBlock) -> dict[str, Any]:
+    return node.raw
 
 
 def _render_paragraph(node: blocks.Paragraph) -> dict[str, Any]:
@@ -133,7 +153,36 @@ def _render_code_block(node: blocks.CodeBlock) -> dict[str, Any]:
 
 
 def _render_blockquote(node: blocks.BlockQuote) -> dict[str, Any]:
-    return {"type": "blockquote", "content": _render_children(node.children)}
+    return {"type": "blockquote", "content": _render_blockquote_children(node.children)}
+
+
+# ── Blockquote dispatch ──────────────────────────────────────────────
+
+
+def _render_blockquote_children(
+    children: list[blocks.BlockQuoteChild],
+) -> list[dict[str, Any]]:
+    return [b for b in (_render_blockquote_child(c) for c in children) if b is not None]
+
+
+def _render_blockquote_child(
+    node: blocks.BlockQuoteChild,
+) -> dict[str, Any] | None:
+    match node:
+        case blocks.Paragraph():
+            return _render_paragraph(node)
+        case blocks.BulletList():
+            return _render_bullet_list(node)
+        case blocks.OrderedList():
+            return _render_ordered_list(node)
+        case blocks.CodeBlock():
+            return _render_code_block(node)
+        case blocks.MediaGroup():
+            return _render_media_group(node)
+        case blocks.MediaSingle():
+            return _render_media_single(node)
+        case blocks.Extension():
+            return _render_extension(node)
 
 
 def _render_bullet_list(node: blocks.BulletList) -> dict[str, Any]:
@@ -169,7 +218,36 @@ def _render_ordered_list(node: blocks.OrderedList) -> dict[str, Any]:
 
 
 def _render_list_item(item: blocks.ListItem) -> dict[str, Any]:
-    return {"type": "listItem", "content": _render_children(item.children)}
+    return {"type": "listItem", "content": _render_listitem_children(item.children)}
+
+
+# ── ListItem dispatch ───────────────────────────────────────────────
+
+
+def _render_listitem_children(
+    children: list[blocks.ListItemChild],
+) -> list[dict[str, Any]]:
+    return [b for b in (_render_listitem_child(c) for c in children) if b is not None]
+
+
+def _render_listitem_child(
+    node: blocks.ListItemChild,
+) -> dict[str, Any] | None:
+    match node:
+        case blocks.Paragraph():
+            return _render_paragraph(node)
+        case blocks.BulletList():
+            return _render_bullet_list(node)
+        case blocks.OrderedList():
+            return _render_ordered_list(node)
+        case blocks.CodeBlock():
+            return _render_code_block(node)
+        case blocks.MediaSingle():
+            return _render_media_single(node)
+        case blocks.Extension():
+            return _render_extension(node)
+        case blocks.TaskList():
+            return _render_task_list(node)
 
 
 def _render_task_list(node: blocks.TaskList) -> dict[str, Any]:
@@ -218,27 +296,164 @@ def _render_panel(node: blocks.Panel) -> dict[str, Any]:
         attrs["panelIconText"] = node.panel_icon_text
     if node.panel_color:
         attrs["panelColor"] = node.panel_color
-    return {"type": "panel", "attrs": attrs, "content": _render_children(node.children)}
+    return {
+        "type": "panel",
+        "attrs": attrs,
+        "content": _render_panel_children(node.children),
+    }
+
+
+# ── Panel dispatch ──────────────────────────────────────────────────
+
+
+def _render_panel_children(
+    children: list[blocks.PanelChild],
+) -> list[dict[str, Any]]:
+    return [b for b in (_render_panel_child(c) for c in children) if b is not None]
+
+
+def _render_panel_child(
+    node: blocks.PanelChild,
+) -> dict[str, Any] | None:
+    match node:
+        case blocks.Paragraph():
+            return _render_paragraph(node)
+        case blocks.Heading():
+            return _render_heading(node)
+        case blocks.BulletList():
+            return _render_bullet_list(node)
+        case blocks.OrderedList():
+            return _render_ordered_list(node)
+        case blocks.CodeBlock():
+            return _render_code_block(node)
+        case blocks.TaskList():
+            return _render_task_list(node)
+        case blocks.DecisionList():
+            return _render_decision_list(node)
+        case blocks.ThematicBreak():
+            return _render_thematic_break(node)
+        case blocks.MediaGroup():
+            return _render_media_group(node)
+        case blocks.MediaSingle():
+            return _render_media_single(node)
+        case blocks.BlockCard():
+            return _render_block_card(node)
+        case blocks.Extension():
+            return _render_extension(node)
 
 
 def _render_expand(node: blocks.Expand) -> dict[str, Any]:
     result: dict[str, Any] = {
         "type": "expand",
-        "content": _render_children(node.children),
+        "content": _render_expand_children(node.children),
     }
     if node.title:
         result["attrs"] = {"title": node.title}
     return result
+
+
+# ── Expand dispatch ─────────────────────────────────────────────────
+
+
+def _render_expand_children(
+    children: list[blocks.ExpandChild],
+) -> list[dict[str, Any]]:
+    return [b for b in (_render_expand_child(c) for c in children) if b is not None]
+
+
+def _render_expand_child(
+    node: blocks.ExpandChild,
+) -> dict[str, Any] | None:
+    match node:
+        case blocks.Paragraph():
+            return _render_paragraph(node)
+        case blocks.Heading():
+            return _render_heading(node)
+        case blocks.BulletList():
+            return _render_bullet_list(node)
+        case blocks.OrderedList():
+            return _render_ordered_list(node)
+        case blocks.CodeBlock():
+            return _render_code_block(node)
+        case blocks.TaskList():
+            return _render_task_list(node)
+        case blocks.DecisionList():
+            return _render_decision_list(node)
+        case blocks.ThematicBreak():
+            return _render_thematic_break(node)
+        case blocks.MediaGroup():
+            return _render_media_group(node)
+        case blocks.MediaSingle():
+            return _render_media_single(node)
+        case blocks.Panel():
+            return _render_panel(node)
+        case blocks.BlockQuote():
+            return _render_blockquote(node)
+        case blocks.Table():
+            return _render_table(node)
+        case blocks.NestedExpand():
+            return _render_nested_expand(node)
+        case blocks.BlockCard():
+            return _render_block_card(node)
+        case blocks.EmbedCard():
+            return _render_embed_card(node)
+        case blocks.Extension():
+            return _render_extension(node)
+        case blocks.BodiedExtension():
+            return _render_bodied_extension(node)
 
 
 def _render_nested_expand(node: blocks.NestedExpand) -> dict[str, Any]:
     result: dict[str, Any] = {
         "type": "nestedExpand",
-        "content": _render_children(node.children),
+        "content": _render_nested_expand_children(node.children),
     }
     if node.title:
         result["attrs"] = {"title": node.title}
     return result
+
+
+# ── NestedExpand dispatch ───────────────────────────────────────────
+
+
+def _render_nested_expand_children(
+    children: list[blocks.NestedExpandChild],
+) -> list[dict[str, Any]]:
+    return [
+        b for b in (_render_nested_expand_child(c) for c in children) if b is not None
+    ]
+
+
+def _render_nested_expand_child(
+    node: blocks.NestedExpandChild,
+) -> dict[str, Any] | None:
+    match node:
+        case blocks.Paragraph():
+            return _render_paragraph(node)
+        case blocks.Heading():
+            return _render_heading(node)
+        case blocks.BulletList():
+            return _render_bullet_list(node)
+        case blocks.OrderedList():
+            return _render_ordered_list(node)
+        case blocks.CodeBlock():
+            return _render_code_block(node)
+        case blocks.TaskList():
+            return _render_task_list(node)
+        case blocks.DecisionList():
+            return _render_decision_list(node)
+        case blocks.ThematicBreak():
+            return _render_thematic_break(node)
+        case blocks.MediaGroup():
+            return _render_media_group(node)
+        case blocks.MediaSingle():
+            return _render_media_single(node)
+        case blocks.Panel():
+            return _render_panel(node)
+        case blocks.BlockQuote():
+            return _render_blockquote(node)
+        case blocks.Extension():
+            return _render_extension(node)
 
 
 def _render_layout_section(node: blocks.LayoutSection) -> dict[str, Any]:
@@ -249,10 +464,63 @@ def _render_layout_section(node: blocks.LayoutSection) -> dict[str, Any]:
             {
                 "type": "layoutColumn",
                 "attrs": {"width": width},
-                "content": _render_children(col.children),
+                "content": _render_layoutcolumn_children(col.children),
             }
         )
     return {"type": "layoutSection", "content": columns}
+
+
+# ── LayoutColumn dispatch ───────────────────────────────────────────
+
+
+def _render_layoutcolumn_children(
+    children: list[blocks.LayoutColumnChild],
+) -> list[dict[str, Any]]:
+    return [
+        b for b in (_render_layoutcolumn_child(c) for c in children) if b is not None
+    ]
+
+
+def _render_layoutcolumn_child(
+    node: blocks.LayoutColumnChild,
+) -> dict[str, Any] | None:
+    match node:
+        case blocks.Paragraph():
+            return _render_paragraph(node)
+        case blocks.Heading():
+            return _render_heading(node)
+        case blocks.BulletList():
+            return _render_bullet_list(node)
+        case blocks.OrderedList():
+            return _render_ordered_list(node)
+        case blocks.CodeBlock():
+            return _render_code_block(node)
+        case blocks.TaskList():
+            return _render_task_list(node)
+        case blocks.DecisionList():
+            return _render_decision_list(node)
+        case blocks.ThematicBreak():
+            return _render_thematic_break(node)
+        case blocks.MediaGroup():
+            return _render_media_group(node)
+        case blocks.MediaSingle():
+            return _render_media_single(node)
+        case blocks.Panel():
+            return _render_panel(node)
+        case blocks.BlockQuote():
+            return _render_blockquote(node)
+        case blocks.Table():
+            return _render_table(node)
+        case blocks.Expand():
+            return _render_expand(node)
+        case blocks.BlockCard():
+            return _render_block_card(node)
+        case blocks.EmbedCard():
+            return _render_embed_card(node)
+        case blocks.BodiedExtension():
+            return _render_bodied_extension(node)
+        case blocks.Extension():
+            return _render_extension(node)
 
 
 def _render_media(media: blocks.Media) -> dict[str, Any]:
@@ -354,7 +622,7 @@ def _render_table(node: blocks.Table) -> dict[str, Any]:
             )
             cell_json: dict[str, Any] = {
                 "type": cell_type,
-                "content": _render_children(cell.children),
+                "content": _render_tablecell_children(cell.children),
             }
             _apply_cell_attrs(cell, cell_json)
             row_cells.append(cell_json)
@@ -375,6 +643,53 @@ def _render_table(node: blocks.Table) -> dict[str, Any]:
         result["attrs"] = table_attrs
 
     return result
+
+
+# ── TableCell dispatch ───────────────────────────────────────────────
+
+
+def _render_tablecell_children(
+    children: list[blocks.TableCellChild],
+) -> list[dict[str, Any]]:
+    return [b for b in (_render_tablecell_child(c) for c in children) if b is not None]
+
+
+def _render_tablecell_child(
+    node: blocks.TableCellChild,
+) -> dict[str, Any] | None:
+    match node:
+        case blocks.Paragraph():
+            return _render_paragraph(node)
+        case blocks.Heading():
+            return _render_heading(node)
+        case blocks.BulletList():
+            return _render_bullet_list(node)
+        case blocks.OrderedList():
+            return _render_ordered_list(node)
+        case blocks.CodeBlock():
+            return _render_code_block(node)
+        case blocks.TaskList():
+            return _render_task_list(node)
+        case blocks.DecisionList():
+            return _render_decision_list(node)
+        case blocks.ThematicBreak():
+            return _render_thematic_break(node)
+        case blocks.MediaGroup():
+            return _render_media_group(node)
+        case blocks.MediaSingle():
+            return _render_media_single(node)
+        case blocks.Panel():
+            return _render_panel(node)
+        case blocks.BlockQuote():
+            return _render_blockquote(node)
+        case blocks.NestedExpand():
+            return _render_nested_expand(node)
+        case blocks.BlockCard():
+            return _render_block_card(node)
+        case blocks.EmbedCard():
+            return _render_embed_card(node)
+        case blocks.Extension():
+            return _render_extension(node)
 
 
 def _apply_cell_attrs(cell: blocks.TableCell, cell_json: dict[str, Any]) -> None:
@@ -402,7 +717,7 @@ def _render_inlines(nodes: list[inlines.Inline]) -> list[dict[str, Any]]:
 
 
 def _render_inlines_from_blocks(
-    block_nodes: list[blocks.Block],
+    block_nodes: Sequence[blocks.Block],
 ) -> list[dict[str, Any]]:
     """Extract inlines from ListItem.children (block list) for taskItem content."""
     result: list[dict[str, Any]] = []

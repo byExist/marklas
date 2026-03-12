@@ -413,15 +413,25 @@ def test_expand_no_title():
 def test_nested_expand():
     doc = blocks.Document(
         children=[
-            blocks.NestedExpand(
-                children=[blocks.Paragraph(children=[inlines.Text(text="nested")])],
-                title="More",
+            blocks.Expand(
+                children=[
+                    blocks.NestedExpand(
+                        children=[
+                            blocks.Paragraph(children=[inlines.Text(text="nested")])
+                        ],
+                        title="More",
+                    )
+                ],
+                title="Outer",
             )
         ]
     )
     result = render(doc)
-    assert result["content"][0]["type"] == "nestedExpand"
-    assert result["content"][0]["attrs"] == {"title": "More"}
+    expand = result["content"][0]
+    assert expand["type"] == "expand"
+    nested = expand["content"][0]
+    assert nested["type"] == "nestedExpand"
+    assert nested["attrs"] == {"title": "More"}
 
 
 def test_task_list():
