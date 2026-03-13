@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from contextlib import contextmanager
 from contextvars import ContextVar
 from datetime import UTC, datetime
@@ -183,6 +184,15 @@ def _render_heading(node: blocks.Heading, annotate: bool) -> str:
     return content
 
 
+_BACKTICK_RUN_RE = re.compile(r"`+")
+
+
+def _code_fence(code: str) -> str:
+    runs = _BACKTICK_RUN_RE.findall(code)
+    max_len = max((len(r) for r in runs), default=0)
+    return "`" * max(3, max_len + 1)
+
+
 def _render_code_block(node: blocks.CodeBlock, annotate: bool) -> str:
     if _in_table():
         code = node.code.replace("\n", CELL_BLOCK_SEP)
@@ -191,7 +201,8 @@ def _render_code_block(node: blocks.CodeBlock, annotate: bool) -> str:
             return _annotate_block(node, html, annotate, language=node.language)
         return html
     lang = node.language or ""
-    return f"```{lang}\n{node.code}\n```"
+    fence = _code_fence(node.code)
+    return f"{fence}{lang}\n{node.code}\n{fence}"
 
 
 def _render_blockquote(node: blocks.BlockQuote, annotate: bool) -> str:

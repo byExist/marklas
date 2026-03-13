@@ -41,6 +41,16 @@ def test_code_block_without_language():
     assert render(doc) == "```\nhello\n```\n"
 
 
+def test_code_block_with_backticks_in_content():
+    doc = blocks.Document(children=[blocks.CodeBlock(code="```python\nprint(1)\n```")])
+    assert render(doc) == "````\n```python\nprint(1)\n```\n````\n"
+
+
+def test_code_block_with_long_backtick_run():
+    doc = blocks.Document(children=[blocks.CodeBlock(code="````example````")])
+    assert render(doc) == "`````\n````example````\n`````\n"
+
+
 def test_blockquote():
     doc = blocks.Document(
         children=[
