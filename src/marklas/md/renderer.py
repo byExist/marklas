@@ -850,7 +850,18 @@ def _render_inlines(nodes: list[inlines.Inline], annotate: bool) -> str:
     trimmed = nodes
     while trimmed and isinstance(trimmed[-1], inlines.HardBreak):
         trimmed = trimmed[:-1]
-    return "".join(_render_inline(n, annotate) for n in trimmed)
+    parts: list[str] = []
+    for node in trimmed:
+        rendered = _render_inline(node, annotate)
+        if (
+            not annotate
+            and parts
+            and parts[-1].endswith("`")
+            and rendered.startswith("`")
+        ):
+            parts.append(" ")
+        parts.append(rendered)
+    return "".join(parts)
 
 
 def _render_inline(node: inlines.Inline, annotate: bool) -> str:

@@ -1577,3 +1577,56 @@ def test_nested_inline_annotation_no_zwsp():
     result = render(doc)
     assert "**<!-- adf:emoji" in result
     assert "\u200b" not in result
+
+
+# ── Adjacent backtick collision ───────────────────────────────────
+
+
+def test_adjacent_backtick_space_inserted():
+    """Space is inserted between adjacent backtick-delimited inlines in plain mode."""
+    doc = blocks.Document(
+        children=[
+            blocks.Paragraph(
+                children=[
+                    inlines.CodeSpan(code="aaa"),
+                    inlines.Status(text="bbb", color="neutral"),
+                ]
+            )
+        ]
+    )
+    result = render(doc, annotate=False)
+    assert "`aaa` `bbb`" in result
+
+
+def test_adjacent_backtick_no_space_in_annotate():
+    """Annotate mode does not need space — annotation tags separate backticks."""
+    doc = blocks.Document(
+        children=[
+            blocks.Paragraph(
+                children=[
+                    inlines.CodeSpan(code="aaa"),
+                    inlines.Status(text="bbb", color="neutral"),
+                ]
+            )
+        ]
+    )
+    result = render(doc)
+    assert "`aaa`<!--" in result
+
+
+def test_adjacent_backtick_no_double_space():
+    """No extra space when inlines already have space between them."""
+    doc = blocks.Document(
+        children=[
+            blocks.Paragraph(
+                children=[
+                    inlines.CodeSpan(code="aaa"),
+                    inlines.Text(text=" "),
+                    inlines.CodeSpan(code="bbb"),
+                ]
+            )
+        ]
+    )
+    result = render(doc, annotate=False)
+    assert "`aaa` `bbb`" in result
+    assert "`aaa`  `bbb`" not in result
