@@ -319,6 +319,33 @@ def test_mark_space_handling():
     assert render(doc) == " **hello** \n"
 
 
+def test_text_escapes_special_chars():
+    doc = blocks.Document(
+        children=[blocks.Paragraph(children=[inlines.Text(text=r"2 * 3 * 4 = 24")])]
+    )
+    assert render(doc) == r"2 \* 3 \* 4 = 24" + "\n"
+
+
+def test_text_escapes_all_markdown_chars():
+    doc = blocks.Document(
+        children=[
+            blocks.Paragraph(children=[inlines.Text(text=r"a\b *c* _d_ [e] `f` ~g~")])
+        ]
+    )
+    assert render(doc) == r"a\\b \*c\* \_d\_ \[e\] \`f\` \~g\~" + "\n"
+
+
+def test_text_escape_preserves_in_strong():
+    doc = blocks.Document(
+        children=[
+            blocks.Paragraph(
+                children=[inlines.Strong(children=[inlines.Text(text="a * b")])]
+            )
+        ]
+    )
+    assert render(doc) == r"**a \* b**" + "\n"
+
+
 # ── Table ────────────────────────────────────────────────────────────
 
 

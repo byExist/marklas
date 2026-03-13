@@ -15,6 +15,18 @@ from marklas.nodes import blocks, inlines
 CELL_BLOCK_SEP = "<br>"  # separates blocks inside a table cell
 CELL_HARD_BREAK = "<br/>"  # hard break (line break) inside a table cell
 
+_MD_ESCAPE_TABLE = str.maketrans(
+    {
+        "\\": "\\\\",
+        "*": "\\*",
+        "_": "\\_",
+        "[": "\\[",
+        "]": "\\]",
+        "`": "\\`",
+        "~": "\\~",
+    }
+)
+
 # ── Rendering context ────────────────────────────────────────────────
 
 _in_table_ctx: ContextVar[bool] = ContextVar("in_table", default=False)
@@ -825,7 +837,7 @@ def _render_inlines(nodes: list[inlines.Inline], annotate: bool) -> str:
 def _render_inline(node: inlines.Inline, annotate: bool) -> str:
     match node:
         case inlines.Text():
-            return node.text
+            return _render_text(node)
         case inlines.Strong():
             return _render_strong(node, annotate)
         case inlines.Emphasis():
@@ -891,6 +903,10 @@ def _annotate_inline(
     filtered = {k: v for k, v in attrs.items() if v is not None}
     attr_json = f" {json.dumps(filtered, ensure_ascii=False)}" if filtered else ""
     return f"<!-- adf:{tag}{attr_json} --> {content} <!-- /adf:{tag} -->"
+
+
+def _render_text(node: inlines.Text) -> str:
+    return node.text.translate(_MD_ESCAPE_TABLE)
 
 
 def _render_strong(node: inlines.Strong, annotate: bool) -> str:
