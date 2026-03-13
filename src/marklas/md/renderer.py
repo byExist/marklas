@@ -984,17 +984,8 @@ def _render_mention(node: inlines.Mention, annotate: bool) -> str:
     )
 
 
-def _ensure_emoji_presentation(text: str) -> str:
-    """Append VS-16 (U+FE0F) so text-default emojis render in emoji style."""
-    if text.endswith("\ufe0f") or text.endswith("\ufe0e"):
-        return text
-    return text + "\ufe0f"
-
-
 def _render_emoji(node: inlines.Emoji, annotate: bool) -> str:
     fallback = node.text or f":{node.short_name}:"
-    if node.text and not annotate:
-        fallback = _ensure_emoji_presentation(node.text)
     return _annotate_inline(
         node,
         fallback,

@@ -904,3 +904,16 @@ def test_code_block_in_list_item_dedented():
     code_block = sub_list.items[0].children[0]
     assert isinstance(code_block, blocks.CodeBlock)
     assert code_block.code == '{\n  "key": "value"\n}'
+
+
+# ── Zero-width space stripping ────────────────────────────────────
+
+
+def test_zwsp_stripped_from_inline_start():
+    """Zero-width space at inline start is stripped during parsing."""
+    md = '\u200b<!-- adf:emoji {"shortName": "smile", "text": "\U0001f604"} -->\U0001f604<!-- /adf:emoji --> hello\n'
+    doc = parse(md)
+    p = doc.children[0]
+    assert isinstance(p, blocks.Paragraph)
+    assert isinstance(p.children[0], inlines.Emoji)
+    assert p.children[0].short_name == "smile"

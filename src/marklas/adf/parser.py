@@ -757,13 +757,41 @@ def _parse_mention(node: schema.Mention) -> list[inlines.Inline]:
     ]
 
 
+def _resolve_emoji_text(text: str | None, emoji_id: str | None) -> str | None:
+    """Resolve emoji text from surrogate pair literals or id code point."""
+    if text and "\\u" in text:
+        # Decode escaped surrogate pairs (e.g. '\\uD83D\\uDDD3')
+        import re
+
+        def _replace(m: re.Match[str]) -> str:
+            high = int(m.group(1), 16)
+            low = int(m.group(2), 16)
+            code_point = 0x10000 + (high - 0xD800) * 0x400 + (low - 0xDC00)
+            return chr(code_point)
+
+        decoded = re.sub(
+            r"\\u([Dd][89AaBb][0-9A-Fa-f]{2})\\u([Dd][CcDdEeFf][0-9A-Fa-f]{2})",
+            _replace,
+            text,
+        )
+        if decoded != text:
+            return decoded
+    if text:
+        return text
+    if emoji_id:
+        return chr(int(emoji_id, 16))
+    return None
+
+
 def _parse_emoji(node: schema.Emoji) -> list[inlines.Inline]:
     attrs = node["attrs"]
+    emoji_id = attrs.get("id")
+    text = _resolve_emoji_text(attrs.get("text"), emoji_id)
     return [
         inlines.Emoji(
             short_name=attrs["shortName"],
-            text=attrs.get("text"),
-            id=attrs.get("id"),
+            text=text,
+            id=emoji_id,
         )
     ]
 

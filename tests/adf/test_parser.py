@@ -1010,3 +1010,67 @@ def test_table_header_cell_type():
     # body row 1: tableCell
     assert isinstance(table.body[1][0], blocks.TableCell)
     assert not isinstance(table.body[1][0], blocks.TableHeader)
+
+
+# ── Emoji surrogate pair decoding ─────────────────────────────────
+
+
+def test_emoji_surrogate_pair_decoded():
+    """Escaped surrogate pairs in emoji text are decoded to actual characters."""
+    doc = _doc(
+        {
+            "type": "paragraph",
+            "content": [
+                {
+                    "type": "emoji",
+                    "attrs": {
+                        "shortName": ":calendar_spiral:",
+                        "text": "\\uD83D\\uDDD3",
+                        "id": "1f5d3",
+                    },
+                }
+            ],
+        }
+    )
+    e = _first_inline(doc)
+    assert isinstance(e, inlines.Emoji)
+    assert e.text == "\U0001f5d3"
+
+
+def test_emoji_fallback_to_id():
+    """When text is absent, emoji text is derived from id code point."""
+    doc = _doc(
+        {
+            "type": "paragraph",
+            "content": [
+                {
+                    "type": "emoji",
+                    "attrs": {
+                        "shortName": ":calendar_spiral:",
+                        "id": "1f5d3",
+                    },
+                }
+            ],
+        }
+    )
+    e = _first_inline(doc)
+    assert isinstance(e, inlines.Emoji)
+    assert e.text == "\U0001f5d3"
+
+
+def test_emoji_normal_text_unchanged():
+    """Normal Unicode emoji text is not modified."""
+    doc = _doc(
+        {
+            "type": "paragraph",
+            "content": [
+                {
+                    "type": "emoji",
+                    "attrs": {"shortName": ":smile:", "text": "😄"},
+                }
+            ],
+        }
+    )
+    e = _first_inline(doc)
+    assert isinstance(e, inlines.Emoji)
+    assert e.text == "😄"

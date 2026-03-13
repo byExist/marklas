@@ -1506,3 +1506,74 @@ def test_list_item_paragraph_and_code_block_separated():
     )
     result = render(doc, annotate=False)
     assert "- text\n\n    ```python" in result
+
+
+# ── Block-start inline annotation (HTML block prevention) ─────────
+
+
+def test_block_start_annotation_gets_zwsp():
+    """Inline annotation at paragraph start gets zero-width space prefix."""
+    doc = blocks.Document(
+        children=[
+            blocks.Paragraph(
+                children=[
+                    inlines.Emoji(short_name=":smile:", text="\U0001f604"),
+                    inlines.Text(text=" hello"),
+                ]
+            )
+        ]
+    )
+    result = render(doc)
+    assert result.startswith("\u200b<!--")
+
+
+def test_block_start_annotation_no_zwsp_when_not_annotated():
+    """annotate=False never inserts zero-width space."""
+    doc = blocks.Document(
+        children=[
+            blocks.Paragraph(
+                children=[
+                    inlines.Emoji(short_name=":smile:", text="\U0001f604"),
+                    inlines.Text(text=" hello"),
+                ]
+            )
+        ]
+    )
+    result = render(doc, annotate=False)
+    assert "\u200b" not in result
+
+
+def test_block_start_text_no_zwsp():
+    """No zero-width space when paragraph starts with text, not annotation."""
+    doc = blocks.Document(
+        children=[
+            blocks.Paragraph(
+                children=[
+                    inlines.Text(text="hello "),
+                    inlines.Emoji(short_name=":smile:", text="\U0001f604"),
+                ]
+            )
+        ]
+    )
+    result = render(doc)
+    assert not result.startswith("\u200b")
+
+
+def test_nested_inline_annotation_no_zwsp():
+    """Annotation inside Strong does not get zero-width space."""
+    doc = blocks.Document(
+        children=[
+            blocks.Paragraph(
+                children=[
+                    inlines.Strong(
+                        children=[
+                            inlines.Emoji(short_name=":smile:", text="\U0001f604"),
+                        ]
+                    )
+                ]
+            )
+        ]
+    )
+    result = render(doc)
+    assert "**<!-- adf:emoji" in result
+    assert "\u200b" not in result
