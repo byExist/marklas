@@ -1026,6 +1026,13 @@ def _parse_inlines(tokens: list[Token]) -> list[inlines.Inline]:
                 result[-1] = inlines.Text(text=result[-1].text + node.text)
             else:
                 result.append(node)
+    if result and isinstance(result[0], inlines.Text):
+        stripped = result[0].text.lstrip("\u200b")
+        if stripped != result[0].text:
+            if stripped:
+                result[0] = inlines.Text(text=stripped)
+            else:
+                result.pop(0)
     return result
 
 

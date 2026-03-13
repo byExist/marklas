@@ -151,7 +151,7 @@ def _annotate_block(
 
 
 def _render_paragraph(node: blocks.Paragraph, annotate: bool) -> str:
-    content = _render_inlines(node.children, annotate)
+    content = _render_block_inlines(node.children, annotate)
     if node.alignment or node.indentation:
         return _annotate_block(
             node,
@@ -250,7 +250,7 @@ def _render_list_item_body(
     children: list[blocks.ListItemChild], tight: bool, annotate: bool
 ) -> str:
     if tight and len(children) == 1 and isinstance(children[0], blocks.Paragraph):
-        return _render_inlines(children[0].children, annotate)
+        return _render_block_inlines(children[0].children, annotate)
     parts: list[str] = []
     for child in children:
         if _is_whitespace_only_paragraph(child):
@@ -503,7 +503,7 @@ def _render_task_list(node: blocks.TaskList, annotate: bool) -> str:
         items = []
         for item in node.items:
             marker = "- [x] " if item.state == "DONE" else "- [ ] "
-            items.append(marker + _render_inlines(item.children, annotate))
+            items.append(marker + _render_block_inlines(item.children, annotate))
         content = "\n".join(items)
     return _annotate_block(node, content, annotate)
 
@@ -519,7 +519,7 @@ def _render_decision_list(node: blocks.DecisionList, annotate: bool) -> str:
         items = []
         for item in node.items:
             marker = "- [x] " if item.state == "DECIDED" else "- [ ] "
-            items.append(marker + _render_inlines(item.children, annotate))
+            items.append(marker + _render_block_inlines(item.children, annotate))
         content = "\n".join(items)
     return _annotate_block(node, content, annotate)
 
@@ -838,6 +838,14 @@ def _render_tablecell_child(node: blocks.TableCellChild, annotate: bool) -> str:
 # ── Inline dispatch ──────────────────────────────────────────────────
 
 
+def _render_block_inlines(nodes: list[inlines.Inline], annotate: bool) -> str:
+    """Render inlines at block start position, preventing HTML block triggers."""
+    result = _render_inlines(nodes, annotate)
+    if annotate and result.startswith("<!--"):
+        return "\u200b" + result
+    return result
+
+
 def _render_inlines(nodes: list[inlines.Inline], annotate: bool) -> str:
     trimmed = nodes
     while trimmed and isinstance(trimmed[-1], inlines.HardBreak):
@@ -976,8 +984,17 @@ def _render_mention(node: inlines.Mention, annotate: bool) -> str:
     )
 
 
+def _ensure_emoji_presentation(text: str) -> str:
+    """Append VS-16 (U+FE0F) so text-default emojis render in emoji style."""
+    if text.endswith("\ufe0f") or text.endswith("\ufe0e"):
+        return text
+    return text + "\ufe0f"
+
+
 def _render_emoji(node: inlines.Emoji, annotate: bool) -> str:
     fallback = node.text or f":{node.short_name}:"
+    if node.text and not annotate:
+        fallback = _ensure_emoji_presentation(node.text)
     return _annotate_inline(
         node,
         fallback,
