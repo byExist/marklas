@@ -265,6 +265,13 @@ def test_code_span_with_backtick():
     assert render(doc) == "`` a`b ``\n"
 
 
+def test_code_span_with_double_backtick():
+    doc = blocks.Document(
+        children=[blocks.Paragraph(children=[inlines.CodeSpan(code="a``b")])]
+    )
+    assert render(doc) == "``` a``b ```\n"
+
+
 def test_hard_break():
     doc = blocks.Document(
         children=[

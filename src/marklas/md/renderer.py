@@ -946,9 +946,12 @@ def _render_image(node: inlines.Image, annotate: bool) -> str:
 
 
 def _render_code_span(node: inlines.CodeSpan, annotate: bool) -> str:
-    if "`" in node.code:
-        return f"`` {node.code} ``"
-    return f"`{node.code}`"
+    if "`" not in node.code:
+        return f"`{node.code}`"
+    runs = _BACKTICK_RUN_RE.findall(node.code)
+    n = max(len(r) for r in runs) + 1
+    fence = "`" * n
+    return f"{fence} {node.code} {fence}"
 
 
 def _render_hard_break(node: inlines.HardBreak, annotate: bool) -> str:
