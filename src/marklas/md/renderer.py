@@ -257,7 +257,7 @@ def _render_list_item_body(
             continue
         rendered = _render_listitem_child(child, annotate)
         parts.append(rendered)
-    body = "\n".join(parts)
+    body = "\n\n".join(parts)
     lines = body.split("\n")
     if len(lines) > 1:
         return (

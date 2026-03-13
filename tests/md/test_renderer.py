@@ -1465,3 +1465,44 @@ def test_whitespace_only_paragraph_skipped_in_list_item():
     )
     result = render(doc, annotate=True)
     assert "- content" in result
+
+
+def test_list_item_multi_paragraph_separated():
+    """Multiple paragraphs in a list item should be separated by blank lines."""
+    doc = blocks.Document(
+        children=[
+            blocks.BulletList(
+                items=[
+                    blocks.ListItem(
+                        children=[
+                            blocks.Paragraph(children=[inlines.Text(text="p1")]),
+                            blocks.Paragraph(children=[inlines.Text(text="p2")]),
+                        ]
+                    )
+                ],
+                tight=False,
+            )
+        ]
+    )
+    assert render(doc, annotate=False) == "- p1\n\n    p2\n"
+
+
+def test_list_item_paragraph_and_code_block_separated():
+    """Paragraph + CodeBlock in a list item should be separated by blank lines."""
+    doc = blocks.Document(
+        children=[
+            blocks.BulletList(
+                items=[
+                    blocks.ListItem(
+                        children=[
+                            blocks.Paragraph(children=[inlines.Text(text="text")]),
+                            blocks.CodeBlock(code="x = 1", language="python"),
+                        ]
+                    )
+                ],
+                tight=False,
+            )
+        ]
+    )
+    result = render(doc, annotate=False)
+    assert "- text\n\n    ```python" in result
