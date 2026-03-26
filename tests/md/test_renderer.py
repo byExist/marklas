@@ -1,1632 +1,994 @@
-"""MD renderer tests: AST → Markdown"""
+"""Markdown renderer tests."""
 
 from __future__ import annotations
 
-import json
-from typing import Any
+from typing import Literal
 
+import pytest
+
+from marklas.ast import DocContent
+from marklas.ast import (
+    AlignmentMark,
+    AnnotationMark,
+    BackgroundColorMark,
+    BlockCard,
+    BlockTaskItem,
+    Blockquote,
+    BodiedExtension,
+    BorderMark,
+    BreakoutMark,
+    BulletList,
+    Caption,
+    CodeBlock,
+    CodeMark,
+    DataConsumerMark,
+    Date,
+    DecisionItem,
+    DecisionList,
+    Doc,
+    EmbedCard,
+    EmMark,
+    Emoji,
+    Expand,
+    Extension,
+    HardBreak,
+    Heading,
+    IndentationMark,
+    InlineCard,
+    InlineExtension,
+    LayoutColumn,
+    LayoutSection,
+    LinkMark,
+    ListItem,
+    Media,
+    MediaGroup,
+    MediaInline,
+    MediaSingle,
+    Mention,
+    NestedExpand,
+    OrderedList,
+    Panel,
+    Paragraph,
+    Placeholder,
+    Rule,
+    Status,
+    StrikeMark,
+    StrongMark,
+    SubSupMark,
+    SyncBlock,
+    Table,
+    TableCell,
+    TableHeader,
+    TableRow,
+    TaskItem,
+    TaskList,
+    Text,
+    TextColorMark,
+    UnderlineMark,
+)
 from marklas.md.renderer import render
-from marklas.nodes import blocks, inlines
 
 
-# ── Intersection block rendering ───────────────────────────────────────────────
+def _render(*blocks: DocContent) -> str:
+    """Shortcut: wrap blocks in Doc and render."""
+    return render(Doc(content=list(blocks)))
 
 
-def test_paragraph():
-    doc = blocks.Document(
-        children=[blocks.Paragraph(children=[inlines.Text(text="hello world")])]
-    )
-    assert render(doc) == "hello world\n"
+# ── Paragraph ──────────────────────────────────────────────────────────────────
 
 
-def test_heading_levels():
-    for level in (1, 2, 3, 4, 5, 6):
-        doc = blocks.Document(
-            children=[
-                blocks.Heading(level=level, children=[inlines.Text(text="title")])
-            ]
+class TestParagraph:
+    def test_simple(self):
+        assert _render(Paragraph(content=[Text(text="hello")])) == "hello\n"
+
+    def test_empty(self):
+        assert _render(Paragraph(content=[])) == "&nbsp;\n"
+
+    def test_with_alignment_mark(self):
+        result = _render(
+            Paragraph(
+                content=[Text(text="centered")],
+                marks=[AlignmentMark(align="center")],
+            )
         )
-        assert render(doc) == f"{'#' * level} title\n"
+        assert '<div adf="marks"' in result
+        assert '"align":"center"' in result
+        assert "centered" in result
 
-
-def test_code_block_with_language():
-    doc = blocks.Document(
-        children=[blocks.CodeBlock(code="print(1)", language="python")]
-    )
-    assert render(doc) == "```python\nprint(1)\n```\n"
-
-
-def test_code_block_without_language():
-    doc = blocks.Document(children=[blocks.CodeBlock(code="hello")])
-    assert render(doc) == "```\nhello\n```\n"
-
-
-def test_code_block_with_backticks_in_content():
-    doc = blocks.Document(children=[blocks.CodeBlock(code="```python\nprint(1)\n```")])
-    assert render(doc) == "````\n```python\nprint(1)\n```\n````\n"
-
-
-def test_code_block_with_long_backtick_run():
-    doc = blocks.Document(children=[blocks.CodeBlock(code="````example````")])
-    assert render(doc) == "`````\n````example````\n`````\n"
-
-
-def test_blockquote():
-    doc = blocks.Document(
-        children=[
-            blocks.BlockQuote(
-                children=[blocks.Paragraph(children=[inlines.Text(text="quoted")])]
+    def test_with_data_consumer_mark(self):
+        result = _render(
+            Paragraph(
+                content=[Text(text="data")],
+                marks=[DataConsumerMark(sources=["src-1", "src-2"])],
             )
-        ]
-    )
-    assert render(doc) == "> quoted\n"
+        )
+        assert '<div adf="marks"' in result
+        assert '"dataConsumerSources"' in result
+        assert "src-1" in result
 
 
-def test_blockquote_multiblock():
-    doc = blocks.Document(
-        children=[
-            blocks.BlockQuote(
-                children=[
-                    blocks.Paragraph(children=[inlines.Text(text="a")]),
-                    blocks.Paragraph(children=[inlines.Text(text="b")]),
+# ── Heading ────────────────────────────────────────────────────────────────────
+
+
+class TestHeading:
+    @pytest.mark.parametrize("level", [1, 2, 3, 4, 5, 6])
+    def test_levels(self, level: Literal[1, 2, 3, 4, 5, 6]):
+        result = _render(Heading(level=level, content=[Text(text="Title")]))
+        assert result == f"{'#' * level} Title\n"
+
+    def test_with_indentation_mark(self):
+        result = _render(
+            Heading(
+                level=2,
+                content=[Text(text="Indented")],
+                marks=[IndentationMark(level=2)],
+            )
+        )
+        assert '<div adf="marks"' in result
+        assert '"indent":2' in result
+        assert "## Indented" in result
+
+
+# ── CodeBlock ──────────────────────────────────────────────────────────────────
+
+
+class TestCodeBlock:
+    def test_with_language(self):
+        result = _render(CodeBlock(language="python", content=[Text(text="x = 1")]))
+        assert result == "```python\nx = 1\n```\n"
+
+    def test_without_language(self):
+        result = _render(CodeBlock(content=[Text(text="raw code")]))
+        assert result == "```\nraw code\n```\n"
+
+    def test_with_backticks_in_code(self):
+        result = _render(CodeBlock(content=[Text(text="use ```backticks```")]))
+        assert result.startswith("````")
+
+    def test_with_breakout_mark(self):
+        result = _render(
+            CodeBlock(
+                language="js",
+                content=[Text(text="code")],
+                marks=[BreakoutMark(mode="wide")],
+            )
+        )
+        assert '<div adf="marks"' in result
+        assert '"breakoutMode":"wide"' in result
+
+
+# ── Blockquote ─────────────────────────────────────────────────────────────────
+
+
+class TestBlockquote:
+    def test_simple(self):
+        result = _render(Blockquote(content=[Paragraph(content=[Text(text="quote")])]))
+        assert result == "> quote\n"
+
+    def test_multiline(self):
+        result = _render(
+            Blockquote(
+                content=[
+                    Paragraph(content=[Text(text="line 1")]),
+                    Paragraph(content=[Text(text="line 2")]),
                 ]
             )
-        ]
-    )
-    assert render(doc) == "> a\n>\n> b\n"
+        )
+        assert "> line 1\n>\n> line 2\n" == result
 
 
-def test_bullet_list():
-    doc = blocks.Document(
-        children=[
-            blocks.BulletList(
-                items=[
-                    blocks.ListItem(
-                        children=[blocks.Paragraph(children=[inlines.Text(text="a")])]
-                    ),
-                    blocks.ListItem(
-                        children=[blocks.Paragraph(children=[inlines.Text(text="b")])]
-                    ),
+# ── Lists ──────────────────────────────────────────────────────────────────────
+
+
+class TestBulletList:
+    def test_simple(self):
+        result = _render(
+            BulletList(
+                content=[
+                    ListItem(content=[Paragraph(content=[Text(text="a")])]),
+                    ListItem(content=[Paragraph(content=[Text(text="b")])]),
                 ]
             )
-        ]
-    )
-    assert render(doc) == "- a\n- b\n"
+        )
+        assert result == "- a\n- b\n"
 
-
-def test_ordered_list():
-    doc = blocks.Document(
-        children=[
-            blocks.OrderedList(
-                items=[
-                    blocks.ListItem(
-                        children=[blocks.Paragraph(children=[inlines.Text(text="a")])]
-                    ),
-                    blocks.ListItem(
-                        children=[blocks.Paragraph(children=[inlines.Text(text="b")])]
-                    ),
-                ],
-                start=3,
-            )
-        ]
-    )
-    assert render(doc) == "3. a\n4. b\n"
-
-
-def test_bullet_list_with_checkbox():
-    doc = blocks.Document(
-        children=[
-            blocks.BulletList(
-                items=[
-                    blocks.ListItem(
-                        children=[
-                            blocks.Paragraph(children=[inlines.Text(text="done")])
-                        ],
-                        checked=True,
-                    ),
-                    blocks.ListItem(
-                        children=[
-                            blocks.Paragraph(children=[inlines.Text(text="todo")])
-                        ],
-                        checked=False,
-                    ),
-                ]
-            )
-        ]
-    )
-    assert render(doc) == "- [x] done\n- [ ] todo\n"
-
-
-def test_thematic_break():
-    doc = blocks.Document(children=[blocks.ThematicBreak()])
-    assert render(doc) == "---\n"
-
-
-def test_multiple_blocks():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(children=[inlines.Text(text="a")]),
-            blocks.Paragraph(children=[inlines.Text(text="b")]),
-        ]
-    )
-    assert render(doc) == "a\n\nb\n"
-
-
-def test_empty_document():
-    doc = blocks.Document(children=[])
-    assert render(doc) == ""
-
-
-# ── Intersection inline rendering ─────────────────────────────────────────────
-
-
-def test_strong():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[inlines.Strong(children=[inlines.Text(text="bold")])]
-            )
-        ]
-    )
-    assert render(doc) == "**bold**\n"
-
-
-def test_emphasis():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[inlines.Emphasis(children=[inlines.Text(text="italic")])]
-            )
-        ]
-    )
-    assert render(doc) == "*italic*\n"
-
-
-def test_strikethrough():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.Strikethrough(children=[inlines.Text(text="deleted")])
-                ]
-            )
-        ]
-    )
-    assert render(doc) == "~~deleted~~\n"
-
-
-def test_link():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.Link(
-                        url="https://example.com", children=[inlines.Text(text="click")]
-                    )
-                ]
-            )
-        ]
-    )
-    assert render(doc) == "[click](https://example.com)\n"
-
-
-def test_link_with_title():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.Link(
-                        url="https://example.com",
-                        children=[inlines.Text(text="click")],
-                        title="hint",
-                    )
-                ]
-            )
-        ]
-    )
-    assert render(doc) == '[click](https://example.com "hint")\n'
-
-
-def test_image():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[inlines.Image(url="https://img.png", alt="photo")]
-            )
-        ]
-    )
-    assert render(doc) == "![photo](https://img.png)\n"
-
-
-def test_image_with_title():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.Image(url="https://img.png", alt="photo", title="cap")
-                ]
-            )
-        ]
-    )
-    assert render(doc) == '![photo](https://img.png "cap")\n'
-
-
-def test_code_span():
-    doc = blocks.Document(
-        children=[blocks.Paragraph(children=[inlines.CodeSpan(code="x=1")])]
-    )
-    assert render(doc) == "`x=1`\n"
-
-
-def test_code_span_with_backtick():
-    doc = blocks.Document(
-        children=[blocks.Paragraph(children=[inlines.CodeSpan(code="a`b")])]
-    )
-    assert render(doc) == "`` a`b ``\n"
-
-
-def test_code_span_with_double_backtick():
-    doc = blocks.Document(
-        children=[blocks.Paragraph(children=[inlines.CodeSpan(code="a``b")])]
-    )
-    assert render(doc) == "``` a``b ```\n"
-
-
-def test_hard_break():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.Text(text="a"),
-                    inlines.HardBreak(),
-                    inlines.Text(text="b"),
-                ]
-            )
-        ]
-    )
-    assert render(doc) == "a\\\nb\n"
-
-
-def test_soft_break():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.Text(text="a"),
-                    inlines.SoftBreak(),
-                    inlines.Text(text="b"),
-                ]
-            )
-        ]
-    )
-    assert render(doc) == "a\nb\n"
-
-
-def test_nested_marks():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.Strong(
-                        children=[
-                            inlines.Emphasis(children=[inlines.Text(text="both")])
-                        ]
-                    )
-                ]
-            )
-        ]
-    )
-    assert render(doc) == "***both***\n"
-
-
-def test_mark_space_handling():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.Strong(
-                        children=[
-                            inlines.Text(text=" hello "),
-                        ]
-                    )
-                ]
-            )
-        ]
-    )
-    assert render(doc) == " **hello** \n"
-
-
-def test_text_escapes_special_chars():
-    doc = blocks.Document(
-        children=[blocks.Paragraph(children=[inlines.Text(text=r"2 * 3 * 4 = 24")])]
-    )
-    assert render(doc) == r"2 \* 3 \* 4 = 24" + "\n"
-
-
-def test_text_escapes_all_markdown_chars():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(children=[inlines.Text(text=r"a\b *c* _d_ [e] `f` ~g~")])
-        ]
-    )
-    assert render(doc) == r"a\\b \*c\* \_d\_ \[e\] \`f\` \~g\~" + "\n"
-
-
-def test_text_escape_preserves_in_strong():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[inlines.Strong(children=[inlines.Text(text="a * b")])]
-            )
-        ]
-    )
-    assert render(doc) == r"**a \* b**" + "\n"
-
-
-# ── Table ────────────────────────────────────────────────────────────
-
-
-def test_table_basic():
-    doc = blocks.Document(
-        children=[
-            blocks.Table(
-                head=[
-                    blocks.TableCell(
-                        children=[blocks.Paragraph(children=[inlines.Text(text="A")])]
-                    ),
-                    blocks.TableCell(
-                        children=[blocks.Paragraph(children=[inlines.Text(text="B")])]
-                    ),
-                ],
-                body=[
-                    [
-                        blocks.TableCell(
-                            children=[
-                                blocks.Paragraph(children=[inlines.Text(text="1")])
-                            ]
-                        ),
-                        blocks.TableCell(
-                            children=[
-                                blocks.Paragraph(children=[inlines.Text(text="2")])
-                            ]
-                        ),
-                    ],
-                ],
-            )
-        ]
-    )
-    expected = "| A | B |\n| --- | --- |\n| 1 | 2 |\n"
-    assert render(doc) == expected
-
-
-def test_table_with_alignment():
-    doc = blocks.Document(
-        children=[
-            blocks.Table(
-                head=[
-                    blocks.TableCell(
-                        children=[blocks.Paragraph(children=[inlines.Text(text="L")])]
-                    ),
-                    blocks.TableCell(
-                        children=[blocks.Paragraph(children=[inlines.Text(text="C")])]
-                    ),
-                    blocks.TableCell(
-                        children=[blocks.Paragraph(children=[inlines.Text(text="R")])]
-                    ),
-                ],
-                body=[],
-                alignments=["left", "center", "right"],
-            )
-        ]
-    )
-    expected = "| L | C | R |\n| :--- | :---: | ---: |\n"
-    assert render(doc) == expected
-
-
-def test_table_cell_hardbreak():
-    doc = blocks.Document(
-        children=[
-            blocks.Table(
-                head=[
-                    blocks.TableCell(
-                        children=[
-                            blocks.Paragraph(
-                                children=[
-                                    inlines.Text(text="a"),
-                                    inlines.HardBreak(),
-                                    inlines.Text(text="b"),
-                                ]
-                            )
-                        ]
-                    ),
-                ],
-                body=[],
-            )
-        ]
-    )
-    expected = "| a<br/>b |\n| --- |\n"
-    assert render(doc) == expected
-
-
-def test_table_cell_multi_paragraph():
-    doc = blocks.Document(
-        children=[
-            blocks.Table(
-                head=[
-                    blocks.TableCell(
-                        children=[
-                            blocks.Paragraph(children=[inlines.Text(text="first")]),
-                            blocks.Paragraph(children=[inlines.Text(text="second")]),
-                        ]
-                    ),
-                ],
-                body=[],
-            )
-        ]
-    )
-    expected = "| first<br>second |\n| --- |\n"
-    assert render(doc) == expected
-
-
-def test_table_cell_non_paragraph_blocks():
-    """Lists render as HTML <ul>/<ol> in table cells."""
-    doc = blocks.Document(
-        children=[
-            blocks.Table(
-                head=[
-                    blocks.TableCell(
-                        children=[
-                            blocks.BulletList(
-                                items=[
-                                    blocks.ListItem(
-                                        children=[
-                                            blocks.Paragraph(
-                                                children=[inlines.Text(text="item1")]
-                                            ),
-                                        ]
-                                    ),
-                                    blocks.ListItem(
-                                        children=[
-                                            blocks.Paragraph(
-                                                children=[inlines.Text(text="item2")]
-                                            ),
+    def test_nested(self):
+        result = _render(
+            BulletList(
+                content=[
+                    ListItem(
+                        content=[
+                            Paragraph(content=[Text(text="parent")]),
+                            BulletList(
+                                content=[
+                                    ListItem(
+                                        content=[
+                                            Paragraph(content=[Text(text="child")])
                                         ]
                                     ),
                                 ]
                             ),
                         ]
                     ),
-                ],
-                body=[],
+                ]
             )
-        ]
-    )
-    result = render(doc)
-    assert "<ul><li>item1</li><li>item2</li></ul>" in result
+        )
+        assert "- parent" in result
+        assert "  - child" in result
 
 
-def test_table_cell_block_with_hardbreak():
-    """HardBreak in non-Paragraph blocks converts to <br> instead of orphan backslash."""
-    doc = blocks.Document(
-        children=[
-            blocks.Table(
-                head=[
-                    blocks.TableCell(
-                        children=[
-                            blocks.BlockQuote(
-                                children=[
-                                    blocks.Paragraph(
-                                        children=[
-                                            inlines.Text(text="a"),
-                                            inlines.HardBreak(),
-                                            inlines.Text(text="b"),
-                                        ]
+class TestOrderedList:
+    def test_simple(self):
+        result = _render(
+            OrderedList(
+                content=[
+                    ListItem(content=[Paragraph(content=[Text(text="a")])]),
+                    ListItem(content=[Paragraph(content=[Text(text="b")])]),
+                ]
+            )
+        )
+        assert result == "1. a\n2. b\n"
+
+    def test_custom_start(self):
+        result = _render(
+            OrderedList(
+                order=3,
+                content=[
+                    ListItem(content=[Paragraph(content=[Text(text="item")])]),
+                ],
+            )
+        )
+        assert result == "3. item\n"
+
+
+# ── Rule ───────────────────────────────────────────────────────────────────────
+
+
+class TestRule:
+    def test_simple(self):
+        assert _render(Rule()) == "---\n"
+
+
+# ── TaskList ───────────────────────────────────────────────────────────────────
+
+
+class TestTaskList:
+    def test_simple(self):
+        result = _render(
+            TaskList(
+                content=[
+                    TaskItem(state="DONE", content=[Text(text="done")]),
+                    TaskItem(state="TODO", content=[Text(text="todo")]),
+                ]
+            )
+        )
+        assert "- [x] done" in result
+        assert "- [ ] todo" in result
+
+    def test_block_task_item(self):
+        result = _render(
+            TaskList(
+                content=[
+                    BlockTaskItem(
+                        state="TODO",
+                        content=[
+                            Paragraph(content=[Text(text="first")]),
+                            Paragraph(content=[Text(text="second")]),
+                        ],
+                    ),
+                ]
+            )
+        )
+        assert "- [ ] first" in result
+        assert "second" in result
+
+
+# ── Inline Marks ───────────────────────────────────────────────────────────────
+
+
+class TestMarks:
+    def test_strong(self):
+        result = _render(Paragraph(content=[Text(text="bold", marks=[StrongMark()])]))
+        assert "**bold**" in result
+
+    def test_em(self):
+        result = _render(Paragraph(content=[Text(text="italic", marks=[EmMark()])]))
+        assert "*italic*" in result
+
+    def test_strike(self):
+        result = _render(
+            Paragraph(content=[Text(text="deleted", marks=[StrikeMark()])])
+        )
+        assert "~~deleted~~" in result
+
+    def test_code(self):
+        result = _render(Paragraph(content=[Text(text="x = 1", marks=[CodeMark()])]))
+        assert "`x = 1`" in result
+
+    def test_link(self):
+        result = _render(
+            Paragraph(
+                content=[
+                    Text(text="click", marks=[LinkMark(href="https://example.com")])
+                ]
+            )
+        )
+        assert "[click](https://example.com)" in result
+
+    def test_link_with_title(self):
+        result = _render(
+            Paragraph(
+                content=[
+                    Text(
+                        text="click",
+                        marks=[LinkMark(href="https://example.com", title="Example")],
+                    )
+                ]
+            )
+        )
+        assert '[click](https://example.com "Example")' in result
+
+    def test_underline(self):
+        result = _render(
+            Paragraph(content=[Text(text="underlined", marks=[UnderlineMark()])])
+        )
+        assert '<u adf="underline">underlined</u>' in result
+
+    def test_text_color(self):
+        result = _render(
+            Paragraph(
+                content=[Text(text="red", marks=[TextColorMark(color="#ff0000")])]
+            )
+        )
+        assert 'adf="textColor"' in result
+        assert "#ff0000" in result
+
+    def test_subsup(self):
+        result = _render(
+            Paragraph(content=[Text(text="2", marks=[SubSupMark(type="sup")])])
+        )
+        assert '<sup adf="subSup">2</sup>' in result
+
+    def test_annotation(self):
+        result = _render(
+            Paragraph(
+                content=[
+                    Text(
+                        text="annotated",
+                        marks=[
+                            AnnotationMark(id="ann-1", annotation_type="inlineComment")
+                        ],
+                    )
+                ]
+            )
+        )
+        assert '<mark adf="annotation"' in result
+        assert "annotated" in result
+        assert '"id":"ann-1"' in result
+
+    def test_background_color(self):
+        result = _render(
+            Paragraph(
+                content=[
+                    Text(
+                        text="highlighted", marks=[BackgroundColorMark(color="#ffff00")]
+                    )
+                ]
+            )
+        )
+        assert 'adf="bgColor"' in result
+        assert "#ffff00" in result
+
+    def test_combined_strong_em(self):
+        result = _render(
+            Paragraph(content=[Text(text="both", marks=[StrongMark(), EmMark()])])
+        )
+        assert "***both***" in result
+
+    def test_flanking_spaces(self):
+        result = _render(
+            Paragraph(content=[Text(text=" hello ", marks=[StrongMark()])])
+        )
+        assert " **hello** " in result
+
+    def test_code_with_backticks(self):
+        result = _render(Paragraph(content=[Text(text="a`b", marks=[CodeMark()])]))
+        assert "`` a`b ``" in result or "``a`b``" in result
+
+
+# ── Inline HTML Nodes ──────────────────────────────────────────────────────────
+
+
+class TestInlineNodes:
+    def test_mention(self):
+        result = _render(Paragraph(content=[Mention(id="user-1", text="@John")]))
+        assert 'adf="mention"' in result
+        assert "@John" in result
+
+    def test_mention_no_text(self):
+        result = _render(Paragraph(content=[Mention(id="user-1")]))
+        assert "@user-1" in result
+
+    def test_emoji(self):
+        result = _render(
+            Paragraph(content=[Emoji(short_name=":smile:", id="1f604", text="😄")])
+        )
+        assert 'adf="emoji"' in result
+        assert "😄" in result
+
+    def test_date(self):
+        result = _render(Paragraph(content=[Date(timestamp="1711324800000")]))
+        assert 'adf="date"' in result
+        assert 'datetime="1711324800000"' in result
+        assert "2024-03-2" in result  # date varies by timezone offset
+
+    def test_status(self):
+        result = _render(Paragraph(content=[Status(text="IN PROGRESS", color="blue")]))
+        assert 'adf="status"' in result
+        assert "IN PROGRESS" in result
+
+    def test_inline_card(self):
+        result = _render(Paragraph(content=[InlineCard(url="https://example.com")]))
+        assert 'adf="inlineCard"' in result
+        assert 'href="https://example.com"' in result
+
+    def test_placeholder(self):
+        result = _render(Paragraph(content=[Placeholder(text="Type here")]))
+        assert 'adf="placeholder"' in result
+        assert "Type here" in result
+
+    def test_hard_break(self):
+        result = _render(
+            Paragraph(content=[Text(text="line1"), HardBreak(), Text(text="line2")])
+        )
+        assert "line1\\\nline2" in result
+
+    def test_media_inline(self):
+        result = _render(
+            Paragraph(
+                content=[MediaInline(id="file-1", collection="uploads", type="file")]
+            )
+        )
+        assert 'adf="mediaInline"' in result
+        assert "📎" in result
+        assert '"id":"file-1"' in result
+
+    def test_media_inline_with_border_mark(self):
+        result = _render(
+            Paragraph(
+                content=[
+                    MediaInline(
+                        id="file-1",
+                        collection="uploads",
+                        marks=[BorderMark(size=1, color="#c0c0c0")],
+                    )
+                ]
+            )
+        )
+        assert '"borderSize":1' in result
+        assert '"borderColor":"#c0c0c0"' in result
+
+    def test_inline_extension(self):
+        result = _render(
+            Paragraph(
+                content=[
+                    InlineExtension(
+                        extension_key="my-ext", extension_type="com.example"
+                    )
+                ]
+            )
+        )
+        assert 'adf="inlineExtension"' in result
+        assert "my-ext" in result
+
+
+# ── HTML Fallback Blocks ───────────────────────────────────────────────────────
+
+
+class TestPanel:
+    def test_simple(self):
+        result = _render(
+            Panel(
+                panel_type="info",
+                content=[Paragraph(content=[Text(text="note")])],
+            )
+        )
+        assert '<aside adf="panel"' in result
+        assert '"panelType":"info"' in result
+        assert "note" in result
+        assert "</aside>" in result
+
+
+class TestExpand:
+    def test_with_title(self):
+        result = _render(
+            Expand(
+                title="Details",
+                content=[Paragraph(content=[Text(text="body")])],
+            )
+        )
+        assert '<details adf="expand"' in result
+        assert "<summary>Details</summary>" in result
+        assert "body" in result
+
+    def test_without_title(self):
+        result = _render(Expand(content=[Paragraph(content=[Text(text="body")])]))
+        assert "<summary>" not in result
+
+
+class TestNestedExpand:
+    def test_simple(self):
+        result = _render(
+            Table(
+                content=[
+                    TableRow(
+                        content=[
+                            TableHeader(
+                                content=[
+                                    NestedExpand(
+                                        title="More",
+                                        content=[
+                                            Paragraph(content=[Text(text="hidden")])
+                                        ],
                                     )
                                 ]
                             ),
                         ]
                     ),
-                ],
-                body=[],
-            )
-        ]
-    )
-    result = render(doc)
-    # HardBreak converted to <br>, no orphan backslash
-    assert "\\ " not in result
-    assert "<blockquote>a<br/>b</blockquote>" in result
-
-
-def test_table_with_attrs():
-    doc = blocks.Document(
-        children=[
-            blocks.Table(
-                head=[
-                    blocks.TableCell(
-                        children=[blocks.Paragraph(children=[inlines.Text(text="H")])],
-                        colspan=2,
-                    ),
-                ],
-                body=[],
-                layout="default",
-            )
-        ]
-    )
-    result = render(doc)
-    assert "<!-- adf:table" in result
-    assert "<!-- /adf:table -->" in result
-    assert '"layout": "default"' in result
-    assert '"colspan": 2' in result
-
-
-# ── Difference-set block annotation ───────────────────────────────────────────
-
-
-def test_panel():
-    doc = blocks.Document(
-        children=[
-            blocks.Panel(
-                panel_type="info",
-                children=[blocks.Paragraph(children=[inlines.Text(text="note")])],
-            )
-        ]
-    )
-    result = render(doc)
-    assert "<!-- adf:panel" in result
-    assert '"panelType": "info"' in result
-    assert "\nnote\n" in result
-    assert "<!-- /adf:panel -->" in result
-
-
-def test_panel_with_all_attrs():
-    doc = blocks.Document(
-        children=[
-            blocks.Panel(
-                panel_type="custom",
-                panel_icon=":star:",
-                panel_icon_id="icon-1",
-                panel_icon_text="Star",
-                panel_color="#ff0",
-                children=[blocks.Paragraph(children=[inlines.Text(text="x")])],
-            )
-        ]
-    )
-    result = render(doc)
-    assert '"panelIcon": ":star:"' in result
-    assert '"panelIconId": "icon-1"' in result
-    assert '"panelIconText": "Star"' in result
-    assert '"panelColor": "#ff0"' in result
-
-
-def test_expand():
-    doc = blocks.Document(
-        children=[
-            blocks.Expand(
-                title="Details",
-                children=[blocks.Paragraph(children=[inlines.Text(text="content")])],
-            )
-        ]
-    )
-    result = render(doc)
-    assert "<!-- adf:expand" in result
-    assert '"title": "Details"' in result
-    assert "\ncontent\n" in result
-    assert "<!-- /adf:expand -->" in result
-
-
-def test_nested_expand():
-    doc = blocks.Document(
-        children=[
-            blocks.Expand(
-                title="Outer",
-                children=[
-                    blocks.NestedExpand(
-                        title="Inner",
-                        children=[
-                            blocks.Paragraph(
-                                children=[inlines.Text(text="inner content")]
-                            )
+                    TableRow(
+                        content=[
+                            TableCell(content=[Paragraph(content=[Text(text="x")])])
                         ],
-                    )
-                ],
-            )
-        ]
-    )
-    result = render(doc)
-    assert "<!-- adf:nestedExpand" in result
-    assert "<!-- /adf:nestedExpand -->" in result
-
-
-def test_task_list():
-    doc = blocks.Document(
-        children=[
-            blocks.TaskList(
-                items=[
-                    blocks.TaskItem(
-                        children=[inlines.Text(text="done task")],
-                        state="DONE",
-                        local_id="t1",
-                    ),
-                    blocks.TaskItem(
-                        children=[inlines.Text(text="todo task")],
-                        state="TODO",
-                        local_id="t2",
                     ),
                 ]
             )
-        ]
-    )
-    result = render(doc)
-    assert "<!-- adf:taskList -->" in result
-    assert "- [x] done task" in result
-    assert "- [ ] todo task" in result
-    assert "<!-- /adf:taskList -->" in result
+        )
+        assert 'adf="nestedExpand"' in result
+        assert "<summary>More</summary>" in result
+        assert "hidden" in result
 
 
-def test_decision_list():
-    doc = blocks.Document(
-        children=[
-            blocks.DecisionList(
-                items=[
-                    blocks.DecisionItem(
-                        children=[inlines.Text(text="decided")],
-                        state="DECIDED",
-                        local_id="d1",
-                    ),
-                    blocks.DecisionItem(
-                        children=[inlines.Text(text="pending")], state="", local_id="d2"
-                    ),
+class TestDecisionList:
+    def test_simple(self):
+        result = _render(
+            DecisionList(
+                content=[
+                    DecisionItem(state="DECIDED", content=[Text(text="yes")]),
                 ]
             )
-        ]
-    )
-    result = render(doc)
-    assert "<!-- adf:decisionList -->" in result
-    assert "- [x] decided" in result
-    assert "- [ ] pending" in result
+        )
+        assert 'adf="decisionList"' in result
+        assert 'adf="decisionItem"' in result
+        assert "yes" in result
 
 
-def test_layout_section():
-    doc = blocks.Document(
-        children=[
-            blocks.LayoutSection(
-                columns=[
-                    blocks.LayoutColumn(
-                        children=[
-                            blocks.Paragraph(children=[inlines.Text(text="col1")])
-                        ],
-                        width=50.0,
-                    ),
-                    blocks.LayoutColumn(
-                        children=[
-                            blocks.Paragraph(children=[inlines.Text(text="col2")])
-                        ],
-                        width=50.0,
-                    ),
-                ]
-            )
-        ]
-    )
-    result = render(doc)
-    assert "<!-- adf:layoutSection -->" in result
-    assert "<!-- adf:layoutColumn" in result
-    assert "col1" in result
-    assert "col2" in result
-    assert '"width": 50.0' in result
+# ── Media ──────────────────────────────────────────────────────────────────────
 
 
-def test_media_single_external():
-    doc = blocks.Document(
-        children=[
-            blocks.MediaSingle(
-                media=blocks.Media(media_type="external", url="https://img.png"),
+class TestMediaSingle:
+    def test_simple(self):
+        result = _render(
+            MediaSingle(
                 layout="center",
+                content=[
+                    Media(type="file", id="abc-123", collection="uploads"),
+                ],
             )
-        ]
-    )
-    result = render(doc)
-    assert "<!-- adf:mediaSingle" in result
-    assert "![](https://img.png)" in result
-    assert '"layout": "center"' in result
+        )
+        assert "<figure" in result
+        assert 'adf="mediaSingle"' in result
+        assert 'adf="media"' in result
+        assert "📎" in result
 
-
-def test_media_single_file():
-    doc = blocks.Document(
-        children=[
-            blocks.MediaSingle(
-                media=blocks.Media(media_type="file", id="file-1", collection="c"),
+    def test_with_caption(self):
+        result = _render(
+            MediaSingle(
+                content=[
+                    Media(type="file", id="abc"),
+                    Caption(content=[Text(text="My caption")]),
+                ],
             )
-        ]
-    )
-    result = render(doc)
-    assert "`\U0001f4ce attachment`" in result
+        )
+        assert '<figcaption adf="caption">My caption</figcaption>' in result
+
+    def test_media_with_border_mark(self):
+        result = _render(
+            MediaSingle(
+                content=[
+                    Media(
+                        type="file",
+                        id="abc",
+                        marks=[BorderMark(size=2, color="#000")],
+                    ),
+                ],
+            )
+        )
+        assert '"borderSize":2' in result
+        assert '"borderColor":"#000"' in result
 
 
-def test_media_group():
-    doc = blocks.Document(
-        children=[
-            blocks.MediaGroup(
-                media_list=[
-                    blocks.Media(media_type="external", url="https://a.png"),
-                    blocks.Media(media_type="file", id="f-1", collection="c"),
+class TestMediaGroup:
+    def test_simple(self):
+        result = _render(
+            MediaGroup(
+                content=[
+                    Media(type="file", id="a"),
+                    Media(type="file", id="b"),
                 ]
             )
-        ]
-    )
-    result = render(doc)
-    assert "<!-- adf:mediaGroup" in result
-    assert "![](https://a.png)" in result
-    assert "`\U0001f4ce attachment`" in result
+        )
+        assert 'adf="mediaGroup"' in result
+        assert result.count('adf="media"') == 2
 
 
-def test_block_card_with_url():
-    doc = blocks.Document(children=[blocks.BlockCard(url="https://example.com")])
-    result = render(doc)
-    assert "<!-- adf:blockCard" in result
-    assert "[https://example.com](https://example.com)" in result
+# ── Cards ──────────────────────────────────────────────────────────────────────
 
 
-def test_block_card_with_data():
-    doc = blocks.Document(children=[blocks.BlockCard(data={"name": "card"})])
-    result = render(doc)
-    assert "`\U0001f517 card link`" in result
+class TestBlockCard:
+    def test_simple(self):
+        result = _render(BlockCard(url="https://example.com"))
+        assert 'adf="blockCard"' in result
+        assert '"url":"https://example.com"' in result
 
 
-def test_embed_card():
-    doc = blocks.Document(
-        children=[blocks.EmbedCard(url="https://embed.com", layout="wide", width=80.0)]
-    )
-    result = render(doc)
-    assert "<!-- adf:embedCard" in result
-    assert "[https://embed.com](https://embed.com)" in result
-    assert '"width": 80.0' in result
+class TestEmbedCard:
+    def test_simple(self):
+        result = _render(EmbedCard(url="https://example.com", layout="wide"))
+        assert 'adf="embedCard"' in result
+        assert '"layout":"wide"' in result
 
 
-# ── Placeholder only ─────────────────────────────────────────────────
+# ── Extension ──────────────────────────────────────────────────────────────────
 
 
-def test_extension_placeholder():
-    raw: dict[str, Any] = {"type": "extension", "attrs": {}}
-    doc = blocks.Document(children=[blocks.Extension(raw=raw)])
-    result = render(doc)
-    assert "<!-- adf:extension" in result
-    assert "`\u2699 Confluence macro`" in result
-    assert render(doc, annotate=False) == "`\u2699 Confluence macro`\n"
+class TestExtension:
+    def test_simple(self):
+        result = _render(
+            Extension(extension_key="my-ext", extension_type="com.example")
+        )
+        assert 'adf="extension"' in result
+        assert "my-ext" in result
 
 
-def test_bodied_extension_placeholder():
-    raw: dict[str, Any] = {"type": "bodiedExtension", "attrs": {}}
-    doc = blocks.Document(children=[blocks.BodiedExtension(raw=raw)])
-    result = render(doc)
-    assert "<!-- adf:bodiedExtension" in result
-    assert "`\u2699 Confluence macro`" in result
-    assert render(doc, annotate=False) == "`\u2699 Confluence macro`\n"
+class TestBodiedExtension:
+    def test_simple(self):
+        result = _render(
+            BodiedExtension(
+                extension_key="my-macro",
+                extension_type="com.example",
+                content=[Paragraph(content=[Text(text="body")])],
+            )
+        )
+        assert 'adf="bodiedExtension"' in result
+        assert '"extensionKey":"my-macro"' in result
+        assert "content" in result
 
 
-def test_sync_block_placeholder():
-    raw: dict[str, Any] = {"type": "syncBlock", "attrs": {}}
-    doc = blocks.Document(children=[blocks.SyncBlock(raw=raw)])
-    result = render(doc)
-    assert "<!-- adf:syncBlock" in result
-    assert "`\u2699 Confluence macro`" in result
-    assert render(doc, annotate=False) == "`\u2699 Confluence macro`\n"
+class TestSyncBlock:
+    def test_simple(self):
+        result = _render(SyncBlock(resource_id="res-1"))
+        assert 'adf="syncBlock"' in result
+        assert "res-1" in result
 
 
-def test_bodied_sync_block_placeholder():
-    raw: dict[str, Any] = {"type": "bodiedSyncBlock", "attrs": {}}
-    doc = blocks.Document(children=[blocks.BodiedSyncBlock(raw=raw)])
-    result = render(doc)
-    assert "<!-- adf:bodiedSyncBlock" in result
-    assert "`\u2699 Confluence macro`" in result
-    assert render(doc, annotate=False) == "`\u2699 Confluence macro`\n"
+# ── Layout ─────────────────────────────────────────────────────────────────────
 
 
-def test_placeholder_inline():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.Text(text="before"),
-                    inlines.Placeholder(text="Type something"),
-                    inlines.Text(text="after"),
+class TestLayoutSection:
+    def test_two_columns(self):
+        result = _render(
+            LayoutSection(
+                content=[
+                    LayoutColumn(
+                        width=50.0,
+                        content=[Paragraph(content=[Text(text="left")])],
+                    ),
+                    LayoutColumn(
+                        width=50.0,
+                        content=[Paragraph(content=[Text(text="right")])],
+                    ),
                 ]
             )
-        ]
-    )
-    assert render(doc) == "beforeafter\n"
+        )
+        assert 'adf="layoutSection"' in result
+        assert 'adf="layoutColumn"' in result
+        assert "left" in result
+        assert "right" in result
 
 
-def test_inline_extension_placeholder():
-    raw: dict[str, Any] = {"type": "inlineExtension", "attrs": {}}
-    doc = blocks.Document(
-        children=[blocks.Paragraph(children=[inlines.InlineExtension(raw=raw)])]
-    )
-    result = render(doc)
-    assert "<!-- adf:inlineExtension" in result
-    assert "`\u2699 Confluence macro`" in result
-    assert render(doc, annotate=False) == "`\u2699 Confluence macro`\n"
+# ── Table ──────────────────────────────────────────────────────────────────────
 
 
-# ── Difference-set inline annotation ─────────────────────────────────────────
-
-
-def test_mention():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.Mention(id="user-1", text="@Alice", user_type="DEFAULT")
+class TestTable:
+    def test_simple_header_row(self):
+        result = _render(
+            Table(
+                content=[
+                    TableRow(
+                        content=[
+                            TableHeader(content=[Paragraph(content=[Text(text="A")])]),
+                            TableHeader(content=[Paragraph(content=[Text(text="B")])]),
+                        ]
+                    ),
+                    TableRow(
+                        content=[
+                            TableCell(content=[Paragraph(content=[Text(text="1")])]),
+                            TableCell(content=[Paragraph(content=[Text(text="2")])]),
+                        ]
+                    ),
                 ]
             )
-        ]
-    )
-    result = render(doc)
-    assert "<!-- adf:mention" in result
-    assert "`@Alice`" in result
-    assert '"id": "user-1"' in result
-    assert "<!-- /adf:mention -->" in result
+        )
+        assert "| A | B |" in result
+        assert "| --- | --- |" in result
+        assert "| 1 | 2 |" in result
+        assert "<data" not in result  # no metadata for default
 
-
-def test_mention_without_text():
-    doc = blocks.Document(
-        children=[blocks.Paragraph(children=[inlines.Mention(id="user-2")])]
-    )
-    result = render(doc)
-    assert "`@user-2`" in result
-
-
-def test_emoji():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[inlines.Emoji(short_name="smile", text="\U0001f604")]
-            )
-        ]
-    )
-    result = render(doc)
-    assert "<!-- adf:emoji" in result
-    assert "\U0001f604" in result
-    assert '"shortName": "smile"' in result
-
-
-def test_emoji_without_text():
-    doc = blocks.Document(
-        children=[blocks.Paragraph(children=[inlines.Emoji(short_name="thumbsup")])]
-    )
-    result = render(doc)
-    assert ":thumbsup:" in result
-
-
-def test_date():
-    doc = blocks.Document(
-        children=[blocks.Paragraph(children=[inlines.Date(timestamp="1609459200000")])]
-    )
-    result = render(doc)
-    assert "<!-- adf:date" in result
-    assert "`2021-01-01`" in result
-    assert '"timestamp": "1609459200000"' in result
-
-
-def test_status():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.Status(text="In Progress", color="blue", style="bold")
+    def test_no_header(self):
+        result = _render(
+            Table(
+                content=[
+                    TableRow(
+                        content=[
+                            TableCell(content=[Paragraph(content=[Text(text="A")])]),
+                            TableCell(content=[Paragraph(content=[Text(text="B")])]),
+                        ]
+                    ),
                 ]
             )
-        ]
-    )
-    result = render(doc)
-    assert "<!-- adf:status" in result
-    assert "`In Progress`" in result
-    assert '"color": "blue"' in result
-    assert '"localId"' not in result
+        )
+        assert '<div adf="table"' in result
+        assert '"header":"none"' in result
 
-
-def test_inline_card_url():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(children=[inlines.InlineCard(url="https://example.com")])
-        ]
-    )
-    result = render(doc)
-    assert "<!-- adf:inlineCard" in result
-    assert "[https://example.com](https://example.com)" in result
-
-
-def test_inline_card_data():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(children=[inlines.InlineCard(data={"name": "card"})])
-        ]
-    )
-    result = render(doc)
-    assert "`\U0001f517 card link`" in result
-
-
-def test_media_inline():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.MediaInline(id="m-1", collection="c", media_type="file")
-                ]
-            )
-        ]
-    )
-    result = render(doc)
-    assert "<!-- adf:mediaInline" in result
-    assert "`\U0001f4ce attachment`" in result
-    assert '"id": "m-1"' in result
-
-
-def test_underline():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[inlines.Underline(children=[inlines.Text(text="underlined")])]
-            )
-        ]
-    )
-    result = render(doc)
-    assert "<!-- adf:underline --> underlined <!-- /adf:underline -->" in result
-
-
-def test_text_color():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.TextColor(
-                        color="#ff0000", children=[inlines.Text(text="red")]
-                    )
-                ]
-            )
-        ]
-    )
-    result = render(doc)
-    assert "<!-- adf:textColor" in result
-    assert '"color": "#ff0000"' in result
-    assert "red" in result
-
-
-def test_background_color():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.BackgroundColor(
-                        color="#00ff00", children=[inlines.Text(text="green")]
-                    )
-                ]
-            )
-        ]
-    )
-    result = render(doc)
-    assert "<!-- adf:backgroundColor" in result
-    assert '"color": "#00ff00"' in result
-
-
-def test_subsup():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[inlines.SubSup(type="sub", children=[inlines.Text(text="2")])]
-            )
-        ]
-    )
-    result = render(doc)
-    assert "<!-- adf:subSup" in result
-    assert '"type": "sub"' in result
-
-
-def test_annotation_inline():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.Annotation(
-                        id="ann-1", children=[inlines.Text(text="noted")]
-                    )
-                ]
-            )
-        ]
-    )
-    result = render(doc)
-    assert "<!-- adf:annotation" in result
-    assert '"id": "ann-1"' in result
-    assert "noted" in result
-
-
-# ── Block marks ──────────────────────────────────────────────────────
-
-
-def test_paragraph_alignment():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[inlines.Text(text="centered")],
-                alignment="center",
-            )
-        ]
-    )
-    result = render(doc)
-    assert "<!-- adf:paragraph" in result
-    assert '"align": "center"' in result
-    assert "centered" in result
-
-
-def test_heading_indentation():
-    doc = blocks.Document(
-        children=[
-            blocks.Heading(
-                level=2,
-                children=[inlines.Text(text="indented")],
-                indentation=1,
-            )
-        ]
-    )
-    result = render(doc)
-    assert "<!-- adf:heading" in result
-    assert '"indentation": 1' in result
-    assert "## indented" in result
-
-
-# ── Nesting ─────────────────────────────────────────────────────────────
-
-
-def test_panel_with_task_list():
-    doc = blocks.Document(
-        children=[
-            blocks.Panel(
-                panel_type="info",
-                children=[
-                    blocks.TaskList(
-                        items=[
-                            blocks.TaskItem(
-                                children=[inlines.Text(text="task 1")],
-                                state="DONE",
-                                local_id="t1",
-                            ),
-                            blocks.TaskItem(
-                                children=[inlines.Text(text="task 2")],
-                                state="TODO",
-                                local_id="t2",
+    def test_cell_metadata(self):
+        result = _render(
+            Table(
+                content=[
+                    TableRow(
+                        content=[
+                            TableHeader(
+                                content=[Paragraph(content=[Text(text="merged")])],
+                                colspan=2,
                             ),
                         ]
-                    )
-                ],
-            )
-        ]
-    )
-    result = render(doc)
-    assert "<!-- adf:panel" in result
-    assert "<!-- adf:taskList -->" in result
-    assert "- [x] task 1" in result
-    assert "- [ ] task 2" in result
-
-
-# ── _annotate_block / _annotate_inline correctness ────────────────────────
-
-
-def test_annotate_block_no_attrs():
-    doc = blocks.Document(
-        children=[
-            blocks.TaskList(
-                items=[
-                    blocks.TaskItem(
-                        children=[inlines.Text(text="a")], state="TODO", local_id="t1"
+                    ),
+                    TableRow(
+                        content=[
+                            TableCell(content=[Paragraph(content=[Text(text="a")])]),
+                            TableCell(content=[Paragraph(content=[Text(text="b")])]),
+                        ]
                     ),
                 ]
             )
-        ]
-    )
-    result = render(doc)
-    assert "<!-- adf:taskList -->" in result
-    assert "<!-- /adf:taskList -->" in result
+        )
+        assert '<div adf="cell"' in result
+        assert '"colspan":2' in result
 
-
-def test_annotate_inline_no_attrs():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[inlines.Underline(children=[inlines.Text(text="u")])]
-            )
-        ]
-    )
-    result = render(doc)
-    assert "<!-- adf:underline --> u <!-- /adf:underline -->" in result
-
-
-def test_annotate_block_with_attrs_json():
-    doc = blocks.Document(
-        children=[
-            blocks.Panel(
-                panel_type="warning",
-                children=[blocks.Paragraph(children=[inlines.Text(text="warn")])],
-            )
-        ]
-    )
-    result = render(doc)
-    # Verify JSON attrs are parseable
-    lines = result.split("\n")
-    open_tag = lines[0]
-    assert open_tag.startswith("<!-- adf:panel ")
-    json_str = open_tag[len("<!-- adf:panel ") : -len(" -->")]
-    attrs = json.loads(json_str)
-    assert attrs["panelType"] == "warning"
-
-
-def test_annotate_inline_with_attrs_json():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.TextColor(color="#abc", children=[inlines.Text(text="t")])
-                ]
-            )
-        ]
-    )
-    result = render(doc)
-    # Parse inline annotation JSON
-    start = result.index("<!-- adf:textColor ") + len("<!-- adf:textColor ")
-    end = result.index(" --> t")
-    json_str = result[start:end]
-    attrs = json.loads(json_str)
-    assert attrs["color"] == "#abc"
-
-
-# ── Headerless table ────────────────────────────────────────────────
-
-
-# ── annotate=False ──────────────────────────────────────────────────
-
-
-def test_annotate_false_panel():
-    """annotate=False strips panel annotation, renders content only."""
-    doc = blocks.Document(
-        children=[
-            blocks.Panel(
-                panel_type="info",
-                children=[blocks.Paragraph(children=[inlines.Text(text="note")])],
-            )
-        ]
-    )
-    result = render(doc, annotate=False)
-    assert "<!-- adf:" not in result
-    assert "note" in result
-
-
-def test_annotate_false_task_list():
-    """annotate=False strips taskList annotation, renders checklist only."""
-    doc = blocks.Document(
-        children=[
-            blocks.TaskList(
-                items=[
-                    blocks.TaskItem(
-                        children=[inlines.Text(text="done")],
-                        state="DONE",
-                        local_id="t1",
+    def test_cell_bare_text(self):
+        """Single Paragraph cell renders as bare text, not <p>."""
+        result = _render(
+            Table(
+                content=[
+                    TableRow(
+                        content=[
+                            TableHeader(content=[Paragraph(content=[Text(text="hi")])]),
+                        ]
                     ),
-                    blocks.TaskItem(
-                        children=[inlines.Text(text="todo")],
-                        state="TODO",
-                        local_id="t2",
+                    TableRow(
+                        content=[
+                            TableCell(content=[Paragraph(content=[Text(text="val")])]),
+                        ]
                     ),
                 ]
             )
-        ]
-    )
-    result = render(doc, annotate=False)
-    assert "<!-- adf:" not in result
-    assert "- [x] done" in result
-    assert "- [ ] todo" in result
+        )
+        assert "| hi |" in result
+        assert "<p>" not in result
 
-
-def test_annotate_false_mention():
-    """annotate=False strips mention annotation, renders fallback only."""
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(children=[inlines.Mention(id="user-1", text="@Alice")])
-        ]
-    )
-    result = render(doc, annotate=False)
-    assert "<!-- adf:" not in result
-    assert "`@Alice`" in result
-
-
-def test_annotate_false_text_color():
-    """annotate=False strips textColor annotation, renders text only."""
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.TextColor(
-                        color="#ff0000", children=[inlines.Text(text="red")]
-                    )
-                ]
-            )
-        ]
-    )
-    result = render(doc, annotate=False)
-    assert "<!-- adf:" not in result
-    assert "red" in result
-
-
-def test_annotate_false_table_with_attrs():
-    """annotate=False strips table attrs annotation, renders plain table."""
-    doc = blocks.Document(
-        children=[
-            blocks.Table(
-                head=[
-                    blocks.TableCell(
-                        children=[blocks.Paragraph(children=[inlines.Text(text="H")])],
-                        colspan=2,
+    def test_cell_multi_block(self):
+        """Multiple blocks in cell use HTML tags."""
+        result = _render(
+            Table(
+                content=[
+                    TableRow(
+                        content=[
+                            TableHeader(content=[Paragraph(content=[Text(text="h")])]),
+                        ]
                     ),
-                ],
-                body=[],
-                layout="default",
-            )
-        ]
-    )
-    result = render(doc, annotate=False)
-    assert "<!-- adf:" not in result
-    assert "| H |" in result
-
-
-def test_annotate_false_paragraph_alignment():
-    """annotate=False strips paragraph alignment annotation, renders text only."""
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[inlines.Text(text="centered")],
-                alignment="center",
-            )
-        ]
-    )
-    result = render(doc, annotate=False)
-    assert "<!-- adf:" not in result
-    assert "centered" in result
-
-
-def test_annotate_false_nested():
-    """annotate=False strips all nested annotations."""
-    doc = blocks.Document(
-        children=[
-            blocks.Panel(
-                panel_type="info",
-                children=[
-                    blocks.TaskList(
-                        items=[
-                            blocks.TaskItem(
-                                children=[inlines.Text(text="task")],
-                                state="DONE",
-                                local_id="t1",
+                    TableRow(
+                        content=[
+                            TableCell(
+                                content=[
+                                    Paragraph(content=[Text(text="first")]),
+                                    Paragraph(content=[Text(text="second")]),
+                                ]
                             ),
                         ]
-                    )
-                ],
-            )
-        ]
-    )
-    result = render(doc, annotate=False)
-    assert "<!-- adf:" not in result
-    assert "- [x] task" in result
-
-
-def test_annotate_false_mixed_intersection_and_difference():
-    """annotate=False strips annotation from difference-set inside intersection mark."""
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.Strong(
-                        children=[
-                            inlines.TextColor(
-                                color="#ff0000",
-                                children=[inlines.Text(text="bold red")],
-                            )
-                        ]
-                    )
+                    ),
                 ]
             )
-        ]
-    )
-    result = render(doc, annotate=False)
-    assert "<!-- adf:" not in result
-    assert "**bold red**" in result
+        )
+        assert "<p>" in result
+
+    def test_pipe_escape(self):
+        result = _render(
+            Table(
+                content=[
+                    TableRow(
+                        content=[
+                            TableHeader(
+                                content=[Paragraph(content=[Text(text="a|b")])]
+                            ),
+                        ]
+                    ),
+                    TableRow(
+                        content=[
+                            TableCell(content=[Paragraph(content=[Text(text="c")])]),
+                        ]
+                    ),
+                ]
+            )
+        )
+        assert "a\\|b" in result
 
 
-def test_annotate_true_default():
-    """annotate defaults to True, matching existing behavior."""
-    doc = blocks.Document(
-        children=[
-            blocks.Panel(
+# ── MD Escape ──────────────────────────────────────────────────────────────────
+
+
+class TestEscape:
+    def test_special_chars(self):
+        result = _render(
+            Paragraph(content=[Text(text=r"hello *world* [link] `code` \backslash")])
+        )
+        assert "\\*world\\*" in result
+        assert "\\[link\\]" in result
+        assert "\\`code\\`" in result
+        assert "\\\\backslash" in result
+
+
+# ── Params Escape ──────────────────────────────────────────────────────────────
+
+
+class TestParamsEscape:
+    def test_ampersand_in_params(self):
+        result = _render(
+            Paragraph(
+                content=[
+                    Emoji(short_name=":a&b:", id="e1"),
+                ]
+            )
+        )
+        assert "&amp;" in result
+
+    def test_single_quote_in_params(self):
+        result = _render(
+            Panel(
                 panel_type="info",
-                children=[blocks.Paragraph(children=[inlines.Text(text="note")])],
+                panel_icon="it's",
+                content=[Paragraph(content=[Text(text="x")])],
             )
-        ]
-    )
-    assert render(doc) == render(doc, annotate=True)
+        )
+        assert "&#39;" in result
 
 
-# ── Headerless table ────────────────────────────────────────────────
+# ── Plain mode ───────────────────────────────────────────────────────────────
 
 
-def test_headerless_table_renders_empty_header():
-    """head=[] generates empty header row for valid MD table output."""
-    doc = blocks.Document(
-        children=[
-            blocks.Table(
-                head=[],
-                body=[
-                    [
-                        blocks.TableCell(
-                            children=[
-                                blocks.Paragraph(children=[inlines.Text(text="A1")])
-                            ]
-                        ),
-                        blocks.TableCell(
-                            children=[
-                                blocks.Paragraph(children=[inlines.Text(text="B1")])
-                            ]
-                        ),
-                    ],
-                    [
-                        blocks.TableCell(
-                            children=[
-                                blocks.Paragraph(children=[inlines.Text(text="A2")])
-                            ]
-                        ),
-                        blocks.TableCell(
-                            children=[
-                                blocks.Paragraph(children=[inlines.Text(text="B2")])
-                            ]
-                        ),
-                    ],
+def _render_plain(node: DocContent) -> str:
+    return render(Doc(content=[node]), plain=True)
+
+
+class TestPlainMode:
+    def test_adf_params_stripped(self):
+        result = _render_plain(Paragraph(content=[Mention(id="u1", text="@John")]))
+        assert "adf=" not in result
+        assert "params=" not in result
+
+    def test_span_stripped(self):
+        result = _render_plain(Paragraph(content=[Mention(id="u1", text="@John")]))
+        assert "<span" not in result
+        assert "@John" in result
+
+    def test_time_stripped(self):
+        result = _render_plain(Paragraph(content=[Date(timestamp="1700000000000")]))
+        assert "<time" not in result
+        assert "2023-11-14" in result
+
+    def test_mark_stripped(self):
+        result = _render_plain(
+            Paragraph(content=[Text(text="noted", marks=[AnnotationMark(id="a1")])])
+        )
+        assert "<mark" not in result
+        assert "noted" in result
+
+    def test_div_stripped(self):
+        result = _render_plain(BlockCard(url="https://example.com"))
+        assert "<div" not in result
+        assert "https://example.com" in result
+
+    def test_section_stripped(self):
+        result = _render_plain(
+            LayoutSection(
+                content=[
+                    LayoutColumn(
+                        width=50, content=[Paragraph(content=[Text(text="col")])]
+                    ),
+                ]
+            )
+        )
+        assert "<section" not in result
+        assert "col" in result
+
+    def test_metadata_div_skipped(self):
+        result = _render_plain(
+            Paragraph(
+                content=[Text(text="text")],
+                marks=[AlignmentMark(align="center")],
+            )
+        )
+        assert "<div" not in result
+
+    def test_u_kept(self):
+        result = _render_plain(
+            Paragraph(content=[Text(text="underline", marks=[UnderlineMark()])])
+        )
+        assert "<u>" in result
+
+    def test_sub_sup_kept(self):
+        result = _render_plain(
+            Paragraph(content=[Text(text="2", marks=[SubSupMark(type="sub")])])
+        )
+        assert "<sub>" in result
+
+    def test_a_kept(self):
+        result = _render_plain(
+            Paragraph(content=[InlineCard(url="https://example.com")])
+        )
+        assert "<a" in result
+        assert "https://example.com" in result
+
+    def test_aside_kept(self):
+        result = _render_plain(
+            Panel(panel_type="info", content=[Paragraph(content=[Text(text="note")])])
+        )
+        assert "<aside>" in result
+
+    def test_details_kept(self):
+        result = _render_plain(
+            Expand(title="Title", content=[Paragraph(content=[Text(text="body")])])
+        )
+        assert "<details>" in result
+        assert "<summary>" in result
+
+    def test_figure_kept(self):
+        result = _render_plain(
+            MediaSingle(content=[Media(type="file", id="abc", collection="c")])
+        )
+        assert "<figure>" in result
+
+    def test_native_md_unchanged(self):
+        result = _render_plain(
+            Paragraph(content=[Text(text="bold", marks=[StrongMark()])])
+        )
+        assert "**bold**" in result
+
+    def test_table_no_metadata(self):
+        result = _render_plain(
+            Table(
+                layout="wide",
+                content=[
+                    TableRow(
+                        content=[
+                            TableHeader(content=[Paragraph(content=[Text(text="H")])]),
+                        ]
+                    ),
+                    TableRow(
+                        content=[
+                            TableCell(content=[Paragraph(content=[Text(text="D")])]),
+                        ]
+                    ),
                 ],
             )
-        ]
-    )
-    result = render(doc)
-    lines = result.strip().split("\n")
-    assert lines[0] == "|  |  |"
-    assert lines[1] == "| --- | --- |"
-    assert lines[2] == "| A1 | B1 |"
-    assert lines[3] == "| A2 | B2 |"
-
-
-# ── pipe escape / empty paragraph annotation ──────────────────────────
-
-
-def test_table_cell_pipe_escaped():
-    """Pipe characters in cell content must be escaped as \\|."""
-    doc = blocks.Document(
-        children=[
-            blocks.Table(
-                head=[
-                    blocks.TableCell(
-                        children=[
-                            blocks.Paragraph(children=[inlines.Text(text="a | b")])
-                        ]
-                    )
-                ],
-                body=[],
-            )
-        ]
-    )
-    result = render(doc, annotate=False)
-    assert "a \\| b" in result
-
-
-def test_empty_paragraph_annotated():
-    """Empty Paragraph should be wrapped with annotation in annotated mode."""
-    doc = blocks.Document(
-        children=[
-            blocks.Heading(level=1, children=[inlines.Text(text="A")]),
-            blocks.Paragraph(children=[]),
-            blocks.Heading(level=2, children=[inlines.Text(text="B")]),
-        ]
-    )
-    result = render(doc, annotate=True)
-    assert "<!-- adf:paragraph -->" in result
-
-
-def test_empty_paragraph_plain():
-    """Empty Paragraph should be an empty line without annotation in plain mode."""
-    doc = blocks.Document(
-        children=[
-            blocks.Heading(level=1, children=[inlines.Text(text="A")]),
-            blocks.Paragraph(children=[]),
-            blocks.Heading(level=2, children=[inlines.Text(text="B")]),
-        ]
-    )
-    result = render(doc, annotate=False)
-    assert "<!-- adf:" not in result
-
-
-def test_whitespace_only_paragraph_skipped_in_list_item():
-    """Whitespace-only paragraph should be skipped in list item rendering."""
-    doc = blocks.Document(
-        children=[
-            blocks.BulletList(
-                items=[
-                    blocks.ListItem(
-                        children=[
-                            blocks.Paragraph(children=[inlines.Text(text=" ")]),
-                            blocks.Paragraph(children=[inlines.Text(text="content")]),
-                        ]
-                    )
-                ],
-                tight=False,
-            )
-        ]
-    )
-    result = render(doc, annotate=True)
-    assert "- content" in result
-
-
-def test_list_item_multi_paragraph_separated():
-    """Multiple paragraphs in a list item should be separated by blank lines."""
-    doc = blocks.Document(
-        children=[
-            blocks.BulletList(
-                items=[
-                    blocks.ListItem(
-                        children=[
-                            blocks.Paragraph(children=[inlines.Text(text="p1")]),
-                            blocks.Paragraph(children=[inlines.Text(text="p2")]),
-                        ]
-                    )
-                ],
-                tight=False,
-            )
-        ]
-    )
-    assert render(doc, annotate=False) == "- p1\n\n    p2\n"
-
-
-def test_list_item_paragraph_and_code_block_separated():
-    """Paragraph + CodeBlock in a list item should be separated by blank lines."""
-    doc = blocks.Document(
-        children=[
-            blocks.BulletList(
-                items=[
-                    blocks.ListItem(
-                        children=[
-                            blocks.Paragraph(children=[inlines.Text(text="text")]),
-                            blocks.CodeBlock(code="x = 1", language="python"),
-                        ]
-                    )
-                ],
-                tight=False,
-            )
-        ]
-    )
-    result = render(doc, annotate=False)
-    assert "- text\n\n    ```python" in result
-
-
-# ── Block-start inline annotation (HTML block prevention) ─────────
-
-
-def test_block_start_annotation_gets_zwsp():
-    """Inline annotation at paragraph start gets zero-width space prefix."""
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.Emoji(short_name=":smile:", text="\U0001f604"),
-                    inlines.Text(text=" hello"),
-                ]
-            )
-        ]
-    )
-    result = render(doc)
-    assert result.startswith("\u200b<!--")
-
-
-def test_block_start_annotation_no_zwsp_when_not_annotated():
-    """annotate=False never inserts zero-width space."""
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.Emoji(short_name=":smile:", text="\U0001f604"),
-                    inlines.Text(text=" hello"),
-                ]
-            )
-        ]
-    )
-    result = render(doc, annotate=False)
-    assert "\u200b" not in result
-
-
-def test_block_start_text_no_zwsp():
-    """No zero-width space when paragraph starts with text, not annotation."""
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.Text(text="hello "),
-                    inlines.Emoji(short_name=":smile:", text="\U0001f604"),
-                ]
-            )
-        ]
-    )
-    result = render(doc)
-    assert not result.startswith("\u200b")
-
-
-def test_nested_inline_annotation_no_zwsp():
-    """Annotation inside Strong does not get zero-width space."""
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.Strong(
-                        children=[
-                            inlines.Emoji(short_name=":smile:", text="\U0001f604"),
-                        ]
-                    )
-                ]
-            )
-        ]
-    )
-    result = render(doc)
-    assert "**<!-- adf:emoji" in result
-    assert "\u200b" not in result
-
-
-# ── Adjacent backtick collision ───────────────────────────────────
-
-
-def test_adjacent_backtick_space_inserted():
-    """Space is inserted between adjacent backtick-delimited inlines in plain mode."""
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.CodeSpan(code="aaa"),
-                    inlines.Status(text="bbb", color="neutral"),
-                ]
-            )
-        ]
-    )
-    result = render(doc, annotate=False)
-    assert "`aaa` `bbb`" in result
-
-
-def test_adjacent_backtick_no_space_in_annotate():
-    """Annotate mode does not need space — annotation tags separate backticks."""
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.CodeSpan(code="aaa"),
-                    inlines.Status(text="bbb", color="neutral"),
-                ]
-            )
-        ]
-    )
-    result = render(doc)
-    assert "`aaa`<!--" in result
-
-
-def test_adjacent_backtick_no_double_space():
-    """No extra space when inlines already have space between them."""
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.CodeSpan(code="aaa"),
-                    inlines.Text(text=" "),
-                    inlines.CodeSpan(code="bbb"),
-                ]
-            )
-        ]
-    )
-    result = render(doc, annotate=False)
-    assert "`aaa` `bbb`" in result
-    assert "`aaa`  `bbb`" not in result
+        )
+        assert "<div" not in result
+        assert "| H |" in result

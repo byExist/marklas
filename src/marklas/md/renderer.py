@@ -1,22 +1,118 @@
-"""Union AST → Markdown rendering."""
+"""ADF AST → Markdown renderer."""
 
 from __future__ import annotations
 
+import enum
 import json
 import re
+from collections.abc import Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
+from dataclasses import fields
+
 from datetime import UTC, datetime
-from typing import Any, Generator
+from typing import Any, Generator, cast
 
-from marklas.nodes import blocks, inlines
+from marklas import ast
 
-# ── Table-cell markup constants ──────────────────────────────────────
 
-CELL_BLOCK_SEP = "<br>"  # separates blocks inside a table cell
-CELL_HARD_BREAK = "<br/>"  # hard break (line break) inside a table cell
+# ── Rendering context ──────────────────────────────────────────────────────────
 
-_MD_ESCAPE_TABLE = str.maketrans(
+
+class _Ctx(enum.Enum):
+    BLOCK = "block"
+    CELL = "cell"
+
+
+_ctx: ContextVar[_Ctx] = ContextVar("ctx", default=_Ctx.BLOCK)
+_plain_ctx: ContextVar[bool] = ContextVar("plain", default=False)
+
+
+@contextmanager
+def _cell_context() -> Generator[None]:
+    token = _ctx.set(_Ctx.CELL)
+    try:
+        yield
+    finally:
+        _ctx.reset(token)
+
+
+def _in_cell() -> bool:
+    return _ctx.get() is _Ctx.CELL
+
+
+def _is_plain() -> bool:
+    return _plain_ctx.get()
+
+
+# ── Params helpers ─────────────────────────────────────────────────────────────
+
+
+def _escape_params(json_str: str) -> str:
+    """& → &amp;, ' → &#39;"""
+    return json_str.replace("&", "&amp;").replace("'", "&#39;")
+
+
+def _build_params(fields: dict[str, Any]) -> str | None:
+    """Build escaped params JSON. Returns None if all values are None."""
+    d = {k: v for k, v in fields.items() if v is not None}
+    if not d:
+        return None
+    return _escape_params(json.dumps(d, ensure_ascii=False, separators=(",", ":")))
+
+
+# ── HTML helpers ───────────────────────────────────────────────────────────────
+
+
+def _attr_str(
+    adf: str | None = None,
+    params: str | None = None,
+    **attrs: Any,
+) -> str:
+    parts: list[str] = []
+    if not _is_plain():
+        if adf is not None:
+            parts.append(f'adf="{adf}"')
+        if params is not None:
+            parts.append(f"params='{params}'")
+    for k, v in attrs.items():
+        if v is None:
+            continue
+        name = k.replace("_", "-")
+        parts.append(f'{name}="{v}"')
+    return (" " + " ".join(parts)) if parts else ""
+
+
+_PLAIN_STRIP_TAGS = {"span", "time", "div", "section", "mark"}
+
+
+def _el(tag: str, content: str, **attrs: Any) -> str:
+    """<tag attrs>content</tag>"""
+    if _is_plain() and tag in _PLAIN_STRIP_TAGS:
+        return content
+    return f"<{tag}{_attr_str(**attrs)}>{content}</{tag}>"
+
+
+def _block_el(tag: str, content: str, **attrs: Any) -> str:
+    """<tag attrs>\\n\\ncontent\\n\\n</tag> (block context only)"""
+    if _is_plain() and tag in _PLAIN_STRIP_TAGS:
+        return content
+    if _in_cell():
+        return _el(tag, content, **attrs)
+    return f"<{tag}{_attr_str(**attrs)}>\n\n{content}\n\n</{tag}>"
+
+
+def _data(adf_type: str, params: str | None = None) -> str:
+    """<div adf="type" params='...'></div> (void/metadata block element)"""
+    if _is_plain():
+        return ""
+    return f"<div{_attr_str(adf=adf_type, params=params)}></div>"
+
+
+# ── MD text helpers ────────────────────────────────────────────────────────────
+
+
+_MD_ESCAPE = str.maketrans(
     {
         "\\": "\\\\",
         "*": "\\*",
@@ -28,1069 +124,950 @@ _MD_ESCAPE_TABLE = str.maketrans(
     }
 )
 
-# ── Rendering context ────────────────────────────────────────────────
 
-_in_table_ctx: ContextVar[bool] = ContextVar("in_table", default=False)
-
-
-@contextmanager
-def _table_context() -> Generator[None]:
-    token = _in_table_ctx.set(True)
-    try:
-        yield
-    finally:
-        _in_table_ctx.reset(token)
+def _escape_md(text: str) -> str:
+    return text.translate(_MD_ESCAPE)
 
 
-def _in_table() -> bool:
-    return _in_table_ctx.get()
-
-
-# ── Entry point ──────────────────────────────────────────────────────
-
-
-def render(doc: blocks.Document, *, annotate: bool = True) -> str:
-    parts = _render_doc_children(doc.children, annotate)
-    return "\n\n".join(parts) + "\n" if parts else ""
-
-
-# ── Doc dispatch ─────────────────────────────────────────────────────
-
-
-def _render_doc_children(children: list[blocks.DocChild], annotate: bool) -> list[str]:
-    return [_render_doc_child(c, annotate) for c in children]
-
-
-def _render_doc_child(node: blocks.DocChild, annotate: bool) -> str:
-    match node:
-        case blocks.Paragraph():
-            return _render_paragraph(node, annotate)
-        case blocks.Heading():
-            return _render_heading(node, annotate)
-        case blocks.CodeBlock():
-            return _render_code_block(node, annotate)
-        case blocks.BlockQuote():
-            return _render_blockquote(node, annotate)
-        case blocks.ThematicBreak():
-            return _render_thematic_break(node, annotate)
-        case blocks.BulletList():
-            return _render_bullet_list(node, annotate)
-        case blocks.OrderedList():
-            return _render_ordered_list(node, annotate)
-        case blocks.Table():
-            return _render_table(node, annotate)
-        case blocks.Panel():
-            return _render_panel(node, annotate)
-        case blocks.Expand():
-            return _render_expand(node, annotate)
-        case blocks.TaskList():
-            return _render_task_list(node, annotate)
-        case blocks.DecisionList():
-            return _render_decision_list(node, annotate)
-        case blocks.LayoutSection():
-            return _render_layout_section(node, annotate)
-        case blocks.MediaSingle():
-            return _render_media_single(node, annotate)
-        case blocks.MediaGroup():
-            return _render_media_group(node, annotate)
-        case blocks.BlockCard():
-            return _render_block_card(node, annotate)
-        case blocks.EmbedCard():
-            return _render_embed_card(node, annotate)
-        case blocks.Extension():
-            return _render_extension(node, annotate)
-        case blocks.BodiedExtension():
-            return _render_bodied_extension(node, annotate)
-        case blocks.SyncBlock():
-            return _render_sync_block(node, annotate)
-        case blocks.BodiedSyncBlock():
-            return _render_bodied_sync_block(node, annotate)
-
-
-# ── Shared helpers ───────────────────────────────────────────────────
-
-
-def _build_media_dict(media: blocks.Media) -> dict[str, Any]:
-    d: dict[str, Any] = {}
-    if media.media_type != "file":
-        d["mediaType"] = media.media_type
-    if media.id is not None:
-        d["id"] = media.id
-    if media.collection is not None:
-        d["collection"] = media.collection
-    if media.url is not None:
-        d["url"] = media.url
-    if media.alt is not None:
-        d["alt"] = media.alt
-    if media.width is not None:
-        d["width"] = media.width
-    if media.height is not None:
-        d["height"] = media.height
-    return d
-
-
-def _to_tag(node: blocks.Block | inlines.Inline) -> str:
-    name = type(node).__name__
-    return name[0].lower() + name[1:]
-
-
-# ── Block renderers ──────────────────────────────────────────────────
-
-
-def _annotate_block(
-    node: blocks.Block, content: str, annotate: bool, **attrs: Any
-) -> str:
-    if not annotate:
-        return content
-    tag = _to_tag(node)
-    filtered = {k: v for k, v in attrs.items() if v is not None}
-    attr_json = f" {json.dumps(filtered, ensure_ascii=False)}" if filtered else ""
-    if _in_table():
-        return f"<!-- adf:{tag}{attr_json} -->{content}<!-- /adf:{tag} -->"
-    return f"<!-- adf:{tag}{attr_json} -->\n{content}\n<!-- /adf:{tag} -->"
-
-
-def _render_paragraph(node: blocks.Paragraph, annotate: bool) -> str:
-    content = _render_block_inlines(node.children, annotate)
-    if node.alignment or node.indentation:
-        return _annotate_block(
-            node,
-            content,
-            annotate,
-            align=node.alignment,
-            indentation=node.indentation,
-        )
-    if _in_table():
-        return content.strip()
-    if not content and annotate:
-        return _annotate_block(node, content, annotate)
-    return content
-
-
-def _render_heading(node: blocks.Heading, annotate: bool) -> str:
-    if _in_table():
-        tag = f"h{node.level}"
-        inner = _render_inlines(node.children, annotate)
-        return f"<{tag}>{inner}</{tag}>"
-    content = "#" * node.level + " " + _render_inlines(node.children, annotate)
-    if node.alignment or node.indentation:
-        return _annotate_block(
-            node,
-            content,
-            annotate,
-            align=node.alignment,
-            indentation=node.indentation,
-        )
-    return content
-
-
-_BACKTICK_RUN_RE = re.compile(r"`+")
-
-
-def _code_fence(code: str) -> str:
-    runs = _BACKTICK_RUN_RE.findall(code)
-    max_len = max((len(r) for r in runs), default=0)
-    return "`" * max(3, max_len + 1)
-
-
-def _render_code_block(node: blocks.CodeBlock, annotate: bool) -> str:
-    if _in_table():
-        code = node.code.replace("\n", CELL_BLOCK_SEP)
-        html = f"<code>{code}</code>"
-        if node.language:
-            return _annotate_block(node, html, annotate, language=node.language)
-        return html
-    lang = node.language or ""
-    fence = _code_fence(node.code)
-    return f"{fence}{lang}\n{node.code}\n{fence}"
-
-
-def _render_blockquote(node: blocks.BlockQuote, annotate: bool) -> str:
-    if _in_table():
-        inner = CELL_BLOCK_SEP.join(
-            _render_blockquote_children(node.children, annotate)
-        )
-        return f"<blockquote>{inner}</blockquote>"
-    inner = "\n\n".join(_render_blockquote_children(node.children, annotate))
-    return "\n".join(f"> {line}" if line else ">" for line in inner.split("\n"))
-
-
-def _render_thematic_break(node: blocks.ThematicBreak, annotate: bool) -> str:
-    return "<hr>" if _in_table() else "---"
-
-
-def _render_bullet_list(node: blocks.BulletList, annotate: bool) -> str:
-    if _in_table():
-        return _render_cell_list(node, annotate)
-    items: list[str] = []
-    for item in node.items:
-        if item.checked is not None:
-            marker = "- [x] " if item.checked else "- [ ] "
-        else:
-            marker = "- "
-        body = _render_list_item_body(item.children, node.tight, annotate)
-        items.append(marker + body)
-    sep = "\n\n" if not node.tight else "\n"
-    return sep.join(items)
-
-
-def _render_ordered_list(node: blocks.OrderedList, annotate: bool) -> str:
-    if _in_table():
-        return _render_cell_list(node, annotate)
-    items: list[str] = []
-    for i, item in enumerate(node.items):
-        num = node.start + i
-        body = _render_list_item_body(item.children, node.tight, annotate)
-        items.append(f"{num}. {body}")
-    sep = "\n\n" if not node.tight else "\n"
-    return sep.join(items)
-
-
-def _render_list_item_body(
-    children: list[blocks.ListItemChild], tight: bool, annotate: bool
-) -> str:
-    if tight and len(children) == 1 and isinstance(children[0], blocks.Paragraph):
-        return _render_block_inlines(children[0].children, annotate)
-    parts: list[str] = []
-    for child in children:
-        if _is_whitespace_only_paragraph(child):
-            continue
-        rendered = _render_listitem_child(child, annotate)
-        parts.append(rendered)
-    body = "\n\n".join(parts)
-    lines = body.split("\n")
-    if len(lines) > 1:
-        return (
-            lines[0] + "\n" + "\n".join("    " + ln if ln else "" for ln in lines[1:])
-        )
-    return body
-
-
-def _is_whitespace_only_paragraph(node: blocks.ListItemChild) -> bool:
-    return (
-        isinstance(node, blocks.Paragraph)
-        and len(node.children) > 0
-        and all(
-            isinstance(c, inlines.Text) and not c.text.strip() for c in node.children
-        )
-    )
-
-
-def _render_cell_list(
-    node: blocks.BulletList | blocks.OrderedList, annotate: bool
-) -> str:
-    tag = "ol" if isinstance(node, blocks.OrderedList) else "ul"
-    start_attr = (
-        f' start="{node.start}"'
-        if isinstance(node, blocks.OrderedList) and node.start != 1
-        else ""
-    )
-    items: list[str] = []
-    for item in node.items:
-        body = CELL_BLOCK_SEP.join(_render_listitem_children(item.children, annotate))
-        items.append(f"<li>{body}</li>")
-    return f"<{tag}{start_attr}>{''.join(items)}</{tag}>"
-
-
-def _render_table(node: blocks.Table, annotate: bool) -> str:
-    col_count = len(node.head) if node.head else max(len(row) for row in node.body)
-
-    def header() -> str:
-        if node.head:
-            cells = [_render_table_cell(cell, annotate) for cell in node.head]
-        else:
-            cells = [""] * col_count
-        return "| " + " | ".join(cells) + " |"
-
-    def delimiter() -> str:
-        delimiters: list[str] = []
-        for i in range(col_count):
-            align = node.alignments[i] if i < len(node.alignments) else None
-            match align:
-                case "center":
-                    delimiters.append(":---:")
-                case "right":
-                    delimiters.append("---:")
-                case "left":
-                    delimiters.append(":---")
-                case _:
-                    delimiters.append("---")
-        return "| " + " | ".join(delimiters) + " |"
-
-    def row(cells_row: list[blocks.TableCell]) -> str:
-        cells = [_render_table_cell(cell, annotate) for cell in cells_row]
-        while len(cells) < col_count:
-            cells.append("")
-        return "| " + " | ".join(cells) + " |"
-
-    with _table_context():
-        table_md = "\n".join([header(), delimiter(), *(row(r) for r in node.body)])
-    attrs = _collect_table_attrs(node)
-    if attrs:
-        return _annotate_block(node, table_md, annotate, **attrs)
-    return table_md
-
-
-def _render_table_cell(cell: blocks.TableCell, annotate: bool) -> str:
-    parts = _render_tablecell_children(cell.children, annotate)
-    return _escape_cell_pipe(CELL_BLOCK_SEP.join(parts))
-
-
-def _escape_cell_pipe(text: str) -> str:
+def _escape_pipe(text: str) -> str:
     return text.replace("|", "\\|")
 
 
-def _collect_table_attrs(node: blocks.Table) -> dict[str, Any]:
-    attrs: dict[str, Any] = {}
-    if node.display_mode is not None:
-        attrs["displayMode"] = node.display_mode
-    if node.is_number_column_enabled is not None:
-        attrs["isNumberColumnEnabled"] = node.is_number_column_enabled
-    if node.layout is not None:
-        attrs["layout"] = node.layout
-    if node.width is not None:
-        attrs["width"] = node.width
-    cell_attrs = _collect_cell_attrs(node)
-    if cell_attrs:
-        attrs["cells"] = cell_attrs
-    return attrs
+_BACKTICK_RE = re.compile(r"`+")
 
 
-def _collect_cell_attrs(node: blocks.Table) -> list[list[Any]] | None:
-    all_rows = [node.head, *node.body]
-    result: list[list[Any]] = []
-    has_any = False
-    for row in all_rows:
-        row_attrs: list[Any] = []
-        for cell in row:
-            cell_attr = _collect_single_cell_attr(cell)
-            if cell_attr is not None:
-                has_any = True
-            row_attrs.append(cell_attr)
-        result.append(row_attrs)
-    return result if has_any else None
+def _code_fence(code: str) -> str:
+    runs = _BACKTICK_RE.findall(code)
+    max_run = max((len(r) for r in runs), default=0)
+    return "`" * max(3, max_run + 1)
 
 
-def _collect_single_cell_attr(cell: blocks.TableCell) -> Any:
-    is_header = isinstance(cell, blocks.TableHeader)
-    has_special = (
-        (cell.colspan is not None and cell.colspan != 1)
-        or (cell.rowspan is not None and cell.rowspan != 1)
-        or cell.background
-        or is_header
-    )
-    if has_special:
-        attrs: dict[str, Any] = {}
-        if cell.colspan is not None and cell.colspan != 1:
-            attrs["colspan"] = cell.colspan
-        if cell.rowspan is not None and cell.rowspan != 1:
-            attrs["rowspan"] = cell.rowspan
-        if cell.col_width:
-            attrs["colwidth"] = cell.col_width
-        if cell.background:
-            attrs["background"] = cell.background
-        if is_header:
-            attrs["header"] = True
-        return attrs
-    if cell.col_width:
-        return cell.col_width
-    return None
+def _media_fallback(id: str | None, alt: str | None) -> str:
+    label = alt or "attachment"
+    return f"📎 {label} ({id})" if id else f"📎 {label}"
 
 
-# ── Blockquote dispatch ──────────────────────────────────────────────
+# ── Entry point ────────────────────────────────────────────────────────────────
 
 
-def _render_blockquote_children(
-    children: list[blocks.BlockQuoteChild], annotate: bool
-) -> list[str]:
-    return [_render_blockquote_child(c, annotate) for c in children]
+def render(doc: ast.Doc, *, plain: bool = False) -> str:
+    token = _plain_ctx.set(plain)
+    try:
+        parts = _render_blocks(doc.content)
+        return "\n\n".join(parts) + "\n" if parts else ""
+    finally:
+        _plain_ctx.reset(token)
 
 
-def _render_blockquote_child(node: blocks.BlockQuoteChild, annotate: bool) -> str:
+# ── Block marks ────────────────────────────────────────────────────────────────
+
+
+_BLOCK_MARK_TYPES = (
+    ast.AlignmentMark,
+    ast.IndentationMark,
+    ast.BreakoutMark,
+    ast.DataConsumerMark,
+    ast.BorderMark,
+)
+
+
+def _block_marks_data(marks: Sequence[ast.Mark]) -> str | None:
+    """<data adf="marks" params='...'> for block context. None if no block marks."""
+    if _is_plain():
+        return None
+    d = _block_marks_params(marks)
+    if not d:
+        return None
+    return _data("marks", _build_params(d))
+
+
+def _block_marks_params(marks: Sequence[ast.Mark]) -> dict[str, Any]:
+    """Block mark fields as dict for cell context params merging."""
+    d: dict[str, Any] = {}
+    for m in marks:
+        match m:
+            case ast.AlignmentMark(align=align):
+                d["align"] = align
+            case ast.IndentationMark(level=level):
+                d["indent"] = level
+            case ast.BreakoutMark(mode=mode, width=width):
+                d["breakoutMode"] = mode
+                if width is not None:
+                    d["breakoutWidth"] = width
+            case ast.DataConsumerMark(sources=sources):
+                d["dataConsumerSources"] = sources
+            case ast.BorderMark(size=size, color=color):
+                d["borderSize"] = size
+                d["borderColor"] = color
+            case _:
+                pass
+    return d
+
+
+# ── Block rendering ────────────────────────────────────────────────────────────
+
+
+def _render_blocks(children: Sequence[ast.Node]) -> list[str]:
+    return [_render_block(c) for c in children]
+
+
+def _render_block(node: ast.Node) -> str:
     match node:
-        case blocks.Paragraph():
-            return _render_paragraph(node, annotate)
-        case blocks.BulletList():
-            return _render_bullet_list(node, annotate)
-        case blocks.OrderedList():
-            return _render_ordered_list(node, annotate)
-        case blocks.CodeBlock():
-            return _render_code_block(node, annotate)
-        case blocks.MediaGroup():
-            return _render_media_group(node, annotate)
-        case blocks.MediaSingle():
-            return _render_media_single(node, annotate)
-        case blocks.Extension():
-            return _render_extension(node, annotate)
-
-
-# ── ListItem dispatch ────────────────────────────────────────────────
-
-
-def _render_listitem_children(
-    children: list[blocks.ListItemChild], annotate: bool
-) -> list[str]:
-    return [_render_listitem_child(c, annotate) for c in children]
-
-
-def _render_listitem_child(node: blocks.ListItemChild, annotate: bool) -> str:
-    match node:
-        case blocks.Paragraph():
-            return _render_paragraph(node, annotate)
-        case blocks.BulletList():
-            return _render_bullet_list(node, annotate)
-        case blocks.OrderedList():
-            return _render_ordered_list(node, annotate)
-        case blocks.CodeBlock():
-            return _render_code_block(node, annotate)
-        case blocks.MediaSingle():
-            return _render_media_single(node, annotate)
-        case blocks.Extension():
-            return _render_extension(node, annotate)
-        case blocks.TaskList():
-            return _render_task_list(node, annotate)
-
-
-# ── Annotated block renderers ────────────────────────────────────────
-
-
-def _render_panel(node: blocks.Panel, annotate: bool) -> str:
-    if _in_table():
-        inner = CELL_BLOCK_SEP.join(_render_panel_children(node.children, annotate))
-        content = f"<blockquote>{inner}</blockquote>"
-    else:
-        content = "\n\n".join(_render_panel_children(node.children, annotate))
-    return _annotate_block(
-        node,
-        content,
-        annotate,
-        panelType=node.panel_type,
-        panelIcon=node.panel_icon,
-        panelIconId=node.panel_icon_id,
-        panelIconText=node.panel_icon_text,
-        panelColor=node.panel_color,
-    )
-
-
-def _render_expand(node: blocks.Expand, annotate: bool) -> str:
-    if _in_table():
-        inner = CELL_BLOCK_SEP.join(_render_expand_children(node.children, annotate))
-        content = f"<blockquote>{inner}</blockquote>"
-    else:
-        content = "\n\n".join(_render_expand_children(node.children, annotate))
-    return _annotate_block(node, content, annotate, title=node.title)
-
-
-def _render_nested_expand(node: blocks.NestedExpand, annotate: bool) -> str:
-    if _in_table():
-        inner = CELL_BLOCK_SEP.join(
-            _render_nested_expand_children(node.children, annotate)
-        )
-        content = f"<blockquote>{inner}</blockquote>"
-    else:
-        content = "\n\n".join(_render_nested_expand_children(node.children, annotate))
-    return _annotate_block(node, content, annotate, title=node.title)
-
-
-def _render_task_list(node: blocks.TaskList, annotate: bool) -> str:
-    if _in_table():
-        items: list[str] = []
-        for item in node.items:
-            marker = "[x] " if item.state == "DONE" else "[ ] "
-            items.append(f"<li>{marker}{_render_inlines(item.children, annotate)}</li>")
-        content = f"<ul>{''.join(items)}</ul>"
-    else:
-        items = []
-        for item in node.items:
-            marker = "- [x] " if item.state == "DONE" else "- [ ] "
-            items.append(marker + _render_block_inlines(item.children, annotate))
-        content = "\n".join(items)
-    return _annotate_block(node, content, annotate)
-
-
-def _render_decision_list(node: blocks.DecisionList, annotate: bool) -> str:
-    if _in_table():
-        items: list[str] = []
-        for item in node.items:
-            marker = "[x] " if item.state == "DECIDED" else "[ ] "
-            items.append(f"<li>{marker}{_render_inlines(item.children, annotate)}</li>")
-        content = f"<ul>{''.join(items)}</ul>"
-    else:
-        items = []
-        for item in node.items:
-            marker = "- [x] " if item.state == "DECIDED" else "- [ ] "
-            items.append(marker + _render_block_inlines(item.children, annotate))
-        content = "\n".join(items)
-    return _annotate_block(node, content, annotate)
-
-
-def _render_layout_section(node: blocks.LayoutSection, annotate: bool) -> str:
-    parts: list[str] = []
-    for col in node.columns:
-        inner = "\n\n".join(_render_layoutcolumn_children(col.children, annotate))
-        parts.append(_annotate_block(col, inner, annotate, width=col.width))
-    return _annotate_block(node, "\n\n".join(parts), annotate)
-
-
-def _render_media_single(node: blocks.MediaSingle, annotate: bool) -> str:
-    if node.media.media_type == "external" and node.media.url:
-        fallback = f"![{node.media.alt or ''}]({node.media.url})"
-    else:
-        alt = node.media.alt or "attachment"
-        fallback = f"`\U0001f4ce {alt}`"
-    media = _build_media_dict(node.media)
-    return _annotate_block(
-        node,
-        fallback,
-        annotate,
-        layout=node.layout,
-        width=node.width,
-        widthType=node.width_type,
-        media=media,
-    )
-
-
-def _render_media_group(node: blocks.MediaGroup, annotate: bool) -> str:
-    fallbacks: list[str] = []
-    for m in node.media_list:
-        if m.media_type == "external" and m.url:
-            fallbacks.append(f"![{m.alt or ''}]({m.url})")
-        else:
-            alt = m.alt or "attachment"
-            fallbacks.append(f"`\U0001f4ce {alt}`")
-    media_list = [_build_media_dict(m) for m in node.media_list]
-    sep = CELL_BLOCK_SEP if _in_table() else "\n"
-    return _annotate_block(node, sep.join(fallbacks), annotate, mediaList=media_list)
-
-
-def _render_block_card(node: blocks.BlockCard, annotate: bool) -> str:
-    fallback = f"[{node.url}]({node.url})" if node.url else "`\U0001f517 card link`"
-    return _annotate_block(node, fallback, annotate, url=node.url, data=node.data)
-
-
-def _render_embed_card(node: blocks.EmbedCard, annotate: bool) -> str:
-    fallback = f"[{node.url}]({node.url})"
-    return _annotate_block(
-        node,
-        fallback,
-        annotate,
-        url=node.url,
-        layout=node.layout,
-        width=node.width,
-        originalWidth=node.original_width,
-        originalHeight=node.original_height,
-    )
-
-
-def _extension_fallback(raw: dict[str, Any]) -> str:
-    key = raw.get("attrs", {}).get("extensionKey", "")
-    label = key or "Confluence macro"
-    return f"`\u2699 {label}`"
-
-
-def _render_extension(node: blocks.Extension, annotate: bool) -> str:
-    content = _extension_fallback(node.raw)
-    if annotate:
-        return _annotate_block(node, content, annotate, raw=node.raw)
-    return content
-
-
-def _render_bodied_extension(node: blocks.BodiedExtension, annotate: bool) -> str:
-    content = _extension_fallback(node.raw)
-    if annotate:
-        return _annotate_block(node, content, annotate, raw=node.raw)
-    return content
-
-
-def _render_sync_block(node: blocks.SyncBlock, annotate: bool) -> str:
-    content = _extension_fallback(node.raw)
-    if annotate:
-        return _annotate_block(node, content, annotate, raw=node.raw)
-    return content
-
-
-def _render_bodied_sync_block(node: blocks.BodiedSyncBlock, annotate: bool) -> str:
-    content = _extension_fallback(node.raw)
-    if annotate:
-        return _annotate_block(node, content, annotate, raw=node.raw)
-    return content
-
-
-# ── Panel dispatch ───────────────────────────────────────────────────
-
-
-def _render_panel_children(
-    children: list[blocks.PanelChild], annotate: bool
-) -> list[str]:
-    return [_render_panel_child(c, annotate) for c in children]
-
-
-def _render_panel_child(node: blocks.PanelChild, annotate: bool) -> str:
-    match node:
-        case blocks.Paragraph():
-            return _render_paragraph(node, annotate)
-        case blocks.Heading():
-            return _render_heading(node, annotate)
-        case blocks.BulletList():
-            return _render_bullet_list(node, annotate)
-        case blocks.OrderedList():
-            return _render_ordered_list(node, annotate)
-        case blocks.CodeBlock():
-            return _render_code_block(node, annotate)
-        case blocks.TaskList():
-            return _render_task_list(node, annotate)
-        case blocks.DecisionList():
-            return _render_decision_list(node, annotate)
-        case blocks.ThematicBreak():
-            return _render_thematic_break(node, annotate)
-        case blocks.MediaGroup():
-            return _render_media_group(node, annotate)
-        case blocks.MediaSingle():
-            return _render_media_single(node, annotate)
-        case blocks.BlockCard():
-            return _render_block_card(node, annotate)
-        case blocks.Extension():
-            return _render_extension(node, annotate)
-
-
-# ── Expand dispatch ──────────────────────────────────────────────────
-
-
-def _render_expand_children(
-    children: list[blocks.ExpandChild], annotate: bool
-) -> list[str]:
-    return [_render_expand_child(c, annotate) for c in children]
-
-
-def _render_expand_child(node: blocks.ExpandChild, annotate: bool) -> str:
-    match node:
-        case blocks.Paragraph():
-            return _render_paragraph(node, annotate)
-        case blocks.Heading():
-            return _render_heading(node, annotate)
-        case blocks.BulletList():
-            return _render_bullet_list(node, annotate)
-        case blocks.OrderedList():
-            return _render_ordered_list(node, annotate)
-        case blocks.CodeBlock():
-            return _render_code_block(node, annotate)
-        case blocks.TaskList():
-            return _render_task_list(node, annotate)
-        case blocks.DecisionList():
-            return _render_decision_list(node, annotate)
-        case blocks.ThematicBreak():
-            return _render_thematic_break(node, annotate)
-        case blocks.MediaGroup():
-            return _render_media_group(node, annotate)
-        case blocks.MediaSingle():
-            return _render_media_single(node, annotate)
-        case blocks.Panel():
-            return _render_panel(node, annotate)
-        case blocks.BlockQuote():
-            return _render_blockquote(node, annotate)
-        case blocks.Table():
-            return _render_table(node, annotate)
-        case blocks.NestedExpand():
-            return _render_nested_expand(node, annotate)
-        case blocks.BlockCard():
-            return _render_block_card(node, annotate)
-        case blocks.EmbedCard():
-            return _render_embed_card(node, annotate)
-        case blocks.Extension():
-            return _render_extension(node, annotate)
-        case blocks.BodiedExtension():
-            return _render_bodied_extension(node, annotate)
-
-
-# ── NestedExpand dispatch ────────────────────────────────────────────
-
-
-def _render_nested_expand_children(
-    children: list[blocks.NestedExpandChild], annotate: bool
-) -> list[str]:
-    return [_render_nested_expand_child(c, annotate) for c in children]
-
-
-def _render_nested_expand_child(node: blocks.NestedExpandChild, annotate: bool) -> str:
-    match node:
-        case blocks.Paragraph():
-            return _render_paragraph(node, annotate)
-        case blocks.Heading():
-            return _render_heading(node, annotate)
-        case blocks.BulletList():
-            return _render_bullet_list(node, annotate)
-        case blocks.OrderedList():
-            return _render_ordered_list(node, annotate)
-        case blocks.CodeBlock():
-            return _render_code_block(node, annotate)
-        case blocks.TaskList():
-            return _render_task_list(node, annotate)
-        case blocks.DecisionList():
-            return _render_decision_list(node, annotate)
-        case blocks.ThematicBreak():
-            return _render_thematic_break(node, annotate)
-        case blocks.MediaGroup():
-            return _render_media_group(node, annotate)
-        case blocks.MediaSingle():
-            return _render_media_single(node, annotate)
-        case blocks.Panel():
-            return _render_panel(node, annotate)
-        case blocks.BlockQuote():
-            return _render_blockquote(node, annotate)
-        case blocks.Extension():
-            return _render_extension(node, annotate)
-
-
-# ── LayoutColumn dispatch ────────────────────────────────────────────
-
-
-def _render_layoutcolumn_children(
-    children: list[blocks.LayoutColumnChild], annotate: bool
-) -> list[str]:
-    return [_render_layoutcolumn_child(c, annotate) for c in children]
-
-
-def _render_layoutcolumn_child(node: blocks.LayoutColumnChild, annotate: bool) -> str:
-    match node:
-        case blocks.Paragraph():
-            return _render_paragraph(node, annotate)
-        case blocks.Heading():
-            return _render_heading(node, annotate)
-        case blocks.BulletList():
-            return _render_bullet_list(node, annotate)
-        case blocks.OrderedList():
-            return _render_ordered_list(node, annotate)
-        case blocks.CodeBlock():
-            return _render_code_block(node, annotate)
-        case blocks.TaskList():
-            return _render_task_list(node, annotate)
-        case blocks.DecisionList():
-            return _render_decision_list(node, annotate)
-        case blocks.ThematicBreak():
-            return _render_thematic_break(node, annotate)
-        case blocks.MediaGroup():
-            return _render_media_group(node, annotate)
-        case blocks.MediaSingle():
-            return _render_media_single(node, annotate)
-        case blocks.Panel():
-            return _render_panel(node, annotate)
-        case blocks.BlockQuote():
-            return _render_blockquote(node, annotate)
-        case blocks.Table():
-            return _render_table(node, annotate)
-        case blocks.Expand():
-            return _render_expand(node, annotate)
-        case blocks.BlockCard():
-            return _render_block_card(node, annotate)
-        case blocks.EmbedCard():
-            return _render_embed_card(node, annotate)
-        case blocks.BodiedExtension():
-            return _render_bodied_extension(node, annotate)
-        case blocks.Extension():
-            return _render_extension(node, annotate)
-
-
-# ── TableCell dispatch ───────────────────────────────────────────────
-
-
-def _render_tablecell_children(
-    children: list[blocks.TableCellChild], annotate: bool
-) -> list[str]:
-    return [_render_tablecell_child(c, annotate) for c in children]
-
-
-def _render_tablecell_child(node: blocks.TableCellChild, annotate: bool) -> str:
-    match node:
-        case blocks.Paragraph():
-            return _render_paragraph(node, annotate)
-        case blocks.Heading():
-            return _render_heading(node, annotate)
-        case blocks.BulletList():
-            return _render_bullet_list(node, annotate)
-        case blocks.OrderedList():
-            return _render_ordered_list(node, annotate)
-        case blocks.CodeBlock():
-            return _render_code_block(node, annotate)
-        case blocks.TaskList():
-            return _render_task_list(node, annotate)
-        case blocks.DecisionList():
-            return _render_decision_list(node, annotate)
-        case blocks.ThematicBreak():
-            return _render_thematic_break(node, annotate)
-        case blocks.MediaGroup():
-            return _render_media_group(node, annotate)
-        case blocks.MediaSingle():
-            return _render_media_single(node, annotate)
-        case blocks.Panel():
-            return _render_panel(node, annotate)
-        case blocks.BlockQuote():
-            return _render_blockquote(node, annotate)
-        case blocks.NestedExpand():
-            return _render_nested_expand(node, annotate)
-        case blocks.BlockCard():
-            return _render_block_card(node, annotate)
-        case blocks.EmbedCard():
-            return _render_embed_card(node, annotate)
-        case blocks.Extension():
-            return _render_extension(node, annotate)
-
-
-# ── Inline dispatch ──────────────────────────────────────────────────
-
-
-def _render_block_inlines(nodes: list[inlines.Inline], annotate: bool) -> str:
-    """Render inlines at block start position, preventing HTML block triggers."""
-    result = _render_inlines(nodes, annotate)
-    if annotate and result.startswith("<!--"):
-        return "\u200b" + result
+        case ast.Paragraph():
+            return _render_paragraph(node)
+        case ast.Heading():
+            return _render_heading(node)
+        case ast.CodeBlock():
+            return _render_code_block(node)
+        case ast.Blockquote():
+            return _render_blockquote(node)
+        case ast.BulletList():
+            return _render_bullet_list(node)
+        case ast.OrderedList():
+            return _render_ordered_list(node)
+        case ast.Rule():
+            return _render_rule()
+        case ast.Table():
+            return _render_table(node)
+        case ast.Panel():
+            return _render_panel(node)
+        case ast.Expand():
+            return _render_expand(node)
+        case ast.NestedExpand():
+            return _render_nested_expand(node)
+        case ast.TaskList():
+            return _render_task_list(node)
+        case ast.DecisionList():
+            return _render_decision_list(node)
+        case ast.MediaSingle():
+            return _render_media_single(node)
+        case ast.MediaGroup():
+            return _render_media_group(node)
+        case ast.BlockCard():
+            return _render_block_card(node)
+        case ast.EmbedCard():
+            return _render_embed_card(node)
+        case ast.LayoutSection():
+            return _render_layout_section(node)
+        case ast.Extension():
+            return _render_extension(node)
+        case ast.BodiedExtension():
+            return _render_bodied_extension(node)
+        case ast.SyncBlock():
+            return _render_sync_block(node)
+        case ast.BodiedSyncBlock():
+            return _render_bodied_sync_block(node)
+        case _:
+            raise ValueError(f"Unknown block: {type(node).__name__}")
+
+
+# ── Block renderers (각 함수가 block/cell 컨텍스트 내부 처리) ──────────────────
+
+
+def _render_paragraph(node: ast.Paragraph) -> str:
+    content = _render_inlines(node.content)
+    if _in_cell():
+        marks_dict = _block_marks_params(node.marks)
+        params = _build_params(marks_dict)
+        return _el("p", content, params=params)
+    marks_prefix = _block_marks_data(node.marks)
+    result = content or "&nbsp;"
+    if marks_prefix:
+        return f"{marks_prefix}\n\n{result}"
     return result
 
 
-def _render_inlines(nodes: list[inlines.Inline], annotate: bool) -> str:
-    trimmed = nodes
-    while trimmed and isinstance(trimmed[-1], inlines.HardBreak):
-        trimmed = trimmed[:-1]
+def _render_heading(node: ast.Heading) -> str:
+    content = _render_inlines(node.content)
+    if _in_cell():
+        marks_dict = _block_marks_params(node.marks)
+        params = _build_params(marks_dict)
+        return _el(f"h{node.level}", content, params=params)
+    marks_prefix = _block_marks_data(node.marks)
+    result = f"{'#' * node.level} {content}"
+    if marks_prefix:
+        return f"{marks_prefix}\n\n{result}"
+    return result
+
+
+def _render_code_block(node: ast.CodeBlock) -> str:
+    code = "".join(t.text for t in node.content)
+    if _in_cell():
+        marks_dict = _block_marks_params(node.marks)
+        if node.language:
+            marks_dict["language"] = node.language
+        params = _build_params(marks_dict)
+        return _el("code", code.replace("\n", "<br>"), params=params)
+    marks_prefix = _block_marks_data(node.marks)
+    fence = _code_fence(code)
+    lang = node.language or ""
+    result = f"{fence}{lang}\n{code}\n{fence}"
+    if marks_prefix:
+        return f"{marks_prefix}\n\n{result}"
+    return result
+
+
+def _render_blockquote(node: ast.Blockquote) -> str:
+    if _in_cell():
+        parts = _render_blocks(node.content)
+        return _el("blockquote", "".join(parts))
+    inner = "\n\n".join(_render_blocks(node.content))
+    return "\n".join(f"> {line}" if line else ">" for line in inner.split("\n"))
+
+
+def _li_content(children: Sequence[ast.Node]) -> str:
+    """List item content in cell context. Single Paragraph → bare text."""
+    if len(children) == 1 and isinstance(children[0], ast.Paragraph):
+        return _render_inlines(children[0].content)
+    return "".join(_render_block(c) for c in children)
+
+
+def _render_bullet_list(node: ast.BulletList) -> str:
+    if _in_cell():
+        items = "".join(_el("li", _li_content(item.content)) for item in node.content)
+        return _el("ul", items)
+    return "\n".join(_render_list_item(item, "- ") for item in node.content)
+
+
+def _render_ordered_list(node: ast.OrderedList) -> str:
+    start = node.order or 1
+    if _in_cell():
+        items = "".join(_el("li", _li_content(item.content)) for item in node.content)
+        return _el("ol", items, start=start if start != 1 else None)
     parts: list[str] = []
-    for node in trimmed:
-        rendered = _render_inline(node, annotate)
-        if (
-            not annotate
-            and parts
-            and parts[-1].endswith("`")
-            and rendered.startswith("`")
-        ):
-            parts.append(" ")
-        parts.append(rendered)
-    return "".join(parts)
+    for i, item in enumerate(node.content):
+        parts.append(_render_list_item(item, f"{start + i}. "))
+    return "\n".join(parts)
 
 
-def _render_inline(node: inlines.Inline, annotate: bool) -> str:
-    match node:
-        case inlines.Text():
-            return _render_text(node)
-        case inlines.Strong():
-            return _render_strong(node, annotate)
-        case inlines.Emphasis():
-            return _render_emphasis(node, annotate)
-        case inlines.Strikethrough():
-            return _render_strikethrough(node, annotate)
-        case inlines.Link():
-            return _render_link(node, annotate)
-        case inlines.Image():
-            return _render_image(node, annotate)
-        case inlines.CodeSpan():
-            return _render_code_span(node, annotate)
-        case inlines.HardBreak():
-            return _render_hard_break(node, annotate)
-        case inlines.SoftBreak():
-            return _render_soft_break(node, annotate)
-        case inlines.Mention():
-            return _render_mention(node, annotate)
-        case inlines.Emoji():
-            return _render_emoji(node, annotate)
-        case inlines.Date():
-            return _render_date(node, annotate)
-        case inlines.Status():
-            return _render_status(node, annotate)
-        case inlines.InlineCard():
-            return _render_inline_card(node, annotate)
-        case inlines.MediaInline():
-            return _render_media_inline(node, annotate)
-        case inlines.Underline():
-            return _render_underline(node, annotate)
-        case inlines.TextColor():
-            return _render_text_color(node, annotate)
-        case inlines.BackgroundColor():
-            return _render_background_color(node, annotate)
-        case inlines.SubSup():
-            return _render_subsup(node, annotate)
-        case inlines.Annotation():
-            return _render_annotation_inline(node, annotate)
-        case inlines.Placeholder():
-            return _render_placeholder(node, annotate)
-        case inlines.InlineExtension():
-            return _render_inline_extension(node, annotate)
+def _render_list_item(node: ast.ListItem, marker: str) -> str:
+    indent = " " * len(marker)
+    parts = _render_blocks(node.content)
+    if not parts:
+        return marker.rstrip()
+    body = "\n\n".join(parts)
+    lines = body.split("\n")
+    result = marker + lines[0]
+    if len(lines) > 1:
+        result += "\n" + "\n".join(indent + line if line else "" for line in lines[1:])
+    return result
 
 
-# ── Inline renderers ─────────────────────────────────────────────────
+def _render_rule() -> str:
+    return "<hr>" if _in_cell() else "---"
 
 
-def _wrap_mark(content: str, delimiter: str) -> str:
-    stripped = content.strip(" ")
-    if not stripped:
-        return content
-    leading = " " if content[0] == " " else ""
-    trailing = " " if content[-1] == " " else ""
-    return f"{leading}{delimiter}{stripped}{delimiter}{trailing}"
-
-
-def _annotate_inline(
-    node: inlines.Inline, content: str, annotate: bool, **attrs: Any
-) -> str:
-    if not annotate:
-        return content
-    tag = _to_tag(node)
-    filtered = {k: v for k, v in attrs.items() if v is not None}
-    attr_json = f" {json.dumps(filtered, ensure_ascii=False)}" if filtered else ""
-    return f"<!-- adf:{tag}{attr_json} --> {content} <!-- /adf:{tag} -->"
-
-
-def _render_text(node: inlines.Text) -> str:
-    return node.text.translate(_MD_ESCAPE_TABLE)
-
-
-def _render_strong(node: inlines.Strong, annotate: bool) -> str:
-    return _wrap_mark(_render_inlines(node.children, annotate), "**")
-
-
-def _render_emphasis(node: inlines.Emphasis, annotate: bool) -> str:
-    return _wrap_mark(_render_inlines(node.children, annotate), "*")
-
-
-def _render_strikethrough(node: inlines.Strikethrough, annotate: bool) -> str:
-    return _wrap_mark(_render_inlines(node.children, annotate), "~~")
-
-
-def _render_link(node: inlines.Link, annotate: bool) -> str:
-    text = _render_inlines(node.children, annotate)
-    if node.title:
-        return f'[{text}]({node.url} "{node.title}")'
-    return f"[{text}]({node.url})"
-
-
-def _render_image(node: inlines.Image, annotate: bool) -> str:
-    if node.title:
-        return f'![{node.alt}]({node.url} "{node.title}")'
-    return f"![{node.alt}]({node.url})"
-
-
-def _render_code_span(node: inlines.CodeSpan, annotate: bool) -> str:
-    if "`" not in node.code:
-        return f"`{node.code}`"
-    runs = _BACKTICK_RUN_RE.findall(node.code)
-    n = max(len(r) for r in runs) + 1
-    fence = "`" * n
-    return f"{fence} {node.code} {fence}"
-
-
-def _render_hard_break(node: inlines.HardBreak, annotate: bool) -> str:
-    return CELL_HARD_BREAK if _in_table() else "\\\n"
-
-
-def _render_soft_break(node: inlines.SoftBreak, annotate: bool) -> str:
-    return "\n"
-
-
-def _render_mention(node: inlines.Mention, annotate: bool) -> str:
-    text = node.text or f"@{node.id}"
-    fallback = f"`{text}`"
-    return _annotate_inline(
-        node,
-        fallback,
-        annotate,
-        id=node.id,
-        text=node.text,
-        accessLevel=node.access_level,
-        userType=node.user_type,
+def _render_panel(node: ast.Panel) -> str:
+    params = _build_params(
+        {
+            "panelType": node.panel_type,
+            "panelIcon": node.panel_icon,
+            "panelIconId": node.panel_icon_id,
+            "panelIconText": node.panel_icon_text,
+            "panelColor": node.panel_color,
+        }
     )
-
-
-def _render_emoji(node: inlines.Emoji, annotate: bool) -> str:
-    fallback = node.text or f":{node.short_name}:"
-    return _annotate_inline(
-        node,
-        fallback,
-        annotate,
-        shortName=node.short_name,
-        text=node.text,
-        id=node.id,
-    )
-
-
-def _render_date(node: inlines.Date, annotate: bool) -> str:
-    dt = datetime.fromtimestamp(int(node.timestamp) / 1000, tz=UTC)
-    fallback = f"`{dt.strftime('%Y-%m-%d')}`"
-    return _annotate_inline(node, fallback, annotate, timestamp=node.timestamp)
-
-
-def _render_status(node: inlines.Status, annotate: bool) -> str:
-    fallback = f"`{node.text}`"
-    return _annotate_inline(
-        node,
-        fallback,
-        annotate,
-        text=node.text,
-        color=node.color,
-        style=node.style,
-    )
-
-
-def _render_inline_card(node: inlines.InlineCard, annotate: bool) -> str:
-    if node.url:
-        fallback = f"[{node.url}]({node.url})"
+    if _in_cell():
+        content = "".join(_render_blocks(node.content))
     else:
-        fallback = "`\U0001f517 card link`"
-    if node.url and not node.data:
-        return _annotate_inline(node, fallback, annotate)
-    return _annotate_inline(node, fallback, annotate, url=node.url, data=node.data)
+        content = "\n\n".join(_render_blocks(node.content))
+    return _block_el("aside", content, adf="panel", params=params)
 
 
-def _render_media_inline(node: inlines.MediaInline, annotate: bool) -> str:
-    alt = node.alt or "attachment"
-    fallback = f"`\U0001f4ce {alt}`"
-    media_type = None if node.media_type == "file" else node.media_type
-    return _annotate_inline(
-        node,
-        fallback,
-        annotate,
-        id=node.id,
-        collection=node.collection,
-        mediaType=media_type,
-        alt=node.alt,
-        width=node.width,
-        height=node.height,
+def _render_expand(node: ast.Expand) -> str:
+    marks_prefix = _block_marks_data(node.marks)
+    summary = _el("summary", node.title) if node.title else ""
+    if _in_cell():
+        content = "".join(_render_blocks(node.content))
+        result = _el("details", summary + content, adf="expand")
+    else:
+        content = "\n\n".join(_render_blocks(node.content))
+        inner = f"{summary}\n\n{content}" if summary else content
+        result = _block_el("details", inner, adf="expand")
+    if marks_prefix and not _in_cell():
+        return f"{marks_prefix}\n\n{result}"
+    return result
+
+
+def _render_nested_expand(node: ast.NestedExpand) -> str:
+    summary = _el("summary", node.title) if node.title else ""
+    if _in_cell():
+        content = "".join(_render_blocks(node.content))
+        return _el("details", summary + content, adf="nestedExpand")
+    content = "\n\n".join(_render_blocks(node.content))
+    inner = f"{summary}\n\n{content}" if summary else content
+    return _block_el("details", inner, adf="nestedExpand")
+
+
+def _render_task_list(node: ast.TaskList) -> str:
+    if _in_cell():
+        items: list[str] = []
+        for child in node.content:
+            match child:
+                case ast.TaskItem():
+                    content = _render_inlines(child.content)
+                    params = _build_params({"state": child.state})
+                    items.append(_el("li", content, adf="taskItem", params=params))
+                case ast.BlockTaskItem():
+                    content = "".join(_render_blocks(child.content))
+                    params = _build_params({"state": child.state})
+                    items.append(_el("li", content, adf="taskItem", params=params))
+                case ast.TaskList():
+                    items.append(_render_task_list(child))
+                case _:
+                    pass
+        return _el("ul", "".join(items), adf="taskList")
+    parts: list[str] = []
+    for child in node.content:
+        match child:
+            case ast.TaskItem():
+                parts.append(_render_task_item(child))
+            case ast.BlockTaskItem():
+                parts.append(_render_block_task_item(child))
+            case ast.TaskList():
+                nested = _render_task_list(child)
+                parts.append("\n".join("  " + line for line in nested.split("\n")))
+            case _:
+                pass
+    return "\n".join(parts)
+
+
+def _render_task_item(node: ast.TaskItem) -> str:
+    checkbox = "[x]" if node.state == "DONE" else "[ ]"
+    content = _render_inlines(node.content)
+    return f"- {checkbox} {content}"
+
+
+def _render_block_task_item(node: ast.BlockTaskItem) -> str:
+    checkbox = "[x]" if node.state == "DONE" else "[ ]"
+    marker = f"- {checkbox} "
+    indent = " " * len(marker)
+    parts = _render_blocks(node.content)
+    if not parts:
+        return marker.rstrip()
+    body = "\n\n".join(parts)
+    lines = body.split("\n")
+    result = marker + lines[0]
+    if len(lines) > 1:
+        result += "\n" + "\n".join(indent + line if line else "" for line in lines[1:])
+    return result
+
+
+def _render_decision_list(node: ast.DecisionList) -> str:
+    items = "".join(_render_decision_item(item) for item in node.content)
+    return _block_el("ul", items, adf="decisionList")
+
+
+def _render_decision_item(node: ast.DecisionItem) -> str:
+    content = _render_inlines(node.content)
+    params = _build_params({"state": node.state})
+    return _el("li", content, adf="decisionItem", params=params)
+
+
+def _render_media_single(node: ast.MediaSingle) -> str:
+    params_dict: dict[str, Any] = {
+        "layout": node.layout,
+        "width": node.width,
+        "widthType": node.width_type,
+    }
+    # MediaSingle.marks (LinkMark) → params
+    for m in node.marks:
+        params_dict["linkHref"] = m.href
+        if m.title:
+            params_dict["linkTitle"] = m.title
+    params = _build_params(params_dict)
+    parts: list[str] = []
+    for child in node.content:
+        match child:
+            case ast.Media():
+                parts.append(_render_media(child))
+            case ast.Caption():
+                parts.append(_render_caption(child))
+            case _:
+                pass
+    content = "".join(parts)
+    return _block_el("figure", content, adf="mediaSingle", params=params)
+
+
+def _render_media_group(node: ast.MediaGroup) -> str:
+    content = "".join(_render_media(m) for m in node.content)
+    return _block_el("div", content, adf="mediaGroup")
+
+
+def _render_media(node: ast.Media) -> str:
+    display = _media_fallback(node.id, node.alt)
+    params_dict: dict[str, Any] = {
+        "type": node.type,
+        "id": node.id,
+        "collection": node.collection,
+        "alt": node.alt,
+        "width": node.width,
+        "height": node.height,
+        "url": node.url,
+    }
+    for m in node.marks:
+        if isinstance(m, ast.BorderMark):
+            params_dict["borderSize"] = m.size
+            params_dict["borderColor"] = m.color
+    params = _build_params(params_dict)
+    result = _el("span", display, adf="media", params=params)
+    for m in node.marks:
+        if isinstance(m, ast.LinkMark):
+            result = _el("a", result, href=m.href, title=m.title)
+        elif isinstance(m, ast.AnnotationMark):
+            result = _el(
+                "mark",
+                result,
+                adf="annotation",
+                params=_build_params({"id": m.id}),
+            )
+    return result
+
+
+def _render_caption(node: ast.Caption) -> str:
+    content = _render_inlines(node.content)
+    return _el("figcaption", content, adf="caption")
+
+
+def _render_block_card(node: ast.BlockCard) -> str:
+    params_dict: dict[str, Any] = {
+        "url": node.url,
+        "layout": node.layout,
+        "width": node.width,
+        "data": node.data,
+        "datasource": node.datasource,
+    }
+    params = _build_params(params_dict)
+    display = node.url or ""
+    return _block_el("div", display, adf="blockCard", params=params)
+
+
+def _render_embed_card(node: ast.EmbedCard) -> str:
+    params = _build_params(
+        {
+            "url": node.url,
+            "layout": node.layout,
+            "width": node.width,
+            "originalHeight": node.original_height,
+            "originalWidth": node.original_width,
+        }
+    )
+    return _block_el("div", node.url, adf="embedCard", params=params)
+
+
+def _render_layout_section(node: ast.LayoutSection) -> str:
+    marks_prefix = _block_marks_data(node.marks)
+    columns = "\n\n".join(_render_layout_column(col) for col in node.content)
+    result = _block_el("section", columns, adf="layoutSection")
+    if marks_prefix and not _in_cell():
+        return f"{marks_prefix}\n\n{result}"
+    return result
+
+
+def _render_layout_column(node: ast.LayoutColumn) -> str:
+    params = _build_params({"width": node.width})
+    content = "\n\n".join(_render_blocks(node.content))
+    return _block_el("div", content, adf="layoutColumn", params=params)
+
+
+def _render_extension(node: ast.Extension) -> str:
+    marks_prefix = _block_marks_data(node.marks)
+    params = _build_params(
+        {
+            "extensionKey": node.extension_key,
+            "extensionType": node.extension_type,
+            "parameters": node.parameters,
+            "text": node.text,
+            "layout": node.layout,
+        }
+    )
+    result = _data("extension", params)
+    if marks_prefix and not _in_cell():
+        return f"{marks_prefix}\n\n{result}"
+    return result
+
+
+def _render_bodied_extension(node: ast.BodiedExtension) -> str:
+    content_dicts = [_node_to_dict(c) for c in node.content]
+    params = _build_params(
+        {
+            "extensionKey": node.extension_key,
+            "extensionType": node.extension_type,
+            "parameters": node.parameters,
+            "text": node.text,
+            "layout": node.layout,
+            "content": content_dicts,
+        }
+    )
+    return _data("bodiedExtension", params)
+
+
+def _render_sync_block(node: ast.SyncBlock) -> str:
+    marks_prefix = _block_marks_data(node.marks)
+    params = _build_params({"resourceId": node.resource_id})
+    result = _data("syncBlock", params)
+    if marks_prefix and not _in_cell():
+        return f"{marks_prefix}\n\n{result}"
+    return result
+
+
+def _render_bodied_sync_block(node: ast.BodiedSyncBlock) -> str:
+    content_dicts = [_node_to_dict(c) for c in node.content]
+    params = _build_params(
+        {
+            "resourceId": node.resource_id,
+            "content": content_dicts,
+        }
+    )
+    return _data("bodiedSyncBlock", params)
+
+
+# ── Table ──────────────────────────────────────────────────────────────────────
+
+
+def _render_table(node: ast.Table) -> str:
+    rows = node.content
+    if not rows:
+        return ""
+
+    mode = _header_mode(node)
+
+    with _cell_context():
+        grid = _build_grid(rows)
+
+    if not grid or not grid[0]:
+        return ""
+
+    col_count = len(grid[0])
+    gfm_lines: list[str] = []
+
+    if mode in ("row", "both"):
+        # First row = header content
+        gfm_lines.append("| " + " | ".join(grid[0]) + " |")
+        gfm_lines.append("| " + " | ".join(["---"] * col_count) + " |")
+        for row in grid[1:]:
+            gfm_lines.append("| " + " | ".join(row) + " |")
+    else:
+        # "none" / "column" — filler header row
+        gfm_lines.append("| " + " | ".join([""] * col_count) + " |")
+        gfm_lines.append("| " + " | ".join(["---"] * col_count) + " |")
+        for row in grid:
+            gfm_lines.append("| " + " | ".join(row) + " |")
+
+    table_md = "\n".join(gfm_lines)
+
+    meta = _table_meta(node, mode)
+    if meta:
+        return f"{meta}\n\n{table_md}"
+    return table_md
+
+
+def _build_grid(rows: Sequence[ast.TableRow]) -> list[list[str]]:
+    """Build 2D cell grid, expanding colspan/rowspan into filler cells."""
+    num_rows = len(rows)
+    if num_rows == 0:
+        return []
+
+    max_cols = max(sum(c.colspan or 1 for c in row.content) for row in rows)
+    grid: list[list[str | None]] = [[None] * max_cols for _ in range(num_rows)]
+
+    for r, row in enumerate(rows):
+        c = 0
+        for cell in row.content:
+            while c < max_cols and grid[r][c] is not None:
+                c += 1
+            if c >= max_cols:
+                break
+            cs = cell.colspan or 1
+            rs = cell.rowspan or 1
+            grid[r][c] = _render_cell(cell)
+            for dr in range(rs):
+                for dc in range(cs):
+                    if dr == 0 and dc == 0:
+                        continue
+                    rr, cc = r + dr, c + dc
+                    if rr < num_rows and cc < max_cols:
+                        grid[rr][cc] = ""
+            c += cs
+
+    return [[v if v is not None else "" for v in row] for row in grid]
+
+
+def _table_meta(node: ast.Table, mode: str) -> str | None:
+    """<data adf="table" params='...'> if non-default attrs exist."""
+    d: dict[str, Any] = {}
+    if mode != "row":
+        d["header"] = mode
+    if node.layout is not None:
+        d["layout"] = node.layout
+    if node.display_mode is not None:
+        d["displayMode"] = node.display_mode
+    if node.is_number_column_enabled is not None:
+        d["isNumberColumnEnabled"] = node.is_number_column_enabled
+    if node.width is not None:
+        d["width"] = node.width
+    colwidths = _collect_colwidths(node)
+    if colwidths:
+        d["colwidths"] = colwidths
+    if not d:
+        return None
+    return _data("table", _build_params(d))
+
+
+def _collect_colwidths(node: ast.Table) -> list[int] | None:
+    """Extract column widths from first row's cells."""
+    if not node.content:
+        return None
+    widths: list[int] = []
+    has_any = False
+    for cell in node.content[0].content:
+        if cell.colwidth:
+            widths.extend(cell.colwidth)
+            has_any = True
+        else:
+            widths.extend([0] * (cell.colspan or 1))
+    return widths if has_any else None
+
+
+def _header_mode(node: ast.Table) -> str:
+    """Determine: "row" | "none" | "column" | "both"."""
+    if not node.content:
+        return "row"
+
+    first_row = node.content[0]
+    first_row_header = all(isinstance(c, ast.TableHeader) for c in first_row.content)
+
+    body = node.content[1:] if first_row_header else node.content
+    first_col_header = bool(body) and all(
+        len(row.content) > 0 and isinstance(row.content[0], ast.TableHeader)
+        for row in body
     )
 
-
-def _render_underline(node: inlines.Underline, annotate: bool) -> str:
-    content = _render_inlines(node.children, annotate)
-    return _annotate_inline(node, content, annotate)
-
-
-def _render_text_color(node: inlines.TextColor, annotate: bool) -> str:
-    content = _render_inlines(node.children, annotate)
-    return _annotate_inline(node, content, annotate, color=node.color)
+    if first_row_header and first_col_header:
+        return "both"
+    if first_row_header:
+        return "row"
+    if first_col_header:
+        return "column"
+    return "none"
 
 
-def _render_background_color(node: inlines.BackgroundColor, annotate: bool) -> str:
-    content = _render_inlines(node.children, annotate)
-    return _annotate_inline(node, content, annotate, color=node.color)
+def _cell_meta(cell: ast.TableCell) -> str:
+    """<data adf="cell" params='...'> prefix if colspan/rowspan/background."""
+    d: dict[str, Any] = {}
+    if cell.colspan and cell.colspan > 1:
+        d["colspan"] = cell.colspan
+    if cell.rowspan and cell.rowspan > 1:
+        d["rowspan"] = cell.rowspan
+    if cell.background:
+        d["background"] = cell.background
+    if not d:
+        return ""
+    return _data("cell", _build_params(d))
 
 
-def _render_subsup(node: inlines.SubSup, annotate: bool) -> str:
-    content = _render_inlines(node.children, annotate)
-    return _annotate_inline(node, content, annotate, type=node.type)
+def _render_cell(cell: ast.TableCell) -> str:
+    meta = _cell_meta(cell)
+    content = _render_cell_content(cell.content)
+    return _escape_pipe(meta + content)
 
 
-def _render_annotation_inline(node: inlines.Annotation, annotate: bool) -> str:
-    content = _render_inlines(node.children, annotate)
-    return _annotate_inline(
-        node,
-        content,
-        annotate,
-        id=node.id,
-        annotationType=node.annotation_type,
+def _render_cell_content(children: Sequence[ast.Node]) -> str:
+    """Single Paragraph → bare text, else HTML tags per block."""
+    if not children:
+        return ""
+    if len(children) == 1 and isinstance(children[0], ast.Paragraph):
+        p = children[0]
+        if not _block_marks_params(p.marks):
+            return _render_inlines(p.content)
+    return "".join(_render_block(c) for c in children)
+
+
+# ── Inline rendering ──────────────────────────────────────────────────────────
+
+
+def _render_inlines(children: Sequence[ast.Inline]) -> str:
+    return "".join(_render_inline(c) for c in children)
+
+
+def _render_inline(node: ast.Inline) -> str:
+    match node:
+        case ast.Text():
+            return _render_text(node)
+        case ast.HardBreak():
+            return _render_hard_break()
+        case ast.Mention():
+            return _render_mention(node)
+        case ast.Emoji():
+            return _render_emoji(node)
+        case ast.Date():
+            return _render_date(node)
+        case ast.Status():
+            return _render_status(node)
+        case ast.InlineCard():
+            return _render_inline_card(node)
+        case ast.Placeholder():
+            return _render_placeholder(node)
+        case ast.MediaInline():
+            return _render_media_inline(node)
+        case ast.InlineExtension():
+            return _render_inline_extension(node)
+        case _:
+            raise ValueError(f"Unknown inline: {type(node).__name__}")
+
+
+# ── Inline renderers ──────────────────────────────────────────────────────────
+
+
+def _render_text(node: ast.Text) -> str:
+    return _apply_marks(node.text, node.marks)
+
+
+def _render_hard_break() -> str:
+    return "<br>" if _in_cell() else "\\\n"
+
+
+def _render_mention(node: ast.Mention) -> str:
+    display = node.text or f"@{node.id}"
+    params = _build_params(
+        {
+            "id": node.id,
+            "accessLevel": node.access_level,
+            "userType": node.user_type,
+        }
     )
+    return _el("span", display, adf="mention", params=params)
 
 
-def _render_placeholder(node: inlines.Placeholder, annotate: bool) -> str:
-    return ""
+def _render_emoji(node: ast.Emoji) -> str:
+    display = node.text or node.short_name
+    params = _build_params(
+        {
+            "shortName": node.short_name,
+            "id": node.id,
+        }
+    )
+    return _el("span", display, adf="emoji", params=params)
 
 
-def _render_inline_extension(node: inlines.InlineExtension, annotate: bool) -> str:
-    key = node.raw.get("attrs", {}).get("extensionKey", "")
-    label = key or "Confluence macro"
-    content = f"`\u2699 {label}`"
-    if annotate:
-        return _annotate_inline(node, content, annotate, raw=node.raw)
-    return content
+def _render_date(node: ast.Date) -> str:
+    ts = int(node.timestamp) / 1000
+    dt = datetime.fromtimestamp(ts, tz=UTC)
+    display = dt.strftime("%Y-%m-%d")
+    return _el("time", display, adf="date", datetime=node.timestamp)
+
+
+def _render_status(node: ast.Status) -> str:
+    params = _build_params(
+        {
+            "color": node.color,
+            "style": node.style,
+        }
+    )
+    return _el("span", node.text, adf="status", params=params)
+
+
+def _render_inline_card(node: ast.InlineCard) -> str:
+    params = _build_params({"data": node.data}) if node.data else None
+    display = node.url or ""
+    return _el("a", display, adf="inlineCard", href=node.url, params=params)
+
+
+def _render_placeholder(node: ast.Placeholder) -> str:
+    return _el("span", node.text, adf="placeholder")
+
+
+def _render_media_inline(node: ast.MediaInline) -> str:
+    display = _media_fallback(node.id, node.alt)
+    params_dict: dict[str, Any] = {
+        "id": node.id,
+        "collection": node.collection,
+        "type": node.type,
+        "alt": node.alt,
+        "width": node.width,
+        "height": node.height,
+    }
+    if node.data:
+        params_dict["data"] = node.data
+    for m in node.marks:
+        if isinstance(m, ast.BorderMark):
+            params_dict["borderSize"] = m.size
+            params_dict["borderColor"] = m.color
+    params = _build_params(params_dict)
+    result = _el("span", display, adf="mediaInline", params=params)
+    for m in node.marks:
+        if isinstance(m, ast.LinkMark):
+            result = _el("a", result, href=m.href, title=m.title)
+        elif isinstance(m, ast.AnnotationMark):
+            result = _el(
+                "mark",
+                result,
+                adf="annotation",
+                params=_build_params({"id": m.id}),
+            )
+    return result
+
+
+def _render_inline_extension(node: ast.InlineExtension) -> str:
+    params = _build_params(
+        {
+            "extensionKey": node.extension_key,
+            "extensionType": node.extension_type,
+            "parameters": node.parameters,
+            "text": node.text,
+        }
+    )
+    return _el("span", "", adf="inlineExtension", params=params)
+
+
+# ── Mark rendering ─────────────────────────────────────────────────────────────
+
+
+def _wrap_code(text: str) -> str:
+    """Wrap text in code span backticks, handling embedded backticks."""
+    if "`" not in text:
+        return f"`{text}`"
+    runs = _BACKTICK_RE.findall(text)
+    max_run = max(len(r) for r in runs)
+    fence = "`" * (max_run + 1)
+    if text.startswith("`") or text.endswith("`"):
+        return f"{fence} {text} {fence}"
+    return f"{fence}{text}{fence}"
+
+
+def _wrap_flanking(text: str, delimiter: str) -> str:
+    """Move leading/trailing spaces outside delimiter for CommonMark flanking."""
+    leading = len(text) - len(text.lstrip(" "))
+    trailing = len(text) - len(text.rstrip(" "))
+    inner = text.strip(" ")
+    if not inner:
+        return text
+    return f"{' ' * leading}{delimiter}{inner}{delimiter}{' ' * trailing}"
+
+
+def _wrap_html_mark(text: str, mark: ast.Mark) -> str:
+    match mark:
+        case ast.UnderlineMark():
+            return _el("u", text, adf="underline")
+        case ast.TextColorMark(color=color):
+            return _el(
+                "span", text, adf="textColor", params=_build_params({"color": color})
+            )
+        case ast.BackgroundColorMark(color=color):
+            return _el(
+                "span", text, adf="bgColor", params=_build_params({"color": color})
+            )
+        case ast.SubSupMark(type=type_):
+            tag = "sub" if type_ == "sub" else "sup"
+            return _el(tag, text, adf="subSup")
+        case ast.AnnotationMark(id=id_):
+            return _el(
+                "mark",
+                text,
+                adf="annotation",
+                params=_build_params({"id": id_}),
+            )
+        case _:
+            return text
+
+
+def _apply_marks(text: str, marks: Sequence[ast.Mark]) -> str:
+    if not marks:
+        return _escape_md(text)
+
+    code: ast.CodeMark | None = None
+    native: list[ast.Mark] = []
+    link: ast.LinkMark | None = None
+    html: list[ast.Mark] = []
+
+    for m in marks:
+        match m:
+            case ast.CodeMark():
+                code = m
+            case ast.StrongMark() | ast.EmMark() | ast.StrikeMark():
+                native.append(m)
+            case ast.LinkMark():
+                link = m
+            case _:
+                html.append(m)
+
+    # innermost: code (no MD escape) or escaped text
+    result = _wrap_code(text) if code else _escape_md(text)
+
+    # native MD marks
+    for m in native:
+        match m:
+            case ast.StrongMark():
+                result = _wrap_flanking(result, "**")
+            case ast.EmMark():
+                result = _wrap_flanking(result, "*")
+            case ast.StrikeMark():
+                result = _wrap_flanking(result, "~~")
+            case _:
+                pass
+
+    # link
+    if link:
+        title = f' "{link.title}"' if link.title else ""
+        result = f"[{result}]({link.href}{title})"
+
+    # HTML marks (outermost)
+    for m in html:
+        result = _wrap_html_mark(result, m)
+
+    return result
+
+
+# ── AST → dict ─────────────────────────────────────────────────────────────────
+
+
+def _node_to_dict(node: ast.Node) -> dict[str, Any]:
+    """AST node → ADF-compatible dict (BodiedExtension/BodiedSyncBlock content)."""
+
+    d: dict[str, Any] = {"type": _node_type_name(node)}
+    for f in fields(node):
+        val = getattr(node, f.name)
+        if val is None:
+            continue
+        key = _snake_to_camel(f.name)
+        if isinstance(val, ast.Node):
+            d[key] = _node_to_dict(val)
+        elif isinstance(val, Sequence) and not isinstance(val, str):
+            items: list[Any] = []
+            for v in cast(Sequence[Any], val):
+                if isinstance(v, ast.Node):
+                    items.append(_node_to_dict(v))
+                elif isinstance(v, ast.Mark):
+                    items.append(_mark_to_dict(v))
+                else:
+                    items.append(v)
+            d[key] = items
+        elif isinstance(val, ast.Mark):
+            d[key] = _mark_to_dict(val)
+        else:
+            d[key] = val
+    return d
+
+
+def _mark_to_dict(mark: ast.Mark) -> dict[str, Any]:
+    d: dict[str, Any] = {"type": _node_type_name(mark)}
+    attrs: dict[str, Any] = {}
+    for f in fields(mark):
+        val = getattr(mark, f.name)
+        if val is not None:
+            attrs[_snake_to_camel(f.name)] = val
+    if attrs:
+        d["attrs"] = attrs
+    return d
+
+
+def _node_type_name(obj: ast.Node | ast.Mark) -> str:
+    name = type(obj).__name__
+    if name.endswith("Mark"):
+        name = name[:-4]
+    return name[0].lower() + name[1:]
+
+
+def _snake_to_camel(s: str) -> str:
+    parts = s.split("_")
+    return parts[0] + "".join(p.capitalize() for p in parts[1:])

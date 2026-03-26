@@ -16,11 +16,14 @@ classifiers = [
     "License :: OSI Approved :: MIT License",
     "Typing :: Typed",
 ]
-dependencies = ["mistune>=3.2"]
+dependencies = [
+    "mistune>=3.2",
+]
 
 [project.optional-dependencies]
 dev = [
     "black>=26.1.0",
+    "jsonschema>=4.26.0",
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
 ]

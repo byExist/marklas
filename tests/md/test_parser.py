@@ -1,919 +1,836 @@
-"""MD parser tests: Markdown → AST"""
+"""Markdown parser tests."""
 
 from __future__ import annotations
 
+from marklas.ast import DocContent
+from marklas.ast import (
+    AlignmentMark,
+    AnnotationMark,
+    BackgroundColorMark,
+    BlockCard,
+    Blockquote,
+    BreakoutMark,
+    BulletList,
+    Caption,
+    CodeBlock,
+    CodeMark,
+    DataConsumerMark,
+    Date,
+    DecisionItem,
+    DecisionList,
+    Doc,
+    EmbedCard,
+    EmMark,
+    Emoji,
+    Expand,
+    Extension,
+    HardBreak,
+    Heading,
+    IndentationMark,
+    InlineCard,
+    InlineExtension,
+    LayoutColumn,
+    LayoutSection,
+    LinkMark,
+    ListItem,
+    Media,
+    MediaGroup,
+    MediaInline,
+    MediaSingle,
+    Mention,
+    OrderedList,
+    Panel,
+    Paragraph,
+    Placeholder,
+    Rule,
+    Status,
+    StrikeMark,
+    StrongMark,
+    SubSupMark,
+    SyncBlock,
+    Table,
+    TableCell,
+    TableHeader,
+    TableRow,
+    TaskItem,
+    TaskList,
+    Text,
+    TextColorMark,
+    UnderlineMark,
+)
 from marklas.md.parser import parse
 from marklas.md.renderer import render
-from marklas.nodes import blocks, inlines
 
 
-# ── Intersection block parsing ───────────────────────────────────────────────
+def _roundtrip(doc: Doc) -> Doc:
+    return parse(render(doc))
 
 
-def test_paragraph():
-    doc = parse("hello world\n")
-    assert len(doc.children) == 1
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert len(p.children) == 1
-    assert isinstance(p.children[0], inlines.Text)
-    assert p.children[0].text == "hello world"
+def _rt_block(node: DocContent) -> DocContent:
+    """Roundtrip a single block node and return the restored node."""
+    doc = Doc(content=[node])
+    return _roundtrip(doc).content[0]
 
 
-def test_heading_levels():
-    for level in (1, 2, 3, 4, 5, 6):
-        doc = parse(f"{'#' * level} title\n")
-        assert len(doc.children) == 1
-        h = doc.children[0]
-        assert isinstance(h, blocks.Heading)
-        assert h.level == level
-        assert isinstance(h.children[0], inlines.Text)
-        assert h.children[0].text == "title"
+# ── Paragraph ──────────────────────────────────────────────────────────────────
 
 
-def test_code_block_with_language():
-    doc = parse("```python\nprint(1)\n```\n")
-    assert len(doc.children) == 1
-    cb = doc.children[0]
-    assert isinstance(cb, blocks.CodeBlock)
-    assert cb.code == "print(1)"
-    assert cb.language == "python"
+class TestParagraph:
+    def test_simple(self):
+        node = _rt_block(Paragraph(content=[Text(text="hello")]))
+        assert isinstance(node, Paragraph)
+        first = node.content[0]
+        assert isinstance(first, Text)
+        assert first.text == "hello"
 
+    def test_empty(self):
+        node = _rt_block(Paragraph(content=[]))
+        assert isinstance(node, Paragraph)
+        assert node.content == []
 
-def test_code_block_without_language():
-    doc = parse("```\nhello\n```\n")
-    cb = doc.children[0]
-    assert isinstance(cb, blocks.CodeBlock)
-    assert cb.code == "hello"
-    assert cb.language is None
-
-
-def test_blockquote():
-    doc = parse("> quoted\n")
-    assert len(doc.children) == 1
-    bq = doc.children[0]
-    assert isinstance(bq, blocks.BlockQuote)
-    assert len(bq.children) == 1
-    assert isinstance(bq.children[0], blocks.Paragraph)
-
-
-def test_bullet_list():
-    doc = parse("- a\n- b\n")
-    bl = doc.children[0]
-    assert isinstance(bl, blocks.BulletList)
-    assert len(bl.items) == 2
-    assert isinstance(bl.items[0], blocks.ListItem)
-
-
-def test_ordered_list():
-    doc = parse("3. a\n4. b\n")
-    ol = doc.children[0]
-    assert isinstance(ol, blocks.OrderedList)
-    assert ol.start == 3
-    assert len(ol.items) == 2
-
-
-def test_bullet_list_with_checkbox():
-    doc = parse("- [x] done\n- [ ] todo\n")
-    bl = doc.children[0]
-    assert isinstance(bl, blocks.BulletList)
-    assert bl.items[0].checked is True
-    assert bl.items[1].checked is False
-
-
-def test_thematic_break():
-    doc = parse("---\n")
-    assert isinstance(doc.children[0], blocks.ThematicBreak)
-
-
-def test_multiple_blocks():
-    doc = parse("a\n\nb\n")
-    paragraphs = [
-        c for c in doc.children if isinstance(c, blocks.Paragraph) and c.children
-    ]
-    assert len(paragraphs) == 2
-
-
-def test_empty_document():
-    doc = parse("")
-    non_empty = [
-        c for c in doc.children if not isinstance(c, blocks.Paragraph) or c.children
-    ]
-    assert len(non_empty) == 0
-
-
-# ── Table ────────────────────────────────────────────────────────────
-
-
-def test_table_basic():
-    md = "| A | B |\n| --- | --- |\n| 1 | 2 |\n"
-    doc = parse(md)
-    t = doc.children[0]
-    assert isinstance(t, blocks.Table)
-    assert len(t.head) == 2
-    assert len(t.body) == 1
-    assert len(t.body[0]) == 2
-
-
-def test_table_head_cells_are_table_header():
-    md = "| A | B |\n| --- | --- |\n| 1 | 2 |\n"
-    doc = parse(md)
-    t = doc.children[0]
-    assert isinstance(t, blocks.Table)
-    for cell in t.head:
-        assert isinstance(cell, blocks.TableHeader)
-    for cell in t.body[0]:
-        assert not isinstance(cell, blocks.TableHeader)
-
-
-def test_table_cell_has_block_children():
-    md = "| A |\n| --- |\n"
-    doc = parse(md)
-    t = doc.children[0]
-    assert isinstance(t, blocks.Table)
-    cell = t.head[0]
-    assert isinstance(cell.children[0], blocks.Paragraph)
-
-
-def test_table_alignments():
-    md = "| L | C | R |\n| :--- | :---: | ---: |\n"
-    doc = parse(md)
-    t = doc.children[0]
-    assert isinstance(t, blocks.Table)
-    assert t.alignments == ["left", "center", "right"]
-
-
-# ── Intersection inline parsing ─────────────────────────────────────────────
-
-
-def test_strong():
-    doc = parse("**bold**\n")
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert isinstance(p.children[0], inlines.Strong)
-
-
-def test_emphasis():
-    doc = parse("*italic*\n")
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert isinstance(p.children[0], inlines.Emphasis)
-
-
-def test_strikethrough():
-    doc = parse("~~deleted~~\n")
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert isinstance(p.children[0], inlines.Strikethrough)
-
-
-def test_link():
-    doc = parse("[click](https://example.com)\n")
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    link = p.children[0]
-    assert isinstance(link, inlines.Link)
-    assert link.url == "https://example.com"
-
-
-def test_link_with_title():
-    doc = parse('[click](https://example.com "hint")\n')
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    link = p.children[0]
-    assert isinstance(link, inlines.Link)
-    assert link.title == "hint"
-
-
-def test_image():
-    doc = parse("![photo](https://img.png)\n")
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    img = p.children[0]
-    assert isinstance(img, inlines.Image)
-    assert img.url == "https://img.png"
-    assert img.alt == "photo"
-
-
-def test_code_span():
-    doc = parse("`x=1`\n")
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    cs = p.children[0]
-    assert isinstance(cs, inlines.CodeSpan)
-    assert cs.code == "x=1"
-
-
-def test_hard_break():
-    doc = parse("a\\\nb\n")
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert isinstance(p.children[1], inlines.HardBreak)
-
-
-def test_nested_marks():
-    doc = parse("***both***\n")
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    # Depends on mistune parse order: Strong > Emphasis or vice versa
-    outer = p.children[0]
-    assert isinstance(outer, (inlines.Strong, inlines.Emphasis))
-
-
-# ── Block annotation restoration ──────────────────────────────────────────────────
-
-
-def test_panel_annotation():
-    md = '<!-- adf:panel {"panelType": "info"} -->\nnote\n<!-- /adf:panel -->\n'
-    doc = parse(md)
-    panel = doc.children[0]
-    assert isinstance(panel, blocks.Panel)
-    assert panel.panel_type == "info"
-    assert len(panel.children) == 1
-    assert isinstance(panel.children[0], blocks.Paragraph)
-
-
-def test_panel_all_attrs():
-    md = (
-        '<!-- adf:panel {"panelType": "custom", "panelIcon": ":star:", '
-        '"panelIconId": "icon-1", "panelIconText": "Star", "panelColor": "#ff0"} -->\n'
-        "x\n"
-        "<!-- /adf:panel -->\n"
-    )
-    doc = parse(md)
-    panel = doc.children[0]
-    assert isinstance(panel, blocks.Panel)
-    assert panel.panel_icon == ":star:"
-    assert panel.panel_icon_id == "icon-1"
-    assert panel.panel_icon_text == "Star"
-    assert panel.panel_color == "#ff0"
-
-
-def test_expand_annotation():
-    md = '<!-- adf:expand {"title": "Details"} -->\ncontent\n<!-- /adf:expand -->\n'
-    doc = parse(md)
-    expand = doc.children[0]
-    assert isinstance(expand, blocks.Expand)
-    assert expand.title == "Details"
-    assert len(expand.children) == 1
-
-
-def test_nested_expand_annotation():
-    """nestedExpand is not a DocChild — it must appear inside an expand."""
-    md = (
-        '<!-- adf:expand {"title": "Outer"} -->\n'
-        '<!-- adf:nestedExpand {"title": "Inner"} -->\n'
-        "inner content\n"
-        "<!-- /adf:nestedExpand -->\n"
-        "<!-- /adf:expand -->\n"
-    )
-    doc = parse(md)
-    expand = doc.children[0]
-    assert isinstance(expand, blocks.Expand)
-    ne = expand.children[0]
-    assert isinstance(ne, blocks.NestedExpand)
-    assert ne.title == "Inner"
-
-
-def test_expand_with_table():
-    """Table inside Expand should be parsed correctly."""
-    md = (
-        '<!-- adf:expand {"title": "Details"} -->\n'
-        "| A | B |\n"
-        "| --- | --- |\n"
-        "| 1 | 2 |\n"
-        "<!-- /adf:expand -->\n"
-    )
-    doc = parse(md)
-    expand = doc.children[0]
-    assert isinstance(expand, blocks.Expand)
-    assert isinstance(expand.children[0], blocks.Table)
-
-
-def test_panel_with_heading():
-    """Heading inside Panel should be parsed correctly."""
-    md = (
-        '<!-- adf:panel {"panelType": "info"} -->\n'
-        "## Title\n"
-        "content\n"
-        "<!-- /adf:panel -->\n"
-    )
-    doc = parse(md)
-    panel = doc.children[0]
-    assert isinstance(panel, blocks.Panel)
-    assert isinstance(panel.children[0], blocks.Heading)
-
-
-def test_expand_blockquote_legacy():
-    """Legacy format (blockquote wrapping) should be parsed for backward compatibility."""
-    md = '<!-- adf:expand {"title": "Old"} -->\n> legacy\n<!-- /adf:expand -->\n'
-    doc = parse(md)
-    expand = doc.children[0]
-    assert isinstance(expand, blocks.Expand)
-    assert isinstance(expand.children[0], blocks.Paragraph)
-
-
-def test_inline_annotation_inside_strong():
-    """Inline annotations inside Strong should be paired correctly."""
-    md = "**bold <!-- adf:underline -->text<!-- /adf:underline --> bold**\n"
-    doc = parse(md)
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    strong = p.children[0]
-    assert isinstance(strong, inlines.Strong)
-    assert isinstance(strong.children[0], inlines.Text)
-    underline = strong.children[1]
-    assert isinstance(underline, inlines.Underline)
-    first = underline.children[0]
-    assert isinstance(first, inlines.Text)
-    assert first.text == "text"
-    assert isinstance(strong.children[2], inlines.Text)
-
-
-def test_inline_annotation_inside_emphasis():
-    """Inline annotations inside Emphasis should be paired correctly."""
-    md = "*em <!-- adf:underline -->text<!-- /adf:underline --> em*\n"
-    doc = parse(md)
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    em = p.children[0]
-    assert isinstance(em, inlines.Emphasis)
-    assert isinstance(em.children[1], inlines.Underline)
-
-
-def test_task_list_annotation():
-    md = "<!-- adf:taskList -->\n- [x] done task\n- [ ] todo task\n<!-- /adf:taskList -->\n"
-    doc = parse(md)
-    tl = doc.children[0]
-    assert isinstance(tl, blocks.TaskList)
-    assert len(tl.items) == 2
-    assert tl.items[0].state == "DONE"
-    assert tl.items[1].state == "TODO"
-    # Verify Text in children
-    assert isinstance(tl.items[0].children[0], inlines.Text)
-    assert tl.items[0].children[0].text == "done task"
-
-
-def test_decision_list_annotation():
-    md = "<!-- adf:decisionList -->\n- [x] decided\n- [ ] pending\n<!-- /adf:decisionList -->\n"
-    doc = parse(md)
-    dl = doc.children[0]
-    assert isinstance(dl, blocks.DecisionList)
-    assert len(dl.items) == 2
-    assert dl.items[0].state == "DECIDED"
-    assert dl.items[1].state == ""
-
-
-def test_layout_section_annotation():
-    md = (
-        "<!-- adf:layoutSection -->\n"
-        '<!-- adf:layoutColumn {"width": 50.0} -->\n'
-        "col1\n\n"
-        "<!-- /adf:layoutColumn -->\n"
-        '<!-- adf:layoutColumn {"width": 50.0} -->\n'
-        "col2\n\n"
-        "<!-- /adf:layoutColumn -->\n"
-        "<!-- /adf:layoutSection -->\n"
-    )
-    doc = parse(md)
-    ls = doc.children[0]
-    assert isinstance(ls, blocks.LayoutSection)
-    assert len(ls.columns) == 2
-    assert ls.columns[0].width == 50.0
-    assert ls.columns[1].width == 50.0
-
-
-def test_media_single_annotation():
-    md = (
-        '<!-- adf:mediaSingle {"layout": "center", '
-        '"media": {"mediaType": "external", "url": "https://img.png"}} -->\n'
-        "![](https://img.png)\n"
-        "<!-- /adf:mediaSingle -->\n"
-    )
-    doc = parse(md)
-    ms = doc.children[0]
-    assert isinstance(ms, blocks.MediaSingle)
-    assert ms.layout == "center"
-    assert ms.media.media_type == "external"
-    assert ms.media.url == "https://img.png"
-
-
-def test_media_group_annotation():
-    md = (
-        '<!-- adf:mediaGroup {"mediaList": ['
-        '{"mediaType": "external", "url": "https://a.png"}, '
-        '{"mediaType": "file", "id": "f-1", "collection": "c"}'
-        "]} -->\n"
-        "![](https://a.png)\n"
-        "`\U0001f4ce attachment`\n"
-        "<!-- /adf:mediaGroup -->\n"
-    )
-    doc = parse(md)
-    mg = doc.children[0]
-    assert isinstance(mg, blocks.MediaGroup)
-    assert len(mg.media_list) == 2
-    assert mg.media_list[0].url == "https://a.png"
-    assert mg.media_list[1].id == "f-1"
-
-
-def test_block_card_annotation():
-    md = (
-        '<!-- adf:blockCard {"url": "https://example.com"} -->\n'
-        "[https://example.com](https://example.com)\n"
-        "<!-- /adf:blockCard -->\n"
-    )
-    doc = parse(md)
-    bc = doc.children[0]
-    assert isinstance(bc, blocks.BlockCard)
-    assert bc.url == "https://example.com"
-
-
-def test_embed_card_annotation():
-    md = (
-        '<!-- adf:embedCard {"url": "https://embed.com", '
-        '"layout": "wide", "width": 80.0} -->\n'
-        "[https://embed.com](https://embed.com)\n"
-        "<!-- /adf:embedCard -->\n"
-    )
-    doc = parse(md)
-    ec = doc.children[0]
-    assert isinstance(ec, blocks.EmbedCard)
-    assert ec.url == "https://embed.com"
-    assert ec.layout == "wide"
-    assert ec.width == 80.0
-
-
-def test_paragraph_alignment_annotation():
-    md = '<!-- adf:paragraph {"align": "center"} -->\ncentered\n<!-- /adf:paragraph -->\n'
-    doc = parse(md)
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert p.alignment == "center"
-
-
-def test_heading_indentation_annotation():
-    md = '<!-- adf:heading {"indentation": 1} -->\n## indented\n<!-- /adf:heading -->\n'
-    doc = parse(md)
-    h = doc.children[0]
-    assert isinstance(h, blocks.Heading)
-    assert h.indentation == 1
-    assert h.level == 2
-
-
-def test_table_annotation():
-    md = (
-        '<!-- adf:table {"layout": "default", '
-        '"cells": [[{"colspan": 2}], [null]]} -->\n'
-        "| H |\n| --- |\n| X |\n"
-        "<!-- /adf:table -->\n"
-    )
-    doc = parse(md)
-    t = doc.children[0]
-    assert isinstance(t, blocks.Table)
-    assert t.layout == "default"
-    assert t.head[0].colspan == 2
-
-
-# ── Inline annotation restoration ────────────────────────────────────────────────
-
-
-def test_mention_annotation():
-    md = '<!-- adf:mention {"id": "user-1", "text": "@Alice", "userType": "DEFAULT"} -->`@Alice`<!-- /adf:mention -->\n'
-    doc = parse(md)
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    m = p.children[0]
-    assert isinstance(m, inlines.Mention)
-    assert m.id == "user-1"
-    assert m.text == "@Alice"
-    assert m.user_type == "DEFAULT"
-
-
-def test_emoji_annotation():
-    md = '<!-- adf:emoji {"shortName": "smile", "text": "\U0001f604"} -->\U0001f604<!-- /adf:emoji -->\n'
-    doc = parse(md)
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    e = p.children[0]
-    assert isinstance(e, inlines.Emoji)
-    assert e.short_name == "smile"
-    assert e.text == "\U0001f604"
-
-
-def test_date_annotation():
-    md = '<!-- adf:date {"timestamp": "1609459200000"} -->`2021-01-01`<!-- /adf:date -->\n'
-    doc = parse(md)
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    d = p.children[0]
-    assert isinstance(d, inlines.Date)
-    assert d.timestamp == "1609459200000"
-
-
-def test_status_annotation():
-    md = (
-        '<!-- adf:status {"text": "In Progress", "color": "blue", '
-        '"style": "bold", "localId": "s1"} -->'
-        "`In Progress`"
-        "<!-- /adf:status -->\n"
-    )
-    doc = parse(md)
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    s = p.children[0]
-    assert isinstance(s, inlines.Status)
-    assert s.text == "In Progress"
-    assert s.color == "blue"
-
-
-def test_inline_card_annotation():
-    md = (
-        '<!-- adf:inlineCard {"url": "https://example.com"} -->'
-        "[https://example.com](https://example.com)"
-        "<!-- /adf:inlineCard -->\n"
-    )
-    doc = parse(md)
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    ic = p.children[0]
-    assert isinstance(ic, inlines.InlineCard)
-    assert ic.url == "https://example.com"
-
-
-def test_media_inline_annotation():
-    md = (
-        '<!-- adf:mediaInline {"id": "m-1", "collection": "c", "mediaType": "file"} -->'
-        "`\U0001f4ce attachment`"
-        "<!-- /adf:mediaInline -->\n"
-    )
-    doc = parse(md)
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    mi = p.children[0]
-    assert isinstance(mi, inlines.MediaInline)
-    assert mi.id == "m-1"
-    assert mi.collection == "c"
-
-
-def test_underline_annotation():
-    md = "<!-- adf:underline -->underlined<!-- /adf:underline -->\n"
-    doc = parse(md)
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    u = p.children[0]
-    assert isinstance(u, inlines.Underline)
-    assert len(u.children) == 1
-    assert isinstance(u.children[0], inlines.Text)
-    assert u.children[0].text == "underlined"
-
-
-def test_text_color_annotation():
-    md = '<!-- adf:textColor {"color": "#ff0000"} -->red<!-- /adf:textColor -->\n'
-    doc = parse(md)
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    tc = p.children[0]
-    assert isinstance(tc, inlines.TextColor)
-    assert tc.color == "#ff0000"
-
-
-def test_background_color_annotation():
-    md = '<!-- adf:backgroundColor {"color": "#00ff00"} -->green<!-- /adf:backgroundColor -->\n'
-    doc = parse(md)
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    bc = p.children[0]
-    assert isinstance(bc, inlines.BackgroundColor)
-    assert bc.color == "#00ff00"
-
-
-def test_subsup_annotation():
-    md = '<!-- adf:subSup {"type": "sub"} -->2<!-- /adf:subSup -->\n'
-    doc = parse(md)
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    ss = p.children[0]
-    assert isinstance(ss, inlines.SubSup)
-    assert ss.type == "sub"
-
-
-def test_annotation_inline():
-    md = (
-        '<!-- adf:annotation {"id": "ann-1", "annotationType": "inlineComment"} -->'
-        "noted"
-        "<!-- /adf:annotation -->\n"
-    )
-    doc = parse(md)
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    a = p.children[0]
-    assert isinstance(a, inlines.Annotation)
-    assert a.id == "ann-1"
-
-
-# ── Nested annotations ───────────────────────────────────────────────────────
-
-
-def test_panel_with_task_list():
-    md = (
-        '<!-- adf:panel {"panelType": "info"} -->\n'
-        "<!-- adf:taskList -->\n"
-        "- [x] task 1\n"
-        "- [ ] task 2\n"
-        "<!-- /adf:taskList -->\n"
-        "<!-- /adf:panel -->\n"
-    )
-    doc = parse(md)
-    panel = doc.children[0]
-    assert isinstance(panel, blocks.Panel)
-    assert len(panel.children) == 1
-    tl = panel.children[0]
-    assert isinstance(tl, blocks.TaskList)
-    assert len(tl.items) == 2
-
-
-def test_nested_inline_annotations():
-    md = (
-        '<!-- adf:textColor {"color": "#f00"} -->'
-        "<!-- adf:underline -->text<!-- /adf:underline -->"
-        "<!-- /adf:textColor -->\n"
-    )
-    doc = parse(md)
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    tc = p.children[0]
-    assert isinstance(tc, inlines.TextColor)
-    assert tc.color == "#f00"
-    u = tc.children[0]
-    assert isinstance(u, inlines.Underline)
-
-
-# ── Graceful degradation ────────────────────────────────────────────
-
-
-def test_missing_closing_annotation():
-    md = '<!-- adf:panel {"panelType": "info"} -->\n> content\n'
-    doc = parse(md)
-    # Without closing annotation, inner elements are preserved as-is
-    assert len(doc.children) >= 1
-    # Remains as BlockQuote or other block, not Panel
-    assert not isinstance(doc.children[0], blocks.Panel)
-
-
-def test_orphan_closing_annotation():
-    md = "hello\n<!-- /adf:panel -->\n"
-    doc = parse(md)
-    # Orphan closing annotation is ignored, original content preserved
-    assert len(doc.children) >= 1
-    assert isinstance(doc.children[0], blocks.Paragraph)
-
-
-def test_invalid_json_annotation():
-    md = "<!-- adf:panel {invalid json} -->\n> content\n<!-- /adf:panel -->\n"
-    doc = parse(md)
-    # JSON parse failure → marker ignored, original blockquote preserved
-    assert not isinstance(doc.children[0], blocks.Panel)
-
-
-# ── Roundtrip (render → parse) ──────────────────────────────────────
-
-
-def test_roundtrip_paragraph():
-    doc = blocks.Document(
-        children=[blocks.Paragraph(children=[inlines.Text(text="hello")])]
-    )
-    md = render(doc)
-    doc2 = parse(md)
-    assert len(doc2.children) == 1
-    p = doc2.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    t = p.children[0]
-    assert isinstance(t, inlines.Text)
-    assert t.text == "hello"
-
-
-def test_roundtrip_heading():
-    doc = blocks.Document(
-        children=[blocks.Heading(level=2, children=[inlines.Text(text="title")])]
-    )
-    md = render(doc)
-    doc2 = parse(md)
-    h = doc2.children[0]
-    assert isinstance(h, blocks.Heading)
-    assert h.level == 2
-
-
-def test_roundtrip_panel():
-    doc = blocks.Document(
-        children=[
-            blocks.Panel(
-                panel_type="info",
-                children=[blocks.Paragraph(children=[inlines.Text(text="note")])],
+    def test_with_alignment_mark(self):
+        node = _rt_block(
+            Paragraph(
+                content=[Text(text="centered")],
+                marks=[AlignmentMark(align="center")],
             )
-        ]
-    )
-    md = render(doc)
-    doc2 = parse(md)
-    panel = doc2.children[0]
-    assert isinstance(panel, blocks.Panel)
-    assert panel.panel_type == "info"
+        )
+        assert isinstance(node, Paragraph)
+        assert isinstance(node, Paragraph)
+        assert any(isinstance(m, AlignmentMark) for m in node.marks)
+
+    def test_with_data_consumer_mark(self):
+        node = _rt_block(
+            Paragraph(
+                content=[Text(text="data")],
+                marks=[DataConsumerMark(sources=["src-1"])],
+            )
+        )
+        assert isinstance(node, Paragraph)
+        assert any(isinstance(m, DataConsumerMark) for m in node.marks)
 
 
-def test_roundtrip_mention():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[
-                    inlines.Mention(id="user-1", text="@Alice", user_type="DEFAULT")
+# ── Heading ────────────────────────────────────────────────────────────────────
+
+
+class TestHeading:
+    def test_levels(self):
+        for level in (1, 2, 3, 4, 5, 6):
+            node = _rt_block(Heading(level=level, content=[Text(text="T")]))
+            assert isinstance(node, Heading)
+            assert node.level == level
+
+    def test_with_indentation_mark(self):
+        node = _rt_block(
+            Heading(
+                level=2,
+                content=[Text(text="Indented")],
+                marks=[IndentationMark(level=2)],
+            )
+        )
+        assert isinstance(node, Heading)
+        assert any(isinstance(m, IndentationMark) for m in node.marks)
+
+
+# ── CodeBlock ──────────────────────────────────────────────────────────────────
+
+
+class TestCodeBlock:
+    def test_with_language(self):
+        node = _rt_block(CodeBlock(language="python", content=[Text(text="x = 1")]))
+        assert isinstance(node, CodeBlock)
+        assert node.language == "python"
+        first = node.content[0]
+        assert isinstance(first, Text)
+        assert first.text == "x = 1"
+
+    def test_without_language(self):
+        node = _rt_block(CodeBlock(content=[Text(text="raw")]))
+        assert isinstance(node, CodeBlock)
+        assert node.language is None
+
+    def test_with_breakout_mark(self):
+        node = _rt_block(
+            CodeBlock(
+                language="js",
+                content=[Text(text="code")],
+                marks=[BreakoutMark(mode="wide")],
+            )
+        )
+        assert isinstance(node, CodeBlock)
+        assert any(isinstance(m, BreakoutMark) for m in node.marks)
+
+
+# ── Blockquote ─────────────────────────────────────────────────────────────────
+
+
+class TestBlockquote:
+    def test_simple(self):
+        node = _rt_block(Blockquote(content=[Paragraph(content=[Text(text="quote")])]))
+        assert isinstance(node, Blockquote)
+        assert isinstance(node.content[0], Paragraph)
+
+    def test_nested(self):
+        node = _rt_block(
+            Blockquote(
+                content=[
+                    Paragraph(content=[Text(text="a")]),
+                    Paragraph(content=[Text(text="b")]),
                 ]
             )
-        ]
-    )
-    md = render(doc)
-    doc2 = parse(md)
-    p = doc2.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    m = p.children[0]
-    assert isinstance(m, inlines.Mention)
-    assert m.id == "user-1"
-    assert m.text == "@Alice"
+        )
+        assert isinstance(node, Blockquote)
+        assert len(node.content) == 2
 
 
-def test_roundtrip_underline():
-    doc = blocks.Document(
-        children=[
-            blocks.Paragraph(
-                children=[inlines.Underline(children=[inlines.Text(text="u")])]
+# ── Lists ──────────────────────────────────────────────────────────────────────
+
+
+class TestBulletList:
+    def test_simple(self):
+        node = _rt_block(
+            BulletList(
+                content=[
+                    ListItem(content=[Paragraph(content=[Text(text="a")])]),
+                    ListItem(content=[Paragraph(content=[Text(text="b")])]),
+                ]
             )
-        ]
-    )
-    md = render(doc)
-    doc2 = parse(md)
-    p = doc2.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    u = p.children[0]
-    assert isinstance(u, inlines.Underline)
-    ut = u.children[0]
-    assert isinstance(ut, inlines.Text)
-    assert ut.text == "u"
+        )
+        assert isinstance(node, BulletList)
+        assert len(node.content) == 2
+
+    def test_nested(self):
+        node = _rt_block(
+            BulletList(
+                content=[
+                    ListItem(
+                        content=[
+                            Paragraph(content=[Text(text="parent")]),
+                            BulletList(
+                                content=[
+                                    ListItem(
+                                        content=[
+                                            Paragraph(content=[Text(text="child")])
+                                        ]
+                                    )
+                                ]
+                            ),
+                        ]
+                    ),
+                ]
+            )
+        )
+        assert isinstance(node, BulletList)
+        first_item = node.content[0]
+        assert isinstance(first_item, ListItem)
+        inner = first_item.content[1]
+        assert isinstance(inner, BulletList)
 
 
-def test_empty_header_row_parsed_as_headerless():
-    """MD table with empty header row should be parsed as head=[]."""
-    md = "|  |  |\n| --- | --- |\n| A1 | B1 |\n| A2 | B2 |\n"
-    doc = parse(md)
-    table = doc.children[0]
-    assert isinstance(table, blocks.Table)
-    assert table.head == []
-    assert len(table.body) == 2
+class TestOrderedList:
+    def test_simple(self):
+        node = _rt_block(
+            OrderedList(
+                content=[
+                    ListItem(content=[Paragraph(content=[Text(text="a")])]),
+                    ListItem(content=[Paragraph(content=[Text(text="b")])]),
+                ]
+            )
+        )
+        assert isinstance(node, OrderedList)
+        assert len(node.content) == 2
+
+    def test_custom_start(self):
+        node = _rt_block(
+            OrderedList(
+                order=3,
+                content=[ListItem(content=[Paragraph(content=[Text(text="item")])])],
+            )
+        )
+        assert isinstance(node, OrderedList)
+        assert node.order == 3
 
 
-# ── Roundtrip fix tests ───────────────────────────────────────
+# ── Rule ───────────────────────────────────────────────────────────────────────
 
 
-def test_blank_line_not_parsed_as_paragraph():
-    """Blank lines between blocks should not be parsed as empty Paragraphs."""
-    md = "# A\n\n# B\n"
-    doc = parse(md)
-    assert len(doc.children) == 2
-    assert all(isinstance(c, blocks.Heading) for c in doc.children)
+class TestRule:
+    def test_simple(self):
+        node = _rt_block(Rule())
+        assert isinstance(node, Rule)
 
 
-def test_annotated_empty_paragraph_preserved():
-    """Annotated empty Paragraph should be preserved."""
-    md = "# A\n\n<!-- adf:paragraph -->\n\n<!-- /adf:paragraph -->\n\n# B\n"
-    doc = parse(md)
-    assert len(doc.children) == 3
-    assert isinstance(doc.children[0], blocks.Heading)
-    assert isinstance(doc.children[1], blocks.Paragraph)
-    assert doc.children[1].children == []
-    assert isinstance(doc.children[2], blocks.Heading)
+# ── TaskList ───────────────────────────────────────────────────────────────────
 
 
-def test_blank_line_in_list_item_ignored():
-    """blank_line inside list item should be ignored."""
-    md = "- item one\n\n- item two\n"
-    doc = parse(md)
-    assert len(doc.children) == 1
-    bl = doc.children[0]
-    assert isinstance(bl, blocks.BulletList)
-    assert len(bl.items) == 2
+class TestTaskList:
+    def test_simple(self):
+        node = _rt_block(
+            TaskList(
+                content=[
+                    TaskItem(state="DONE", content=[Text(text="done")]),
+                    TaskItem(state="TODO", content=[Text(text="todo")]),
+                ]
+            )
+        )
+        assert isinstance(node, TaskList)
+        items = [c for c in node.content if isinstance(c, TaskItem)]
+        assert items[0].state == "DONE"
+        assert items[1].state == "TODO"
 
 
-def test_block_html_annotation_in_list_item():
-    """Inline annotation in list item should be parsed."""
-    md = '- <!-- adf:status {"text": "Done", "color": "green", "style": "bold"} -->`Done`<!-- /adf:status -->\n'
-    doc = parse(md)
-    bl = doc.children[0]
-    assert isinstance(bl, blocks.BulletList)
-    p = bl.items[0].children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert isinstance(p.children[0], inlines.Status)
+# ── Inline Marks ───────────────────────────────────────────────────────────────
 
 
-def test_br_to_linebreak_in_table_cell():
-    """<br/> in table cell should be parsed as HardBreak."""
-    md = (
-        "<!-- adf:table {} -->\n"
-        "| <!-- adf:paragraph -->a<br/>b<!-- /adf:paragraph --> |\n"
-        "| --- |\n"
-        "<!-- /adf:table -->\n"
-    )
-    doc = parse(md)
-    table = doc.children[0]
-    assert isinstance(table, blocks.Table)
-    cell = table.head[0]
-    para = cell.children[0]
-    assert isinstance(para, blocks.Paragraph)
-    texts = [c for c in para.children if isinstance(c, inlines.Text)]
-    breaks = [c for c in para.children if isinstance(c, inlines.HardBreak)]
-    assert len(texts) == 2
-    assert len(breaks) == 1
+class TestMarks:
+    def test_strong(self):
+        doc = _roundtrip(
+            Doc(content=[Paragraph(content=[Text(text="bold", marks=[StrongMark()])])])
+        )
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        text = para.content[0]
+        assert isinstance(text, Text)
+        assert any(isinstance(m, StrongMark) for m in text.marks)
+
+    def test_em(self):
+        doc = _roundtrip(
+            Doc(content=[Paragraph(content=[Text(text="italic", marks=[EmMark()])])])
+        )
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        text = para.content[0]
+        assert isinstance(text, Text)
+        assert any(isinstance(m, EmMark) for m in text.marks)
+
+    def test_strike(self):
+        doc = _roundtrip(
+            Doc(content=[Paragraph(content=[Text(text="del", marks=[StrikeMark()])])])
+        )
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        text = para.content[0]
+        assert isinstance(text, Text)
+        assert any(isinstance(m, StrikeMark) for m in text.marks)
+
+    def test_code(self):
+        doc = _roundtrip(
+            Doc(content=[Paragraph(content=[Text(text="x", marks=[CodeMark()])])])
+        )
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        text = para.content[0]
+        assert isinstance(text, Text)
+        assert any(isinstance(m, CodeMark) for m in text.marks)
+
+    def test_link(self):
+        doc = _roundtrip(
+            Doc(
+                content=[
+                    Paragraph(
+                        content=[
+                            Text(text="click", marks=[LinkMark(href="https://x.com")])
+                        ]
+                    )
+                ]
+            )
+        )
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        text = para.content[0]
+        assert isinstance(text, Text)
+        link = next(m for m in text.marks if isinstance(m, LinkMark))
+        assert link.href == "https://x.com"
+
+    def test_underline(self):
+        doc = _roundtrip(
+            Doc(content=[Paragraph(content=[Text(text="u", marks=[UnderlineMark()])])])
+        )
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        text = para.content[0]
+        assert isinstance(text, Text)
+        assert any(isinstance(m, UnderlineMark) for m in text.marks)
+
+    def test_text_color(self):
+        doc = _roundtrip(
+            Doc(
+                content=[
+                    Paragraph(
+                        content=[Text(text="r", marks=[TextColorMark(color="#f00")])]
+                    )
+                ]
+            )
+        )
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        text = para.content[0]
+        assert isinstance(text, Text)
+        mark = next(m for m in text.marks if isinstance(m, TextColorMark))
+        assert mark.color == "#f00"
+
+    def test_background_color(self):
+        doc = _roundtrip(
+            Doc(
+                content=[
+                    Paragraph(
+                        content=[
+                            Text(text="h", marks=[BackgroundColorMark(color="#ff0")])
+                        ]
+                    )
+                ]
+            )
+        )
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        text = para.content[0]
+        assert isinstance(text, Text)
+        assert any(isinstance(m, BackgroundColorMark) for m in text.marks)
+
+    def test_subsup(self):
+        doc = _roundtrip(
+            Doc(
+                content=[
+                    Paragraph(content=[Text(text="2", marks=[SubSupMark(type="sup")])])
+                ]
+            )
+        )
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        text = para.content[0]
+        assert isinstance(text, Text)
+        mark = next(m for m in text.marks if isinstance(m, SubSupMark))
+        assert mark.type == "sup"
+
+    def test_annotation(self):
+        doc = _roundtrip(
+            Doc(
+                content=[
+                    Paragraph(
+                        content=[
+                            Text(
+                                text="note",
+                                marks=[
+                                    AnnotationMark(
+                                        id="a1", annotation_type="inlineComment"
+                                    )
+                                ],
+                            )
+                        ]
+                    )
+                ]
+            )
+        )
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        text = para.content[0]
+        assert isinstance(text, Text)
+        mark = next(m for m in text.marks if isinstance(m, AnnotationMark))
+        assert mark.id == "a1"
 
 
-def test_split_block_html_preserves_whitespace():
-    """_split_block_html should preserve whitespace between annotations."""
-    md = "<!-- adf:strong -->bold<!-- /adf:strong --> text\n"
-    doc = parse(md)
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    # Whitespace in " text" part should be preserved
-    texts = [c for c in p.children if isinstance(c, inlines.Text)]
-    combined = "".join(t.text for t in texts)
-    assert " text" in combined
+# ── Inline Nodes ───────────────────────────────────────────────────────────────
 
 
-def test_adjacent_text_nodes_merged():
-    """Adjacent Text nodes split by mistune should be merged."""
-    # mistune splits text when "[" character is present
-    md = '<!-- adf:backgroundColor {"color": "#fff"} -->text[1]end<!-- /adf:backgroundColor -->\n'
-    doc = parse(md)
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    # Text inside backgroundColor should be merged into one Text
-    bg = p.children[0]
-    assert isinstance(bg, inlines.BackgroundColor)
-    text_children = [c for c in bg.children if isinstance(c, inlines.Text)]
-    assert len(text_children) == 1
-    assert text_children[0].text == "text[1]end"
+class TestInlineNodes:
+    def test_mention(self):
+        doc = _roundtrip(
+            Doc(content=[Paragraph(content=[Mention(id="u1", text="John")])])
+        )
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        node = para.content[0]
+        assert isinstance(node, Mention)
+        assert node.id == "u1"
+        assert node.text == "John"
+
+    def test_emoji(self):
+        doc = _roundtrip(
+            Doc(
+                content=[
+                    Paragraph(
+                        content=[Emoji(short_name=":smile:", id="1f604", text="😄")]
+                    )
+                ]
+            )
+        )
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        node = para.content[0]
+        assert isinstance(node, Emoji)
+        assert node.short_name == ":smile:"
+
+    def test_date(self):
+        doc = _roundtrip(
+            Doc(content=[Paragraph(content=[Date(timestamp="1711324800000")])])
+        )
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        node = para.content[0]
+        assert isinstance(node, Date)
+        assert node.timestamp == "1711324800000"
+
+    def test_status(self):
+        doc = _roundtrip(
+            Doc(content=[Paragraph(content=[Status(text="OK", color="green")])])
+        )
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        node = para.content[0]
+        assert isinstance(node, Status)
+        assert node.text == "OK"
+        assert node.color == "green"
+
+    def test_inline_card(self):
+        doc = _roundtrip(
+            Doc(content=[Paragraph(content=[InlineCard(url="https://x.com")])])
+        )
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        node = para.content[0]
+        assert isinstance(node, InlineCard)
+        assert node.url == "https://x.com"
+
+    def test_placeholder(self):
+        doc = _roundtrip(
+            Doc(content=[Paragraph(content=[Placeholder(text="Type here")])])
+        )
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        node = para.content[0]
+        assert isinstance(node, Placeholder)
+        assert node.text == "Type here"
+
+    def test_hard_break(self):
+        doc = _roundtrip(
+            Doc(
+                content=[
+                    Paragraph(content=[Text(text="a"), HardBreak(), Text(text="b")])
+                ]
+            )
+        )
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        assert isinstance(para.content[1], HardBreak)
+
+    def test_media_inline(self):
+        doc = _roundtrip(
+            Doc(
+                content=[
+                    Paragraph(
+                        content=[
+                            MediaInline(id="f1", collection="uploads", type="file")
+                        ]
+                    )
+                ]
+            )
+        )
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        node = para.content[0]
+        assert isinstance(node, MediaInline)
+        assert node.id == "f1"
+
+    def test_inline_extension(self):
+        doc = _roundtrip(
+            Doc(
+                content=[
+                    Paragraph(
+                        content=[InlineExtension(extension_key="k", extension_type="t")]
+                    )
+                ]
+            )
+        )
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        node = para.content[0]
+        assert isinstance(node, InlineExtension)
+        assert node.extension_key == "k"
 
 
-def test_block_annotation_in_nested_list_item():
-    """Multi-line block annotation in list item should be parsed."""
-    md = (
-        "- item\n\n"
-        "    - <!-- adf:mediaSingle {} -->\n"
-        "        content\n"
-        "        <!-- /adf:mediaSingle -->\n"
-    )
-    doc = parse(md)
-    bl = doc.children[0]
-    assert isinstance(bl, blocks.BulletList)
-    sub_list = bl.items[0].children[1]
-    assert isinstance(sub_list, blocks.BulletList)
-    sub_item = sub_list.items[0]
-    assert any(isinstance(c, blocks.MediaSingle) for c in sub_item.children)
+# ── Block HTML Fallback ────────────────────────────────────────────────────────
 
 
-def test_split_block_html_blockquote_char_not_misinterpreted():
-    """> char should not be misinterpreted as blockquote."""
-    md = "<!-- adf:inlineCard -->[link](url)<!-- /adf:inlineCard -->  > tail\n"
-    doc = parse(md)
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    texts = [c for c in p.children if isinstance(c, inlines.Text)]
-    combined = "".join(t.text for t in texts)
-    assert "> tail" in combined
+class TestPanel:
+    def test_simple(self):
+        node = _rt_block(
+            Panel(
+                panel_type="info",
+                content=[Paragraph(content=[Text(text="note")])],
+            )
+        )
+        assert isinstance(node, Panel)
+        assert node.panel_type == "info"
 
 
-def test_code_block_in_list_item_dedented():
-    """Residual indentation in code block inside list should be stripped."""
-    md = (
-        "- item\n\n"
-        "    - ```\n"
-        "        {\n"
-        '          "key": "value"\n'
-        "        }\n"
-        "        ```\n"
-    )
-    doc = parse(md)
-    bl = doc.children[0]
-    assert isinstance(bl, blocks.BulletList)
-    sub_list = bl.items[0].children[1]
-    assert isinstance(sub_list, blocks.BulletList)
-    code_block = sub_list.items[0].children[0]
-    assert isinstance(code_block, blocks.CodeBlock)
-    assert code_block.code == '{\n  "key": "value"\n}'
+class TestExpand:
+    def test_with_title(self):
+        node = _rt_block(
+            Expand(
+                title="Details",
+                content=[Paragraph(content=[Text(text="body")])],
+            )
+        )
+        assert isinstance(node, Expand)
+        assert node.title == "Details"
+
+    def test_without_title(self):
+        node = _rt_block(Expand(content=[Paragraph(content=[Text(text="body")])]))
+        assert isinstance(node, Expand)
+        assert node.title is None
 
 
-# ── Zero-width space stripping ────────────────────────────────────
+class TestDecisionList:
+    def test_simple(self):
+        node = _rt_block(
+            DecisionList(
+                content=[DecisionItem(state="DECIDED", content=[Text(text="yes")])]
+            )
+        )
+        assert isinstance(node, DecisionList)
+        first = node.content[0]
+        assert isinstance(first, DecisionItem)
+        assert first.state == "DECIDED"
 
 
-def test_zwsp_stripped_from_inline_start():
-    """Zero-width space at inline start is stripped during parsing."""
-    md = '\u200b<!-- adf:emoji {"shortName": "smile", "text": "\U0001f604"} -->\U0001f604<!-- /adf:emoji --> hello\n'
-    doc = parse(md)
-    p = doc.children[0]
-    assert isinstance(p, blocks.Paragraph)
-    assert isinstance(p.children[0], inlines.Emoji)
-    assert p.children[0].short_name == "smile"
+# ── Media ──────────────────────────────────────────────────────────────────────
+
+
+class TestMediaSingle:
+    def test_simple(self):
+        node = _rt_block(
+            MediaSingle(
+                layout="center",
+                content=[Media(type="file", id="abc", collection="uploads")],
+            )
+        )
+        assert isinstance(node, MediaSingle)
+        assert node.layout == "center"
+        media = node.content[0]
+        assert isinstance(media, Media)
+        assert media.id == "abc"
+
+    def test_with_caption(self):
+        node = _rt_block(
+            MediaSingle(
+                content=[
+                    Media(type="file", id="abc"),
+                    Caption(content=[Text(text="cap")]),
+                ],
+            )
+        )
+        assert isinstance(node, MediaSingle)
+        assert len(node.content) == 2
+        assert isinstance(node.content[1], Caption)
+
+
+class TestMediaGroup:
+    def test_simple(self):
+        node = _rt_block(
+            MediaGroup(content=[Media(type="file", id="a"), Media(type="file", id="b")])
+        )
+        assert isinstance(node, MediaGroup)
+        assert len(node.content) == 2
+
+
+# ── Cards ──────────────────────────────────────────────────────────────────────
+
+
+class TestBlockCard:
+    def test_simple(self):
+        node = _rt_block(BlockCard(url="https://example.com"))
+        assert isinstance(node, BlockCard)
+        assert node.url == "https://example.com"
+
+
+class TestEmbedCard:
+    def test_simple(self):
+        node = _rt_block(EmbedCard(url="https://example.com", layout="wide"))
+        assert isinstance(node, EmbedCard)
+        assert node.url == "https://example.com"
+        assert node.layout == "wide"
+
+
+# ── Extension / SyncBlock ─────────────────────────────────────────────────────
+
+
+class TestExtension:
+    def test_simple(self):
+        node = _rt_block(Extension(extension_key="k", extension_type="t"))
+        assert isinstance(node, Extension)
+        assert node.extension_key == "k"
+
+
+class TestSyncBlock:
+    def test_simple(self):
+        node = _rt_block(SyncBlock(resource_id="r1"))
+        assert isinstance(node, SyncBlock)
+        assert node.resource_id == "r1"
+
+
+# ── Layout ─────────────────────────────────────────────────────────────────────
+
+
+class TestLayoutSection:
+    def test_two_columns(self):
+        node = _rt_block(
+            LayoutSection(
+                content=[
+                    LayoutColumn(
+                        width=50.0,
+                        content=[Paragraph(content=[Text(text="left")])],
+                    ),
+                    LayoutColumn(
+                        width=50.0,
+                        content=[Paragraph(content=[Text(text="right")])],
+                    ),
+                ]
+            )
+        )
+        assert isinstance(node, LayoutSection)
+        assert len(node.content) == 2
+        col = node.content[0]
+        assert isinstance(col, LayoutColumn)
+        assert col.width == 50.0
+
+
+# ── Table ──────────────────────────────────────────────────────────────────────
+
+
+class TestTable:
+    def test_simple(self):
+        node = _rt_block(
+            Table(
+                content=[
+                    TableRow(
+                        content=[
+                            TableHeader(content=[Paragraph(content=[Text(text="A")])]),
+                            TableHeader(content=[Paragraph(content=[Text(text="B")])]),
+                        ]
+                    ),
+                    TableRow(
+                        content=[
+                            TableCell(content=[Paragraph(content=[Text(text="1")])]),
+                            TableCell(content=[Paragraph(content=[Text(text="2")])]),
+                        ]
+                    ),
+                ]
+            )
+        )
+        assert isinstance(node, Table)
+        assert len(node.content) == 2
+
+    def test_with_layout(self):
+        node = _rt_block(
+            Table(
+                layout="wide",
+                content=[
+                    TableRow(
+                        content=[
+                            TableHeader(content=[Paragraph(content=[Text(text="X")])])
+                        ]
+                    ),
+                    TableRow(
+                        content=[
+                            TableCell(content=[Paragraph(content=[Text(text="Y")])])
+                        ]
+                    ),
+                ],
+            )
+        )
+        assert isinstance(node, Table)
+        assert node.layout == "wide"
+
+    def test_colspan(self):
+        node = _rt_block(
+            Table(
+                content=[
+                    TableRow(
+                        content=[
+                            TableHeader(
+                                content=[Paragraph(content=[Text(text="merged")])],
+                                colspan=2,
+                            ),
+                        ]
+                    ),
+                    TableRow(
+                        content=[
+                            TableCell(content=[Paragraph(content=[Text(text="a")])]),
+                            TableCell(content=[Paragraph(content=[Text(text="b")])]),
+                        ]
+                    ),
+                ]
+            )
+        )
+        assert isinstance(node, Table)
+        first_row = node.content[0]
+        assert isinstance(first_row, TableRow)
+        first_cell = first_row.content[0]
+        assert isinstance(first_cell, TableHeader)
+        assert first_cell.colspan == 2
+
+    def test_no_header(self):
+        node = _rt_block(
+            Table(
+                content=[
+                    TableRow(
+                        content=[
+                            TableCell(content=[Paragraph(content=[Text(text="A")])]),
+                            TableCell(content=[Paragraph(content=[Text(text="B")])]),
+                        ]
+                    ),
+                ]
+            )
+        )
+        assert isinstance(node, Table)
+
+
+# ── Raw MD: Solo Image ────────────────────────────────────────────────────────
+
+
+class TestImage:
+    def test_solo_image(self):
+        doc = parse("![Cat](https://example.com/cat.png)\n")
+        node = doc.content[0]
+        assert isinstance(node, MediaSingle)
+        media = node.content[0]
+        assert isinstance(media, Media)
+        assert media.type == "external"
+        assert media.url == "https://example.com/cat.png"
+        assert media.alt == "Cat"
+
+    def test_inline_image_ignored(self):
+        doc = parse("before ![img](url) after\n")
+        node = doc.content[0]
+        assert isinstance(node, Paragraph)
+
+
+# ── Params Escape ──────────────────────────────────────────────────────────────
+
+
+class TestParamsEscape:
+    def test_ampersand_roundtrip(self):
+        doc = _roundtrip(
+            Doc(content=[Paragraph(content=[Status(text="A&B", color="red")])])
+        )
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        node = para.content[0]
+        assert isinstance(node, Status)
+        assert node.text == "A&B"
+
+    def test_single_quote_roundtrip(self):
+        doc = _roundtrip(
+            Doc(
+                content=[
+                    Panel(
+                        panel_type="info",
+                        panel_icon="it's",
+                        content=[Paragraph(content=[Text(text="x")])],
+                    )
+                ]
+            )
+        )
+        node = doc.content[0]
+        assert isinstance(node, Panel)
+        assert node.panel_icon == "it's"

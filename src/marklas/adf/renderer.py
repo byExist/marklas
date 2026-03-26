@@ -1,893 +1,623 @@
+"""AST → ADF JSON renderer."""
+
 from __future__ import annotations
 
 from collections.abc import Sequence
 from typing import Any
 from uuid import uuid4
 
-from marklas.nodes import blocks, inlines
-
-from marklas.adf import schema
+from marklas import ast
 
 
-def _sort_marks(marks: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    return sorted(marks, key=lambda m: schema.MARK_ORDER.get(m["type"], 99))
+# ── Entry point ──────────────────────────────────────────────────────────────
 
 
-# ── Public API ───────────────────────────────────────────────────────
-
-
-def render(doc: blocks.Document) -> dict[str, Any]:
-    content = _render_doc_children(doc.children)
-    return {"type": "doc", "version": 1, "content": content}
-
-
-# ── Helpers ──────────────────────────────────────────────────────────
-
-
-def _apply_block_marks(
-    result: dict[str, Any],
-    alignment: str | None,
-    indentation: int | None,
-) -> None:
-    marks: list[dict[str, Any]] = []
-    if alignment:
-        marks.append({"type": "alignment", "attrs": {"align": alignment}})
-    if indentation:
-        marks.append({"type": "indentation", "attrs": {"level": indentation}})
-    if marks:
-        result["marks"] = marks
-
-
-# ── Doc dispatch ────────────────────────────────────────────────────
-
-
-def _render_doc_children(
-    children: list[blocks.DocChild],
-) -> list[dict[str, Any]]:
-    return [b for b in (_render_doc_child(c) for c in children) if b is not None]
-
-
-def _render_doc_child(node: blocks.DocChild) -> dict[str, Any] | None:
-    match node:
-        case blocks.Paragraph():
-            return _render_paragraph(node)
-        case blocks.Heading():
-            return _render_heading(node)
-        case blocks.CodeBlock():
-            return _render_code_block(node)
-        case blocks.BlockQuote():
-            return _render_blockquote(node)
-        case blocks.ThematicBreak():
-            return _render_thematic_break(node)
-        case blocks.BulletList():
-            return _render_bullet_list(node)
-        case blocks.OrderedList():
-            return _render_ordered_list(node)
-        case blocks.TaskList():
-            return _render_task_list(node)
-        case blocks.DecisionList():
-            return _render_decision_list(node)
-        case blocks.Table():
-            return _render_table(node)
-        case blocks.Panel():
-            return _render_panel(node)
-        case blocks.Expand():
-            return _render_expand(node)
-        case blocks.LayoutSection():
-            return _render_layout_section(node)
-        case blocks.MediaSingle():
-            return _render_media_single(node)
-        case blocks.MediaGroup():
-            return _render_media_group(node)
-        case blocks.BlockCard():
-            return _render_block_card(node)
-        case blocks.EmbedCard():
-            return _render_embed_card(node)
-        case blocks.Extension():
-            return _render_extension(node)
-        case blocks.BodiedExtension():
-            return _render_bodied_extension(node)
-        case blocks.SyncBlock():
-            return _render_sync_block(node)
-        case blocks.BodiedSyncBlock():
-            return _render_bodied_sync_block(node)
-
-
-# ── Block renderers ──────────────────────────────────────────────────
-
-
-def _render_thematic_break(_node: blocks.ThematicBreak) -> dict[str, Any]:
-    return {"type": "rule"}
-
-
-def _render_extension(node: blocks.Extension) -> dict[str, Any]:
-    return node.raw
-
-
-def _render_bodied_extension(node: blocks.BodiedExtension) -> dict[str, Any]:
-    return node.raw
-
-
-def _render_sync_block(node: blocks.SyncBlock) -> dict[str, Any]:
-    return node.raw
-
-
-def _render_bodied_sync_block(node: blocks.BodiedSyncBlock) -> dict[str, Any]:
-    return node.raw
-
-
-def _render_paragraph(node: blocks.Paragraph) -> dict[str, Any]:
-    # Single Image → mediaSingle conversion (intersection reverse-mapping)
-    if len(node.children) == 1 and isinstance(node.children[0], inlines.Image):
-        img = node.children[0]
-        media: dict[str, Any] = {
-            "type": "media",
-            "attrs": {"type": "external", "url": img.url},
-        }
-        return {"type": "mediaSingle", "content": [media]}
-
-    result: dict[str, Any] = {
-        "type": "paragraph",
-        "content": _render_inlines(node.children),
+def render(doc: ast.Doc) -> dict[str, Any]:
+    """Convert AST Doc to ADF JSON dict."""
+    return {
+        "type": "doc",
+        "version": doc.version,
+        "content": _render_children(doc.content, _render_block),
     }
-    _apply_block_marks(result, node.alignment, node.indentation)
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+
+def _render_children(
+    nodes: Sequence[ast.Node],
+    render_fn: Any,
+) -> list[dict[str, Any]]:
+    result: list[dict[str, Any]] = []
+    for node in nodes:
+        rendered = render_fn(node)
+        if rendered is not None:
+            result.append(rendered)
     return result
 
 
-def _render_heading(node: blocks.Heading) -> dict[str, Any]:
+def _local_id() -> str:
+    return str(uuid4())
+
+
+def _omit_none(d: dict[str, Any]) -> dict[str, Any]:
+    return {k: v for k, v in d.items() if v is not None}
+
+
+def _with_marks(result: dict[str, Any], marks: Sequence[ast.Mark]) -> dict[str, Any]:
+    """Attach marks to a node dict if any exist."""
+    if marks:
+        result["marks"] = _render_marks(marks)
+    return result
+
+
+# ── Mark rendering ───────────────────────────────────────────────────────────
+
+
+def _render_mark(mark: ast.Mark) -> dict[str, Any]:
+    match mark:
+        case ast.StrongMark():
+            return {"type": "strong"}
+        case ast.EmMark():
+            return {"type": "em"}
+        case ast.StrikeMark():
+            return {"type": "strike"}
+        case ast.CodeMark():
+            return {"type": "code"}
+        case ast.UnderlineMark():
+            return {"type": "underline"}
+        case ast.LinkMark():
+            attrs: dict[str, Any] = {"href": mark.href}
+            if mark.title is not None:
+                attrs["title"] = mark.title
+            return {"type": "link", "attrs": attrs}
+        case ast.TextColorMark():
+            return {"type": "textColor", "attrs": {"color": mark.color}}
+        case ast.BackgroundColorMark():
+            return {"type": "backgroundColor", "attrs": {"color": mark.color}}
+        case ast.SubSupMark():
+            return {"type": "subsup", "attrs": {"type": mark.type}}
+        case ast.AnnotationMark():
+            return {
+                "type": "annotation",
+                "attrs": {
+                    "id": mark.id,
+                    "annotationType": mark.annotation_type,
+                },
+            }
+        case ast.AlignmentMark():
+            return {"type": "alignment", "attrs": {"align": mark.align}}
+        case ast.IndentationMark():
+            return {"type": "indentation", "attrs": {"level": mark.level}}
+        case ast.BreakoutMark():
+            return {
+                "type": "breakout",
+                "attrs": _omit_none({"mode": mark.mode, "width": mark.width}),
+            }
+        case ast.DataConsumerMark():
+            return {"type": "dataConsumer", "attrs": {"sources": mark.sources}}
+        case ast.BorderMark():
+            return {"type": "border", "attrs": {"size": mark.size, "color": mark.color}}
+        case _:
+            msg = f"Unknown mark type: {type(mark)}"
+            raise ValueError(msg)
+
+
+def _render_marks(marks: Sequence[ast.Mark]) -> list[dict[str, Any]]:
+    return [_render_mark(m) for m in marks]
+
+
+# ── Block dispatch ───────────────────────────────────────────────────────────
+
+
+def _render_block(node: ast.Node) -> dict[str, Any] | None:
+    """Dispatch a block node. Accepts Node because it serves multiple content contexts."""
+    match node:
+        case ast.Paragraph():
+            return _render_paragraph(node)
+        case ast.Heading():
+            return _render_heading(node)
+        case ast.CodeBlock():
+            return _render_code_block(node)
+        case ast.Blockquote():
+            return _render_blockquote(node)
+        case ast.BulletList():
+            return _render_bullet_list(node)
+        case ast.OrderedList():
+            return _render_ordered_list(node)
+        case ast.Rule():
+            return _render_rule()
+        case ast.Table():
+            return _render_table(node)
+        case ast.Panel():
+            return _render_panel(node)
+        case ast.Expand():
+            return _render_expand(node)
+        case ast.NestedExpand():
+            return _render_nested_expand(node)
+        case ast.MediaSingle():
+            return _render_media_single(node)
+        case ast.MediaGroup():
+            return _render_media_group(node)
+        case ast.BlockCard():
+            return _render_block_card(node)
+        case ast.EmbedCard():
+            return _render_embed_card(node)
+        case ast.TaskList():
+            return _render_task_list(node)
+        case ast.DecisionList():
+            return _render_decision_list(node)
+        case ast.LayoutSection():
+            return _render_layout_section(node)
+        case ast.Extension():
+            return _render_extension(node)
+        case ast.BodiedExtension():
+            return _render_bodied_extension(node)
+        case ast.SyncBlock():
+            return _render_sync_block(node)
+        case ast.BodiedSyncBlock():
+            return _render_bodied_sync_block(node)
+        case _:
+            msg = f"Unknown block node: {type(node)}"
+            raise ValueError(msg)
+
+
+# ── Block renderers ──────────────────────────────────────────────────────────
+
+
+def _render_paragraph(node: ast.Paragraph) -> dict[str, Any]:
+    result: dict[str, Any] = {"type": "paragraph"}
+    content = _render_inlines(node.content)
+    if content:
+        result["content"] = content
+    return _with_marks(result, node.marks)
+
+
+def _render_heading(node: ast.Heading) -> dict[str, Any]:
     result: dict[str, Any] = {
         "type": "heading",
         "attrs": {"level": node.level},
-        "content": _render_inlines(node.children),
+        "content": _render_inlines(node.content),
     }
-    _apply_block_marks(result, node.alignment, node.indentation)
-    return result
+    return _with_marks(result, node.marks)
 
 
-def _render_code_block(node: blocks.CodeBlock) -> dict[str, Any]:
-    content: list[dict[str, Any]] = [{"type": "text", "text": node.code}]
-    result: dict[str, Any] = {"type": "codeBlock", "content": content}
-    if node.language is not None:
-        result["attrs"] = {"language": node.language}
-    return result
-
-
-def _render_blockquote(node: blocks.BlockQuote) -> dict[str, Any]:
-    return {"type": "blockquote", "content": _render_blockquote_children(node.children)}
-
-
-# ── Blockquote dispatch ──────────────────────────────────────────────
-
-
-def _render_blockquote_children(
-    children: list[blocks.BlockQuoteChild],
-) -> list[dict[str, Any]]:
-    return [b for b in (_render_blockquote_child(c) for c in children) if b is not None]
-
-
-def _render_blockquote_child(
-    node: blocks.BlockQuoteChild,
-) -> dict[str, Any] | None:
-    match node:
-        case blocks.Paragraph():
-            return _render_paragraph(node)
-        case blocks.BulletList():
-            return _render_bullet_list(node)
-        case blocks.OrderedList():
-            return _render_ordered_list(node)
-        case blocks.CodeBlock():
-            return _render_code_block(node)
-        case blocks.MediaGroup():
-            return _render_media_group(node)
-        case blocks.MediaSingle():
-            return _render_media_single(node)
-        case blocks.Extension():
-            return _render_extension(node)
-
-
-def _render_bullet_list(node: blocks.BulletList) -> dict[str, Any]:
-    # Convert to taskList if any items have checked state (intersection reverse-mapping)
-    if any(item.checked is not None for item in node.items):
-        task_items: list[dict[str, Any]] = []
-        for item in node.items:
-            state = "DONE" if item.checked else "TODO"
-            task_item: dict[str, Any] = {
-                "type": "taskItem",
-                "attrs": {"localId": str(uuid4()), "state": state},
-            }
-            content = _render_inlines_from_blocks(item.children)
-            if content:
-                task_item["content"] = content
-            task_items.append(task_item)
-        return {
-            "type": "taskList",
-            "attrs": {"localId": str(uuid4())},
-            "content": task_items,
-        }
-
-    items = [_render_list_item(item) for item in node.items]
-    return {"type": "bulletList", "content": items}
-
-
-def _render_ordered_list(node: blocks.OrderedList) -> dict[str, Any]:
-    items = [_render_list_item(item) for item in node.items]
-    result: dict[str, Any] = {"type": "orderedList", "content": items}
-    if node.start != 1:
-        result["attrs"] = {"order": node.start}
-    return result
-
-
-def _render_list_item(item: blocks.ListItem) -> dict[str, Any]:
-    return {"type": "listItem", "content": _render_listitem_children(item.children)}
-
-
-# ── ListItem dispatch ───────────────────────────────────────────────
-
-
-def _render_listitem_children(
-    children: list[blocks.ListItemChild],
-) -> list[dict[str, Any]]:
-    return [b for b in (_render_listitem_child(c) for c in children) if b is not None]
-
-
-def _render_listitem_child(
-    node: blocks.ListItemChild,
-) -> dict[str, Any] | None:
-    match node:
-        case blocks.Paragraph():
-            return _render_paragraph(node)
-        case blocks.BulletList():
-            return _render_bullet_list(node)
-        case blocks.OrderedList():
-            return _render_ordered_list(node)
-        case blocks.CodeBlock():
-            return _render_code_block(node)
-        case blocks.MediaSingle():
-            return _render_media_single(node)
-        case blocks.Extension():
-            return _render_extension(node)
-        case blocks.TaskList():
-            return _render_task_list(node)
-
-
-def _render_task_list(node: blocks.TaskList) -> dict[str, Any]:
-    items: list[dict[str, Any]] = []
-    for item in node.items:
-        task_item: dict[str, Any] = {
-            "type": "taskItem",
-            "attrs": {"localId": item.local_id, "state": item.state},
-        }
-        content = _render_inlines(item.children)
-        if content:
-            task_item["content"] = content
-        items.append(task_item)
-    return {
-        "type": "taskList",
-        "attrs": {"localId": str(uuid4())},
-        "content": items,
-    }
-
-
-def _render_decision_list(node: blocks.DecisionList) -> dict[str, Any]:
-    items: list[dict[str, Any]] = []
-    for item in node.items:
-        decision_item: dict[str, Any] = {
-            "type": "decisionItem",
-            "attrs": {"localId": item.local_id, "state": item.state},
-        }
-        content = _render_inlines(item.children)
-        if content:
-            decision_item["content"] = content
-        items.append(decision_item)
-    return {
-        "type": "decisionList",
-        "attrs": {"localId": str(uuid4())},
-        "content": items,
-    }
-
-
-def _render_panel(node: blocks.Panel) -> dict[str, Any]:
-    attrs: dict[str, Any] = {"panelType": node.panel_type}
-    if node.panel_icon:
-        attrs["panelIcon"] = node.panel_icon
-    if node.panel_icon_id:
-        attrs["panelIconId"] = node.panel_icon_id
-    if node.panel_icon_text:
-        attrs["panelIconText"] = node.panel_icon_text
-    if node.panel_color:
-        attrs["panelColor"] = node.panel_color
-    return {
-        "type": "panel",
-        "attrs": attrs,
-        "content": _render_panel_children(node.children),
-    }
-
-
-# ── Panel dispatch ──────────────────────────────────────────────────
-
-
-def _render_panel_children(
-    children: list[blocks.PanelChild],
-) -> list[dict[str, Any]]:
-    return [b for b in (_render_panel_child(c) for c in children) if b is not None]
-
-
-def _render_panel_child(
-    node: blocks.PanelChild,
-) -> dict[str, Any] | None:
-    match node:
-        case blocks.Paragraph():
-            return _render_paragraph(node)
-        case blocks.Heading():
-            return _render_heading(node)
-        case blocks.BulletList():
-            return _render_bullet_list(node)
-        case blocks.OrderedList():
-            return _render_ordered_list(node)
-        case blocks.CodeBlock():
-            return _render_code_block(node)
-        case blocks.TaskList():
-            return _render_task_list(node)
-        case blocks.DecisionList():
-            return _render_decision_list(node)
-        case blocks.ThematicBreak():
-            return _render_thematic_break(node)
-        case blocks.MediaGroup():
-            return _render_media_group(node)
-        case blocks.MediaSingle():
-            return _render_media_single(node)
-        case blocks.BlockCard():
-            return _render_block_card(node)
-        case blocks.Extension():
-            return _render_extension(node)
-
-
-def _render_expand(node: blocks.Expand) -> dict[str, Any]:
-    result: dict[str, Any] = {
-        "type": "expand",
-        "content": _render_expand_children(node.children),
-    }
-    if node.title:
-        result["attrs"] = {"title": node.title}
-    return result
-
-
-# ── Expand dispatch ─────────────────────────────────────────────────
-
-
-def _render_expand_children(
-    children: list[blocks.ExpandChild],
-) -> list[dict[str, Any]]:
-    return [b for b in (_render_expand_child(c) for c in children) if b is not None]
-
-
-def _render_expand_child(
-    node: blocks.ExpandChild,
-) -> dict[str, Any] | None:
-    match node:
-        case blocks.Paragraph():
-            return _render_paragraph(node)
-        case blocks.Heading():
-            return _render_heading(node)
-        case blocks.BulletList():
-            return _render_bullet_list(node)
-        case blocks.OrderedList():
-            return _render_ordered_list(node)
-        case blocks.CodeBlock():
-            return _render_code_block(node)
-        case blocks.TaskList():
-            return _render_task_list(node)
-        case blocks.DecisionList():
-            return _render_decision_list(node)
-        case blocks.ThematicBreak():
-            return _render_thematic_break(node)
-        case blocks.MediaGroup():
-            return _render_media_group(node)
-        case blocks.MediaSingle():
-            return _render_media_single(node)
-        case blocks.Panel():
-            return _render_panel(node)
-        case blocks.BlockQuote():
-            return _render_blockquote(node)
-        case blocks.Table():
-            return _render_table(node)
-        case blocks.NestedExpand():
-            return _render_nested_expand(node)
-        case blocks.BlockCard():
-            return _render_block_card(node)
-        case blocks.EmbedCard():
-            return _render_embed_card(node)
-        case blocks.Extension():
-            return _render_extension(node)
-        case blocks.BodiedExtension():
-            return _render_bodied_extension(node)
-
-
-def _render_nested_expand(node: blocks.NestedExpand) -> dict[str, Any]:
-    result: dict[str, Any] = {
-        "type": "nestedExpand",
-        "content": _render_nested_expand_children(node.children),
-    }
-    if node.title:
-        result["attrs"] = {"title": node.title}
-    return result
-
-
-# ── NestedExpand dispatch ───────────────────────────────────────────
-
-
-def _render_nested_expand_children(
-    children: list[blocks.NestedExpandChild],
-) -> list[dict[str, Any]]:
-    return [
-        b for b in (_render_nested_expand_child(c) for c in children) if b is not None
-    ]
-
-
-def _render_nested_expand_child(
-    node: blocks.NestedExpandChild,
-) -> dict[str, Any] | None:
-    match node:
-        case blocks.Paragraph():
-            return _render_paragraph(node)
-        case blocks.Heading():
-            return _render_heading(node)
-        case blocks.BulletList():
-            return _render_bullet_list(node)
-        case blocks.OrderedList():
-            return _render_ordered_list(node)
-        case blocks.CodeBlock():
-            return _render_code_block(node)
-        case blocks.TaskList():
-            return _render_task_list(node)
-        case blocks.DecisionList():
-            return _render_decision_list(node)
-        case blocks.ThematicBreak():
-            return _render_thematic_break(node)
-        case blocks.MediaGroup():
-            return _render_media_group(node)
-        case blocks.MediaSingle():
-            return _render_media_single(node)
-        case blocks.Panel():
-            return _render_panel(node)
-        case blocks.BlockQuote():
-            return _render_blockquote(node)
-        case blocks.Extension():
-            return _render_extension(node)
-
-
-def _render_layout_section(node: blocks.LayoutSection) -> dict[str, Any]:
-    columns: list[dict[str, Any]] = []
-    for col in node.columns:
-        width = col.width if col.width is not None else 100 / len(node.columns)
-        columns.append(
-            {
-                "type": "layoutColumn",
-                "attrs": {"width": width},
-                "content": _render_layoutcolumn_children(col.children),
-            }
-        )
-    return {"type": "layoutSection", "content": columns}
-
-
-# ── LayoutColumn dispatch ───────────────────────────────────────────
-
-
-def _render_layoutcolumn_children(
-    children: list[blocks.LayoutColumnChild],
-) -> list[dict[str, Any]]:
-    return [
-        b for b in (_render_layoutcolumn_child(c) for c in children) if b is not None
-    ]
-
-
-def _render_layoutcolumn_child(
-    node: blocks.LayoutColumnChild,
-) -> dict[str, Any] | None:
-    match node:
-        case blocks.Paragraph():
-            return _render_paragraph(node)
-        case blocks.Heading():
-            return _render_heading(node)
-        case blocks.BulletList():
-            return _render_bullet_list(node)
-        case blocks.OrderedList():
-            return _render_ordered_list(node)
-        case blocks.CodeBlock():
-            return _render_code_block(node)
-        case blocks.TaskList():
-            return _render_task_list(node)
-        case blocks.DecisionList():
-            return _render_decision_list(node)
-        case blocks.ThematicBreak():
-            return _render_thematic_break(node)
-        case blocks.MediaGroup():
-            return _render_media_group(node)
-        case blocks.MediaSingle():
-            return _render_media_single(node)
-        case blocks.Panel():
-            return _render_panel(node)
-        case blocks.BlockQuote():
-            return _render_blockquote(node)
-        case blocks.Table():
-            return _render_table(node)
-        case blocks.Expand():
-            return _render_expand(node)
-        case blocks.BlockCard():
-            return _render_block_card(node)
-        case blocks.EmbedCard():
-            return _render_embed_card(node)
-        case blocks.BodiedExtension():
-            return _render_bodied_extension(node)
-        case blocks.Extension():
-            return _render_extension(node)
-
-
-def _render_media(media: blocks.Media) -> dict[str, Any]:
-    attrs: dict[str, Any] = {"type": media.media_type}
-    if media.url is not None:
-        attrs["url"] = media.url
-    if media.id is not None:
-        attrs["id"] = media.id
-    if media.collection is not None:
-        attrs["collection"] = media.collection
-    if media.alt is not None:
-        attrs["alt"] = media.alt
-    if media.width is not None:
-        attrs["width"] = media.width
-    if media.height is not None:
-        attrs["height"] = media.height
-    return {"type": "media", "attrs": attrs}
-
-
-def _render_media_single(node: blocks.MediaSingle) -> dict[str, Any]:
-    result: dict[str, Any] = {
-        "type": "mediaSingle",
-        "content": [_render_media(node.media)],
-    }
+def _render_code_block(node: ast.CodeBlock) -> dict[str, Any]:
+    result: dict[str, Any] = {"type": "codeBlock"}
     attrs: dict[str, Any] = {}
-    if node.layout is not None:
-        attrs["layout"] = node.layout
-    if node.width is not None:
-        attrs["width"] = node.width
-    if node.width_type is not None:
-        attrs["widthType"] = node.width_type
+    if node.language is not None:
+        attrs["language"] = node.language
+    if attrs:
+        result["attrs"] = attrs
+    if node.content:
+        text = "".join(t.text for t in node.content)
+        if text:
+            result["content"] = [{"type": "text", "text": text}]
+    return _with_marks(result, node.marks)
+
+
+def _render_blockquote(node: ast.Blockquote) -> dict[str, Any]:
+    return {
+        "type": "blockquote",
+        "content": _render_children(node.content, _render_block),
+    }
+
+
+def _render_bullet_list(node: ast.BulletList) -> dict[str, Any]:
+    return {
+        "type": "bulletList",
+        "content": [_render_list_item(i) for i in node.content],
+    }
+
+
+def _render_ordered_list(node: ast.OrderedList) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "type": "orderedList",
+        "content": [_render_list_item(i) for i in node.content],
+    }
+    if node.order is not None and node.order != 1:
+        result["attrs"] = {"order": node.order}
+    return result
+
+
+def _render_rule() -> dict[str, Any]:
+    return {"type": "rule"}
+
+
+def _render_list_item(node: ast.ListItem) -> dict[str, Any]:
+    return {
+        "type": "listItem",
+        "content": _render_children(node.content, _render_block),
+    }
+
+
+# ── Table ────────────────────────────────────────────────────────────────────
+
+
+def _render_table(node: ast.Table) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "type": "table",
+        "content": [_render_table_row(r) for r in node.content],
+    }
+    attrs = _omit_none(
+        {
+            "displayMode": node.display_mode,
+            "isNumberColumnEnabled": node.is_number_column_enabled,
+            "layout": node.layout,
+            "width": node.width,
+        }
+    )
     if attrs:
         result["attrs"] = attrs
     return result
 
 
-def _render_media_group(node: blocks.MediaGroup) -> dict[str, Any]:
+def _render_table_row(node: ast.TableRow) -> dict[str, Any]:
     return {
-        "type": "mediaGroup",
-        "content": [_render_media(m) for m in node.media_list],
+        "type": "tableRow",
+        "content": [_render_table_cell(c) for c in node.content],
     }
 
 
-def _render_block_card(node: blocks.BlockCard) -> dict[str, Any]:
-    attrs: dict[str, Any] = {}
-    if node.url is not None:
-        attrs["url"] = node.url
-    if node.data is not None:
-        attrs["data"] = node.data
+def _render_table_cell(node: ast.TableCell | ast.TableHeader) -> dict[str, Any]:
+    cell_type = "tableHeader" if isinstance(node, ast.TableHeader) else "tableCell"
+    result: dict[str, Any] = {
+        "type": cell_type,
+        "content": _render_children(node.content, _render_block),
+    }
+    attrs = _omit_none(
+        {
+            "colspan": node.colspan,
+            "rowspan": node.rowspan,
+            "colwidth": node.colwidth,
+            "background": node.background,
+        }
+    )
+    if attrs:
+        result["attrs"] = attrs
+    return result
+
+
+# ── Block HTML renderers ────────────────────────────────────────────────────
+
+
+def _render_panel(node: ast.Panel) -> dict[str, Any]:
+    attrs = _omit_none(
+        {
+            "panelType": node.panel_type,
+            "panelIcon": node.panel_icon,
+            "panelIconId": node.panel_icon_id,
+            "panelIconText": node.panel_icon_text,
+            "panelColor": node.panel_color,
+        }
+    )
+    return {
+        "type": "panel",
+        "attrs": attrs,
+        "content": _render_children(node.content, _render_block),
+    }
+
+
+def _render_expand(node: ast.Expand) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "type": "expand",
+        "content": _render_children(node.content, _render_block),
+    }
+    if node.title:
+        result["attrs"] = {"title": node.title}
+    return _with_marks(result, node.marks)
+
+
+def _render_nested_expand(node: ast.NestedExpand) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "type": "nestedExpand",
+        "attrs": {},
+        "content": _render_children(node.content, _render_block),
+    }
+    if node.title:
+        result["attrs"]["title"] = node.title
+    return result
+
+
+def _render_media_single(node: ast.MediaSingle) -> dict[str, Any]:
+    content: list[dict[str, Any]] = []
+    for child in node.content:
+        if isinstance(child, ast.Media):
+            content.append(_render_media(child))
+        else:
+            content.append(_render_caption(child))
+    result: dict[str, Any] = {"type": "mediaSingle", "content": content}
+    attrs = _omit_none(
+        {
+            "layout": node.layout,
+            "width": node.width,
+            "widthType": node.width_type,
+        }
+    )
+    if attrs:
+        result["attrs"] = attrs
+    return _with_marks(result, node.marks)
+
+
+def _render_media(node: ast.Media) -> dict[str, Any]:
+    attrs = _omit_none(
+        {
+            "type": node.type,
+            "id": node.id,
+            "collection": node.collection,
+            "alt": node.alt,
+            "width": node.width,
+            "height": node.height,
+            "url": node.url,
+        }
+    )
+    result: dict[str, Any] = {"type": "media", "attrs": attrs}
+    return _with_marks(result, node.marks)
+
+
+def _render_caption(node: ast.Caption) -> dict[str, Any]:
+    return {"type": "caption", "content": _render_inlines(node.content)}
+
+
+def _render_media_group(node: ast.MediaGroup) -> dict[str, Any]:
+    return {"type": "mediaGroup", "content": [_render_media(m) for m in node.content]}
+
+
+def _render_block_card(node: ast.BlockCard) -> dict[str, Any]:
+    attrs = _omit_none(
+        {
+            "url": node.url,
+            "data": node.data,
+            "datasource": node.datasource,
+            "width": node.width,
+            "layout": node.layout,
+        }
+    )
     return {"type": "blockCard", "attrs": attrs}
 
 
-def _render_embed_card(node: blocks.EmbedCard) -> dict[str, Any]:
-    attrs: dict[str, Any] = {"url": node.url, "layout": node.layout}
-    if node.width is not None:
-        attrs["width"] = node.width
-    if node.original_width is not None:
-        attrs["originalWidth"] = node.original_width
-    if node.original_height is not None:
-        attrs["originalHeight"] = node.original_height
+def _render_embed_card(node: ast.EmbedCard) -> dict[str, Any]:
+    attrs = _omit_none(
+        {
+            "url": node.url,
+            "layout": node.layout,
+            "width": node.width,
+            "originalHeight": node.original_height,
+            "originalWidth": node.original_width,
+        }
+    )
     return {"type": "embedCard", "attrs": attrs}
 
 
-def _render_table(node: blocks.Table) -> dict[str, Any]:
-    # Collect all rows
-    all_cell_rows: list[list[blocks.TableCell]] = []
-    if node.head:
-        all_cell_rows.append(node.head)
-    for row in node.body:
-        all_cell_rows.append(row)
+def _render_task_list(node: ast.TaskList) -> dict[str, Any]:
+    items: list[dict[str, Any]] = []
+    for child in node.content:
+        if isinstance(child, ast.TaskList):
+            items.append(_render_task_list(child))
+        else:
+            items.append(_render_task_item(child))
+    return {
+        "type": "taskList",
+        "attrs": {"localId": _local_id()},
+        "content": items,
+    }
 
-    num_rows = len(all_cell_rows)
-    num_cols = max((len(cells) for cells in all_cell_rows), default=0)
 
-    # Calculate positions occupied by colspan/rowspan (excluding origin)
-    occupied: list[list[bool]] = [[False] * num_cols for _ in range(num_rows)]
-    for r, cells in enumerate(all_cell_rows):
-        for col_idx, cell in enumerate(cells):
-            cs = cell.colspan or 1
-            rs = cell.rowspan or 1
-            for dr in range(rs):
-                for dc in range(cs):
-                    if (
-                        (dr > 0 or dc > 0)
-                        and r + dr < num_rows
-                        and col_idx + dc < num_cols
-                    ):
-                        occupied[r + dr][col_idx + dc] = True
-
-    # Render while skipping occupied cells
-    rows: list[dict[str, Any]] = []
-    for r, cells in enumerate(all_cell_rows):
-        row_cells: list[dict[str, Any]] = []
-        for col_idx, cell in enumerate(cells):
-            if col_idx < num_cols and occupied[r][col_idx]:
-                continue
-            cell_type = (
-                "tableHeader" if isinstance(cell, blocks.TableHeader) else "tableCell"
-            )
-            cell_json: dict[str, Any] = {
-                "type": cell_type,
-                "content": _render_tablecell_children(cell.children),
-            }
-            _apply_cell_attrs(cell, cell_json)
-            row_cells.append(cell_json)
-        rows.append({"type": "tableRow", "content": row_cells})
-
-    result: dict[str, Any] = {"type": "table", "content": rows}
-
-    table_attrs: dict[str, Any] = {}
-    if node.display_mode is not None:
-        table_attrs["displayMode"] = node.display_mode
-    if node.is_number_column_enabled is not None:
-        table_attrs["isNumberColumnEnabled"] = node.is_number_column_enabled
-    if node.layout is not None:
-        table_attrs["layout"] = node.layout
-    if node.width is not None:
-        table_attrs["width"] = node.width
-    if table_attrs:
-        result["attrs"] = table_attrs
-
+def _render_task_item(node: ast.TaskItem | ast.BlockTaskItem) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "type": "taskItem" if isinstance(node, ast.TaskItem) else "blockTaskItem",
+        "attrs": {"localId": _local_id(), "state": node.state},
+    }
+    if isinstance(node, ast.TaskItem):
+        content = _render_inlines(node.content)
+    else:
+        content = _render_children(node.content, _render_block)
+    if content:
+        result["content"] = content
     return result
 
 
-# ── TableCell dispatch ───────────────────────────────────────────────
+def _render_decision_list(node: ast.DecisionList) -> dict[str, Any]:
+    return {
+        "type": "decisionList",
+        "attrs": {"localId": _local_id()},
+        "content": [_render_decision_item(i) for i in node.content],
+    }
 
 
-def _render_tablecell_children(
-    children: list[blocks.TableCellChild],
-) -> list[dict[str, Any]]:
-    return [b for b in (_render_tablecell_child(c) for c in children) if b is not None]
+def _render_decision_item(node: ast.DecisionItem) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "type": "decisionItem",
+        "attrs": {"localId": _local_id(), "state": node.state},
+    }
+    content = _render_inlines(node.content)
+    if content:
+        result["content"] = content
+    return result
 
 
-def _render_tablecell_child(
-    node: blocks.TableCellChild,
-) -> dict[str, Any] | None:
+def _render_layout_section(node: ast.LayoutSection) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "type": "layoutSection",
+        "content": [_render_layout_column(c) for c in node.content],
+    }
+    return _with_marks(result, node.marks)
+
+
+def _render_layout_column(node: ast.LayoutColumn) -> dict[str, Any]:
+    return {
+        "type": "layoutColumn",
+        "attrs": {"width": node.width},
+        "content": _render_children(node.content, _render_block),
+    }
+
+
+def _render_extension(node: ast.Extension) -> dict[str, Any]:
+    attrs = _omit_none(
+        {
+            "extensionKey": node.extension_key,
+            "extensionType": node.extension_type,
+            "parameters": node.parameters,
+            "text": node.text,
+            "layout": node.layout,
+        }
+    )
+    result: dict[str, Any] = {"type": "extension", "attrs": attrs}
+    return _with_marks(result, node.marks)
+
+
+def _render_bodied_extension(node: ast.BodiedExtension) -> dict[str, Any]:
+    attrs = _omit_none(
+        {
+            "extensionKey": node.extension_key,
+            "extensionType": node.extension_type,
+            "parameters": node.parameters,
+            "text": node.text,
+            "layout": node.layout,
+        }
+    )
+    result: dict[str, Any] = {
+        "type": "bodiedExtension",
+        "attrs": attrs,
+        "content": _render_children(node.content, _render_block),
+    }
+    return _with_marks(result, node.marks)
+
+
+def _render_sync_block(node: ast.SyncBlock) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "type": "syncBlock",
+        "attrs": {"resourceId": node.resource_id},
+    }
+    return _with_marks(result, node.marks)
+
+
+def _render_bodied_sync_block(node: ast.BodiedSyncBlock) -> dict[str, Any]:
+    result: dict[str, Any] = {
+        "type": "bodiedSyncBlock",
+        "attrs": {"resourceId": node.resource_id},
+        "content": _render_children(node.content, _render_block),
+    }
+    return _with_marks(result, node.marks)
+
+
+# ── Inline dispatch ──────────────────────────────────────────────────────────
+
+
+def _render_inline(node: ast.Inline) -> dict[str, Any]:
     match node:
-        case blocks.Paragraph():
-            return _render_paragraph(node)
-        case blocks.Heading():
-            return _render_heading(node)
-        case blocks.BulletList():
-            return _render_bullet_list(node)
-        case blocks.OrderedList():
-            return _render_ordered_list(node)
-        case blocks.CodeBlock():
-            return _render_code_block(node)
-        case blocks.TaskList():
-            return _render_task_list(node)
-        case blocks.DecisionList():
-            return _render_decision_list(node)
-        case blocks.ThematicBreak():
-            return _render_thematic_break(node)
-        case blocks.MediaGroup():
-            return _render_media_group(node)
-        case blocks.MediaSingle():
-            return _render_media_single(node)
-        case blocks.Panel():
-            return _render_panel(node)
-        case blocks.BlockQuote():
-            return _render_blockquote(node)
-        case blocks.NestedExpand():
-            return _render_nested_expand(node)
-        case blocks.BlockCard():
-            return _render_block_card(node)
-        case blocks.EmbedCard():
-            return _render_embed_card(node)
-        case blocks.Extension():
-            return _render_extension(node)
+        case ast.Text():
+            return _render_text(node)
+        case ast.HardBreak():
+            return _render_hard_break()
+        case ast.Mention():
+            return _render_mention(node)
+        case ast.Emoji():
+            return _render_emoji(node)
+        case ast.Date():
+            return _render_date(node)
+        case ast.Status():
+            return _render_status(node)
+        case ast.InlineCard():
+            return _render_inline_card(node)
+        case ast.Placeholder():
+            return _render_placeholder(node)
+        case ast.MediaInline():
+            return _render_media_inline(node)
+        case ast.InlineExtension():
+            return _render_inline_extension(node)
+        case _:
+            msg = f"Unknown inline node: {type(node)}"
+            raise ValueError(msg)
 
 
-def _apply_cell_attrs(cell: blocks.TableCell, cell_json: dict[str, Any]) -> None:
-    cell_attrs: dict[str, Any] = {}
-    if cell.colspan:
-        cell_attrs["colspan"] = cell.colspan
-    if cell.rowspan:
-        cell_attrs["rowspan"] = cell.rowspan
-    if cell.col_width:
-        cell_attrs["colwidth"] = cell.col_width
-    if cell.background:
-        cell_attrs["background"] = cell.background
-    if cell_attrs:
-        cell_json["attrs"] = cell_attrs
+def _render_inlines(nodes: Sequence[ast.Inline]) -> list[dict[str, Any]]:
+    return [_render_inline(n) for n in nodes]
 
 
-# ── Inline rendering ─────────────────────────────────────────────────
+# ── Inline renderers ────────────────────────────────────────────────────────
 
 
-def _render_inlines(nodes: list[inlines.Inline]) -> list[dict[str, Any]]:
-    result: list[dict[str, Any]] = []
-    for node in nodes:
-        result.extend(_render_inline(node, []))
-    return result
+def _render_text(node: ast.Text) -> dict[str, Any]:
+    result: dict[str, Any] = {"type": "text", "text": node.text}
+    return _with_marks(result, node.marks)
 
 
-def _render_inlines_from_blocks(
-    block_nodes: Sequence[blocks.Block],
-) -> list[dict[str, Any]]:
-    """Extract inlines from ListItem.children (block list) for taskItem content."""
-    result: list[dict[str, Any]] = []
-    for block in block_nodes:
-        if isinstance(block, blocks.Paragraph):
-            result.extend(_render_inlines(block.children))
-    return result
+def _render_hard_break() -> dict[str, Any]:
+    return {"type": "hardBreak", "attrs": {"text": "\n"}}
 
 
-def _render_inline(
-    node: inlines.Inline, marks: list[dict[str, Any]]
-) -> list[dict[str, Any]]:
-    match node:
-        case inlines.Text():
-            if not node.text:
-                return []
-            text: dict[str, Any] = {"type": "text", "text": node.text}
-            if marks:
-                text["marks"] = _sort_marks(marks)
-            return [text]
+def _render_mention(node: ast.Mention) -> dict[str, Any]:
+    attrs = _omit_none(
+        {
+            "id": node.id,
+            "text": node.text,
+            "accessLevel": node.access_level,
+            "userType": node.user_type,
+        }
+    )
+    return {"type": "mention", "attrs": attrs}
 
-        case inlines.Strong():
-            new_marks: list[dict[str, Any]] = [*marks, {"type": "strong"}]
-            return [
-                child for c in node.children for child in _render_inline(c, new_marks)
-            ]
 
-        case inlines.Emphasis():
-            new_marks: list[dict[str, Any]] = [*marks, {"type": "em"}]
-            return [
-                child for c in node.children for child in _render_inline(c, new_marks)
-            ]
+def _render_emoji(node: ast.Emoji) -> dict[str, Any]:
+    attrs = _omit_none(
+        {
+            "shortName": node.short_name,
+            "text": node.text,
+            "id": node.id,
+        }
+    )
+    return {"type": "emoji", "attrs": attrs}
 
-        case inlines.Strikethrough():
-            new_marks: list[dict[str, Any]] = [*marks, {"type": "strike"}]
-            return [
-                child for c in node.children for child in _render_inline(c, new_marks)
-            ]
 
-        case inlines.Link():
-            link_mark: dict[str, Any] = {"type": "link", "attrs": {"href": node.url}}
-            if node.title:
-                link_mark["attrs"]["title"] = node.title
-            new_marks: list[dict[str, Any]] = [*marks, link_mark]
-            return [
-                child for c in node.children for child in _render_inline(c, new_marks)
-            ]
+def _render_date(node: ast.Date) -> dict[str, Any]:
+    return {"type": "date", "attrs": {"timestamp": node.timestamp}}
 
-        case inlines.CodeSpan():
-            text = {"type": "text", "text": node.code}
-            new_marks: list[dict[str, Any]] = [*marks, {"type": "code"}]
-            text["marks"] = _sort_marks(new_marks)
-            return [text]
 
-        case inlines.HardBreak():
-            return [{"type": "hardBreak"}]
+def _render_status(node: ast.Status) -> dict[str, Any]:
+    attrs = _omit_none(
+        {
+            "text": node.text,
+            "color": node.color,
+            "style": node.style,
+        }
+    )
+    return {"type": "status", "attrs": attrs}
 
-        case inlines.SoftBreak():
-            return [{"type": "text", "text": " "}]
 
-        case inlines.Image():
-            # Inline Image → fallback to link mark + alt text
-            link_mark = {"type": "link", "attrs": {"href": node.url}}
-            if node.title:
-                link_mark["attrs"]["title"] = node.title
-            new_marks: list[dict[str, Any]] = [*marks, link_mark]
-            alt_text = node.alt or node.url
-            text = {"type": "text", "text": alt_text}
-            text["marks"] = _sort_marks(new_marks)
-            return [text]
+def _render_inline_card(node: ast.InlineCard) -> dict[str, Any]:
+    attrs = _omit_none({"url": node.url, "data": node.data})
+    return {"type": "inlineCard", "attrs": attrs}
 
-        # Difference-set inline nodes
-        case inlines.Mention():
-            attrs: dict[str, Any] = {"id": node.id}
-            if node.text is not None:
-                attrs["text"] = node.text
-            if node.access_level is not None:
-                attrs["accessLevel"] = node.access_level
-            if node.user_type is not None:
-                attrs["userType"] = node.user_type
-            return [{"type": "mention", "attrs": attrs}]
 
-        case inlines.Emoji():
-            attrs = {"shortName": node.short_name}
-            if node.text is not None:
-                attrs["text"] = node.text
-            if node.id is not None:
-                attrs["id"] = node.id
-            return [{"type": "emoji", "attrs": attrs}]
+def _render_placeholder(node: ast.Placeholder) -> dict[str, Any]:
+    return {"type": "placeholder", "attrs": {"text": node.text}}
 
-        case inlines.Date():
-            return [{"type": "date", "attrs": {"timestamp": node.timestamp}}]
 
-        case inlines.Status():
-            attrs = {"text": node.text, "color": node.color}
-            if node.style is not None:
-                attrs["style"] = node.style
-            return [{"type": "status", "attrs": attrs}]
+def _render_media_inline(node: ast.MediaInline) -> dict[str, Any]:
+    attrs = _omit_none(
+        {
+            "id": node.id,
+            "collection": node.collection,
+            "type": node.type,
+            "alt": node.alt,
+            "width": node.width,
+            "height": node.height,
+            "data": node.data,
+        }
+    )
+    result: dict[str, Any] = {"type": "mediaInline", "attrs": attrs}
+    return _with_marks(result, node.marks)
 
-        case inlines.InlineCard():
-            attrs = {}
-            if node.url is not None:
-                attrs["url"] = node.url
-            if node.data is not None:
-                attrs["data"] = node.data
-            return [{"type": "inlineCard", "attrs": attrs}]
 
-        case inlines.MediaInline():
-            attrs = {}
-            if node.id is not None:
-                attrs["id"] = node.id
-            if node.collection is not None:
-                attrs["collection"] = node.collection
-            attrs["type"] = node.media_type
-            if node.alt is not None:
-                attrs["alt"] = node.alt
-            if node.width is not None:
-                attrs["width"] = node.width
-            if node.height is not None:
-                attrs["height"] = node.height
-            return [{"type": "mediaInline", "attrs": attrs}]
-
-        case inlines.Placeholder():
-            return [{"type": "placeholder", "attrs": {"text": node.text}}]
-
-        case inlines.InlineExtension():
-            return [node.raw]
-
-        # Difference-set wrapping marks
-        case inlines.Underline():
-            new_marks: list[dict[str, Any]] = [*marks, {"type": "underline"}]
-            return [
-                child for c in node.children for child in _render_inline(c, new_marks)
-            ]
-
-        case inlines.TextColor():
-            new_marks: list[dict[str, Any]] = [
-                *marks,
-                {"type": "textColor", "attrs": {"color": node.color}},
-            ]
-            return [
-                child for c in node.children for child in _render_inline(c, new_marks)
-            ]
-
-        case inlines.BackgroundColor():
-            new_marks: list[dict[str, Any]] = [
-                *marks,
-                {"type": "backgroundColor", "attrs": {"color": node.color}},
-            ]
-            return [
-                child for c in node.children for child in _render_inline(c, new_marks)
-            ]
-
-        case inlines.SubSup():
-            new_marks: list[dict[str, Any]] = [
-                *marks,
-                {"type": "subsup", "attrs": {"type": node.type}},
-            ]
-            return [
-                child for c in node.children for child in _render_inline(c, new_marks)
-            ]
-
-        case inlines.Annotation():
-            new_marks: list[dict[str, Any]] = [
-                *marks,
-                {
-                    "type": "annotation",
-                    "attrs": {"id": node.id, "annotationType": node.annotation_type},
-                },
-            ]
-            return [
-                child for c in node.children for child in _render_inline(c, new_marks)
-            ]
+def _render_inline_extension(node: ast.InlineExtension) -> dict[str, Any]:
+    attrs = _omit_none(
+        {
+            "extensionKey": node.extension_key,
+            "extensionType": node.extension_type,
+            "parameters": node.parameters,
+            "text": node.text,
+        }
+    )
+    result: dict[str, Any] = {"type": "inlineExtension", "attrs": attrs}
+    return _with_marks(result, node.marks)
