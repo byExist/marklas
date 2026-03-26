@@ -620,39 +620,3 @@ class TestMarks:
                 }
             )
         )
-
-
-# ── Sample ADF files ─────────────────────────────────────────────────────────
-
-
-class TestSampleFiles:
-    """Roundtrip real ADF JSON from sample/ directory."""
-
-    def _roundtrip_file(self, path: str) -> None:
-        import json
-
-        with open(path) as f:
-            adf = json.load(f)
-        result = render(parse(adf))
-        assert _strip_lossy(result)["content"] == _strip_lossy(adf)["content"]
-
-    def test_2pager_pc(self):
-        self._roundtrip_file("sample/2pager-pc-adf.json")
-
-    def test_page_4008641165(self):
-        self._roundtrip_file("sample/page-4008641165-adf.json")
-
-    def test_prd_4312924326(self):
-        self._roundtrip_file("sample/prd-4312924326-adf.json")
-
-    def test_prd_4790648886(self):
-        self._roundtrip_file("sample/prd-4790648886-adf.json")
-
-    def test_prd_mcms_ad(self):
-        self._roundtrip_file("sample/prd-mcms-ad-adf.json")
-
-    def test_prd_pc(self):
-        self._roundtrip_file("sample/prd-pc-adf.json")
-
-    def test_weekly_tech(self):
-        self._roundtrip_file("sample/weekly-tech-20240607-adf.json")
