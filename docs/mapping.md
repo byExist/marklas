@@ -1,156 +1,568 @@
-# ADF ↔ Markdown Mapping Reference
+# ADF ↔ Markdown Mapping Rules
 
-Marklas converts between ADF (Atlassian Document Format) and Markdown through a union AST. This document describes how each ADF node maps to Markdown.
+Bidirectional conversion between ADF (Atlassian Document Format) and Markdown.
 
-Nodes are categorized as:
+- **MD → ADF**: Convert standard Markdown to ADF.
+- **ADF → MD → ADF**: Render ADF as Markdown and parse it back to restore the original (roundtrip).
 
-- **Shared** — native equivalents exist in both formats; no annotation needed.
-- **Annotated** — ADF-only nodes wrapped in `<!-- adf:tag -->` HTML comments to survive roundtrip.
-- **Placeholder** — raw ADF JSON preserved; editing the placeholder has no effect on roundtrip.
+---
+
+## Common
+
+### Lossy Items
+
+Editor runtime metadata. No effect on document content, structure, or formatting. Not preserved in roundtrip.
+
+| Item | Description |
+| --- | --- |
+| `local_id` (all nodes) | Collaborative editing node identifier (UUID) |
+| `CodeBlock.unique_id` | Collaborative editing code block identifier |
+| `FragmentMark` | Table collaborative editing fragment tracking |
+| `HardBreak.text` | Fixed value `"\n"` |
+| `LinkMark.id` | Atlassian internal link ID |
+| `LinkMark.collection` | Media collection reference |
+| `occurrence_key` (LinkMark, Media, MediaInline) | Duplicate media embed tracking |
+
+### MD-Only Elements (No ADF Equivalent)
+
+| Element | Reason |
+| --- | --- |
+| `SoftBreak` | Never generated from ADF |
+| `HtmlBlock` / `HtmlInline` | Our HTML fallback uses specific patterns. Generic containers unnecessary |
+| `BulletList.tight` / `OrderedList.tight` | Renderer uses fixed format. No ADF counterpart |
+| `ListItem.checked` | ADF uses `TaskItem.state` |
+| `Table.alignments` | ADF tables have no column alignment |
+
+---
+
+## General Rules
+
+### HTML Fallback Structure
+
+ADF nodes without native Markdown representation are rendered as HTML elements.
+
+- `adf="type"` — AST node type identifier. Present on all HTML fallback elements.
+- `params='{...}'` — AST fields preserved as JSON. Keys use ADF's original camelCase. Values are HTML-attribute-escaped (`&` → `&amp;`, `'` → `&#39;`).
+- Standard HTML attributes — serve both viewer rendering and field preservation (`datetime`, `start`, `href`).
+- Content — element body (for display).
+- Nodes with no parameters omit `params`. Nodes fully expressed by standard attributes also omit `params`.
+
+### Block HTML Rendering
+
+All HTML elements in block context use CommonMark type 6 block tags. Open and close tags are separated by blank lines (`\n\n`) so the parser recognizes them as separate tokens and matches pairs.
+
+```
+<tag adf="type" params='{...}'>
+
+content
+
+</tag>
+```
+
+Block tags used: `<aside>`, `<details>`, `<figure>`, `<div>`, `<section>`, `<ul>`, `<figcaption>`.
+
+Void/metadata elements render as a single-line `<div adf="type" params='{...}'></div>`.
+
+### HTML Tag Selection
+
+Block tags must be CommonMark type 6 tags (auto-recognized as block HTML by CommonMark parsers).
+
+Prefer semantic tags when the meaning fits (`<aside>` → Panel, `<details>` → Expand, `<time>` → Date). Use generic containers `<div>` (block) or `<span>` (inline) otherwise.
+
+Inline tags: `<span>`, `<time>`, `<a>`, `<mark>`, `<u>`, `<sub>`, `<sup>`.
+
+### Rendering Contexts
+
+| Context | Location | Behavior |
+| --- | --- | --- |
+| Block | Document, Blockquote, ListItem, Panel, Expand, etc. | Native MD or block HTML. Blocks separated by `\n\n` |
+| Cell | GFM table cell (between `\|`) | All blocks → inline HTML |
+| Inline | Inside Paragraph, Heading, TaskItem, etc. | Native MD marks or inline HTML |
+
+### Cell Common Rules
+
+- All blocks render as inline HTML tags (no `\n\n` separation — tags themselves are boundaries).
+- Inline rendering is identical to inline context, except `HardBreak` → `<br>` instead of `\`.
+- Pipe characters in cell content are escaped: `|` → `\|`.
+
+### Block Marks
+
+Marks attached to block nodes. In block context, rendered as `<div adf="marks" params='{...}'></div>` before the block. In cell context, merged into the block element's `params`.
+
+| Mark | Attached to | params keys |
+| --- | --- | --- |
+| `AlignmentMark` | Paragraph, Heading | `"align": "center"` |
+| `IndentationMark` | Paragraph, Heading | `"indent": 2` |
+| `BreakoutMark` | CodeBlock, Expand, LayoutSection | `"breakoutMode": "wide"` |
+| `DataConsumerMark` | Various | `"dataConsumerSources": [...]` |
+| `BorderMark` | Media, MediaInline | `"borderSize": 1, "borderColor": "#c0"` |
+
+### Inline Marks Common Rules
+
+> Spaces adjacent to delimiters (`**`, `*`, `~~`) violate CommonMark flanking rules.
+> Leading/trailing spaces in mark content are moved outside the delimiter: `** hello **` → ` **hello** `.
+
+Mark application order (innermost → outermost):
+1. `CodeMark` — `code` (no MD escape) or escaped text
+2. Native MD marks — `StrongMark`, `EmMark`, `StrikeMark`
+3. `LinkMark` — `[text](url)`
+4. HTML marks — `UnderlineMark`, `TextColorMark`, `BackgroundColorMark`, `SubSupMark`, `AnnotationMark`
+
+### Plain Mode
+
+`render(doc, plain=True)` — strips roundtrip metadata that is meaningless in plain Markdown.
+
+- `adf` and `params` attributes removed.
+- Void/metadata `<div>` elements (marks, table, cell) omitted.
+- Tag stripping (content only, all other tags preserved):
+
+| Tag | AST elements |
+| --- | --- |
+| `<span>` | Mention, Emoji, Status, TextColor, BgColor, Placeholder, MediaInline, InlineExtension |
+| `<time>` | Date |
+| `<div>` | MediaGroup, BlockCard, EmbedCard, LayoutColumn, void/metadata |
+| `<section>` | LayoutSection |
+| `<mark>` | AnnotationMark (comment metadata) |
+
+### Roundtrip Parsing
+
+Restore the original AST from renderer-generated Markdown.
+
+- HTML elements with `adf` attribute → restore corresponding AST node. Extract fields from `params` JSON.
+- `<div adf="marks">` → attach block marks to the next block.
+- `<div adf="table">` → attach metadata to the next GFM table.
+- `<div adf="cell">` → attach metadata to the cell.
+- `params` values are HTML-unescaped (`&amp;` → `&`, `&#39;` → `'`) then JSON-parsed.
+- Native MD elements convert directly to corresponding AST nodes.
+
+### Raw MD Parsing
+
+Convert user-written standard Markdown (without `adf` attributes) to ADF AST.
+
+| MD element | AST node |
+| --- | --- |
+| Text | `Paragraph > Text` |
+| `# ~ ######` | `Heading` |
+| `` ``` `` | `CodeBlock` |
+| `> ` | `Blockquote` |
+| `- ` / `* ` | `BulletList > ListItem` |
+| `N. ` | `OrderedList > ListItem` |
+| `---` / `***` | `Rule` |
+| `- [ ]` / `- [x]` | `TaskList > TaskItem` |
+| GFM table | `Table` (first row = `TableHeader`, rest = `TableCell`) |
+| `**text**` | `Text` + `StrongMark` |
+| `*text*` | `Text` + `EmMark` |
+| `~~text~~` | `Text` + `StrikeMark` |
+| `` `code` `` | `Text` + `CodeMark` |
+| `[text](url "title")` | `Text` + `LinkMark` |
+| `![alt](url)` (solo paragraph) | `MediaSingle > Media(type="external", url, alt)` |
+| `![alt](url)` (inline) | Unsupported (ADF has no inline external image) |
+| `SoftBreak` | Treated as space |
+| `adf`-less HTML element | Ignored (including content) |
+
+---
 
 ## Block Nodes
 
-### Shared
+### Paragraph
 
-| ADF Node | Markdown | Notes |
+**Block**: Plain text. Empty Paragraph renders as `&nbsp;`.
+
+**Cell**: `<p>text</p>`. Empty Paragraph → `<p></p>`. Single-Paragraph cell renders as bare text (no `<p>` tag).
+
+**Parsing**: `&nbsp;` / `\xa0` → empty `Paragraph(content=[])`.
+
+### Heading
+
+**Block**: `# ~ ######` (level 1–6).
+
+**Cell**: `<h1> ~ <h6>`.
+
+### CodeBlock
+
+**Block**: `` ```lang\ncode\n``` ``. If code contains `` ``` ``, use a longer fence.
+
+**Cell**: `<code>code</code>`. Newlines in code → `<br>`. Language → `params='{"language":"python"}'`.
+
+### Blockquote
+
+**Block**: `> ` prefix per line. Blank lines within use bare `>`.
+
+**Cell**: `<blockquote>content</blockquote>`.
+
+### BulletList
+
+**Block**: `- ` prefix. Nested lists indented.
+
+**Cell**: `<ul><li>content</li></ul>`. Single-Paragraph items → bare text in `<li>`.
+
+### OrderedList
+
+**Block**: `N. ` prefix (sequential numbering from `order`).
+
+**Cell**: `<ol start="N"><li>content</li></ol>`. `start` omitted when 1.
+
+**Parsing**: `start` = 1 → stored as `order=None`.
+
+### Rule
+
+**Block**: `---`.
+
+**Cell**: `<hr>`.
+
+### Table
+
+GFM table with metadata elements.
+
+**Table metadata**: `<div adf="table" params='{...}'></div>` before the GFM table. Rendered only when non-default attributes exist.
+
+| params key | Notes |
+| --- | --- |
+| `header` | `"none"` / `"column"` / `"both"`. Omitted = `"row"` (GFM default) |
+| `layout` | |
+| `displayMode` | |
+| `isNumberColumnEnabled` | |
+| `width` | |
+| `colwidths` | Column width array extracted from first row's cells |
+
+**Header modes**:
+
+| Mode | Meaning | GFM first row |
 | --- | --- | --- |
-| `paragraph` | Plain text line | Annotated only when `alignment` or `indentation` is set. Empty paragraph annotated as `<!-- adf:paragraph -->` (plain mode: empty line). |
-| `heading` | `## Text` (`#` × level) | Annotated only when `alignment` or `indentation` is set |
-| `codeBlock` | ` ```lang ` fenced block | `language` attr maps to info string |
-| `blockquote` | `> quoted text` | Nested blocks rendered inside |
-| `bulletList` | `- item` | `- [x]`/`- [ ]` when `ListItem.checked` is set |
-| `orderedList` | `1. item` | `start` attr preserved |
-| `rule` | `---` | AST: `ThematicBreak` |
-| `table` | GFM table | Annotated when table-level or cell-level attrs exist (`layout`, `width`, `displayMode`, `isNumberColumnEnabled`, `colwidth`, `background`, `colspan`, `rowspan`, header cells) |
+| `"row"` (default) | First row is header | Content present |
+| `"none"` | No header | Empty filler cells |
+| `"column"` | First column is header | Empty filler cells |
+| `"both"` | First row + first column | Content present |
 
-### Annotated (ADF-only)
+**Cell metadata**: `<div adf="cell" params='{...}'></div>` before cell content. Rendered only for cells with `colspan > 1`, `rowspan > 1`, or `background`.
 
-These nodes have no native Markdown equivalent. They are wrapped in annotation comments with a readable fallback inside.
+**colspan / rowspan**: Merged cells produce empty filler cells to maintain the GFM grid. Parser infers filler positions from `colspan`/`rowspan` values.
 
-| ADF Node | Annotation Tag | Fallback Content | Attrs |
-| --- | --- | --- | --- |
-| `panel` | `panel` | Inner blocks as Markdown | `panelType`, `panelIcon`, `panelIconId`, `panelIconText`, `panelColor` |
-| `expand` | `expand` | Inner blocks as Markdown | `title` |
-| `nestedExpand` | `nestedExpand` | Inner blocks as Markdown | `title` |
-| `taskList` | `taskList` | `- [x]` / `- [ ]` checklist | (none) |
-| `decisionList` | `decisionList` | `- [x]` / `- [ ]` checklist | (none) |
-| `layoutSection` | `layoutSection` | Nested `layoutColumn` annotations | (none) |
-| `layoutColumn` | `layoutColumn` | Inner blocks as Markdown | `width` |
-| `mediaSingle` | `mediaSingle` | `![alt](url)` or `` `📎 attachment` `` | `layout`, `width`, `widthType`, `media` |
-| `mediaGroup` | `mediaGroup` | List of media fallbacks | `mediaList` |
-| `blockCard` | `blockCard` | `[url](url)` or `` `🔗 card link` `` | `url`, `data` |
-| `embedCard` | `embedCard` | `[url](url)` | `url`, `layout`, `width`, `originalWidth`, `originalHeight` |
+**Example**:
 
-### Placeholder-only (no editable content)
+```markdown
+<!-- Simple table: no metadata -->
 
-These preserve raw ADF JSON and render a short placeholder. Editing the placeholder has no effect on roundtrip.
+| Name | Role |
+| --- | --- |
+| Alice | Dev |
 
-| ADF Node | Annotation Tag | Fallback |
+<!-- No header + table attrs -->
+
+<div adf="table" params='{"header":"none","layout":"wide"}'></div>
+
+|     |     |
+| --- | --- |
+| A   | B   |
+
+<!-- Row+column header + colwidths -->
+
+<div adf="table" params='{"header":"both","colwidths":[100,200,150]}'></div>
+
+|       | Sub A | Sub B |
+| ----- | ----- | ----- |
+| Alice | 90    | 85    |
+
+<!-- Cell merge -->
+
+| <div adf="cell" params='{"colspan":2}'></div>Merged Header |  | C |
 | --- | --- | --- |
-| `extension` | `extension` | `` `⚙ {extensionKey}` `` or `` `⚙ Confluence macro` `` |
-| `bodiedExtension` | `bodiedExtension` | `` `⚙ {extensionKey}` `` or `` `⚙ Confluence macro` `` |
-| `syncBlock` | `syncBlock` | `` `⚙ {extensionKey}` `` or `` `⚙ Confluence macro` `` |
-| `bodiedSyncBlock` | `bodiedSyncBlock` | `` `⚙ {extensionKey}` `` or `` `⚙ Confluence macro` `` |
-
-### Annotation Format
-
-Block annotations use newline separators:
-
-```markdown
-<!-- adf:panel {"panelType": "info"} -->
-This is the **readable fallback** content.
-<!-- /adf:panel -->
+| A | <div adf="cell" params='{"rowspan":2,"background":"#ff0"}'></div>Vertical | C |
+| D |  | F |
 ```
 
-Block annotations without attrs:
+### Panel
 
-```markdown
-<!-- adf:taskList -->
-- [x] done
-- [ ] todo
-<!-- /adf:taskList -->
+```
+<aside adf="panel" params='{"panelType":"info","panelIcon":"...","panelIconId":"...","panelIconText":"...","panelColor":"..."}'>
+
+content
+
+</aside>
 ```
 
-Inline annotations use space separators:
+**Cell**: `<aside ...>content</aside>` (inline, no `\n\n`). Blocks joined without separator.
 
-```markdown
-<!-- adf:mention {"id": "abc123", "text": "@John"} --> `@John` <!-- /adf:mention -->
+**Parsing**: `panelType` defaults to `"info"`.
+
+### Expand
+
+```
+<details adf="expand">
+
+<summary>title</summary>
+
+content
+
+</details>
 ```
 
-When `annotate=False`, annotation wrappers are stripped and only fallback content remains.
+- `title` → extracted from `<summary>`, not stored in params. No title → `<summary>` omitted.
+- Supports `BreakoutMark`.
+
+### NestedExpand
+
+Same format as Expand. Distinguished by `adf="nestedExpand"`.
+
+```
+<details adf="nestedExpand">
+
+<summary>title</summary>
+
+content
+
+</details>
+```
+
+### TaskList / TaskItem
+
+**Block (native MD)**:
+
+```markdown
+- [ ] todo text
+- [x] done text
+```
+
+`state`: `TODO` → `[ ]`, `DONE` → `[x]`.
+
+**Cell**: `<ul adf="taskList"><li adf="taskItem" params='{"state":"TODO"}'>text</li></ul>`.
+
+**BlockTaskItem**: TaskItem variant containing block content (Paragraph, Extension). Rendered as a list item with nested blocks (indented continuation).
+
+**Nested TaskList**: Indented under parent item.
+
+**Parsing (raw MD)**: `- [ ]` / `- [x]` → `TaskList > TaskItem`. 2+ block children in a task item → `BlockTaskItem`.
+
+### DecisionList / DecisionItem
+
+```
+<ul adf="decisionList">
+
+<li adf="decisionItem" params='{"state":"DECIDED"}'>text</li>
+
+</ul>
+```
+
+### MediaSingle
+
+```html
+<figure adf="mediaSingle" params='{"layout":"...","width":...,"widthType":"...","linkHref":"...","linkTitle":"..."}'>
+
+<span adf="media" params='{"type":"...","id":"...","collection":"...","alt":"...","width":...,"height":...}'>📎 fallback</span>
+<figcaption adf="caption">caption text</figcaption>
+
+</figure>
+```
+
+- Fallback text: `📎 {alt or "attachment"} ({id})`.
+- `type="external"` → `url` included in media params.
+- `Caption` → `<figcaption adf="caption">`. Omitted when absent.
+- `Media.marks`: LinkMark → `<a>` wrapping the `<span>`. AnnotationMark → `<mark>` wrapping. BorderMark → merged into media params.
+- `MediaSingle.marks` (LinkMark only) → merged into figure params as `linkHref`, `linkTitle`.
+
+### MediaGroup
+
+```html
+<div adf="mediaGroup">
+
+<span adf="media" params='{...}'>📎 fallback</span>
+
+</div>
+```
+
+Media params same as MediaSingle.
+
+### BlockCard
+
+```
+<div adf="blockCard" params='{"url":"...","layout":"...","width":...,"data":{...},"datasource":{...}}'>
+
+url
+
+</div>
+```
+
+- `url` → in params.
+- `data`/`datasource` included in params when present.
+
+### EmbedCard
+
+```
+<div adf="embedCard" params='{"url":"...","layout":"...","width":...,"originalHeight":...,"originalWidth":...}'>
+
+url
+
+</div>
+```
+
+- `url` → in params.
+
+### LayoutSection / LayoutColumn
+
+```html
+<section adf="layoutSection">
+
+<div adf="layoutColumn" params='{"width":50}'>
+
+content
+
+</div>
+
+<div adf="layoutColumn" params='{"width":50}'>
+
+content
+
+</div>
+
+</section>
+```
+
+- Supports `BreakoutMark` on LayoutSection.
+
+### Extension
+
+Void element (no content). All fields stored in params.
+
+`<div adf="extension" params='{"extensionKey":"...","extensionType":"...","parameters":{...},"text":"...","layout":"..."}'></div>`
+
+- Supports block marks (AlignmentMark, etc.).
+
+### BodiedExtension
+
+Void element. Content serialized as ADF JSON array in params.
+
+`<div adf="bodiedExtension" params='{"extensionKey":"...","extensionType":"...","content":[...],"parameters":{...},"text":"...","layout":"..."}'></div>`
+
+### SyncBlock
+
+Void element.
+
+`<div adf="syncBlock" params='{"resourceId":"..."}'></div>`
+
+- Supports block marks.
+
+### BodiedSyncBlock
+
+Void element. Content serialized as ADF JSON array in params.
+
+`<div adf="bodiedSyncBlock" params='{"resourceId":"...","content":[...]}'></div>`
+
+---
 
 ## Inline Nodes
 
-### Shared
+### Text
 
-| ADF Node | Markdown |
-| --- | --- |
-| `text` | Plain text |
-| `strong` (bold mark) | `**text**` |
-| `em` (italic mark) | `*text*` |
-| `strike` (strikethrough mark) | `~~text~~` |
-| `link` (link mark) | `[text](url)` |
-| `image` | `![alt](url)` |
-| `code` (code mark) | `` `code` `` |
-| `hardBreak` | `\` + newline |
-| `softBreak` | newline (no `\`) |
+Plain text. Markdown special characters escaped: `\`, `*`, `_`, `[`, `]`, `` ` ``, `~`.
 
-### Annotated (ADF-only)
+### HardBreak
 
-| ADF Node | Annotation Tag | Fallback | Attrs |
-| --- | --- | --- | --- |
-| `mention` | `mention` | `` `@name` `` (or `` `@id` `` if no text) | `id`, `text`, `accessLevel`, `userType` |
-| `emoji` | `emoji` | Emoji char or `:shortName:` | `shortName`, `text`, `id` |
-| `date` | `date` | `` `YYYY-MM-DD` `` | `timestamp` |
-| `status` | `status` | `` `STATUS_TEXT` `` | `text`, `color`, `style` |
-| `inlineCard` | `inlineCard` | `[url](url)` or `` `🔗 card link` `` | `url`, `data` |
-| `mediaInline` | `mediaInline` | `` `📎 attachment` `` | `id`, `collection`, `mediaType`, `alt`, `width`, `height` |
-| `underline` (mark) | `underline` | Plain text (no decoration) | (none) |
-| `textColor` (mark) | `textColor` | Plain text | `color` |
-| `backgroundColor` (mark) | `backgroundColor` | Plain text | `color` |
-| `subsup` (mark) | `subsup` | Plain text | `type` (`sub`/`sup`) |
-| `annotation` (mark) | `annotation` | Plain text | `id`, `annotationType` |
+**Inline**: `\` + newline.
 
-### Placeholder-only (inline)
+**Cell**: `<br>`.
 
-| ADF Node | Annotation Tag | Fallback |
-| --- | --- | --- |
-| `inlineExtension` | `inlineExtension` | `` `⚙ {extensionKey}` `` or `` `⚙ Confluence macro` `` |
+**Note**: Trailing HardBreak (end of paragraph) is preserved.
 
-### Dropped (inline)
+### Mention
 
-| ADF Node | Behavior |
-| --- | --- |
-| `placeholder` | Rendered as empty string (silently dropped) |
+`<span adf="mention" params='{"id":"...","accessLevel":"...","userType":"..."}'>@text</span>`
 
-## Table Cell Substitutions
+- Display: `node.text or f"@{node.id}"`. ADF `text` field already includes `@`.
+- **Parsing**: `@` prefix stripped from display text → `text` field stores name without `@`. If display equals `@{id}`, `text` is `None`.
 
-GFM tables require each cell to be a single line. Block nodes inside table cells are converted to inline HTML:
+### Emoji
 
-| ADF Node (in cell) | HTML Representation | Example |
-| --- | --- | --- |
-| `paragraph` | Plain text (no tag) | `cell text` |
-| `bulletList` | `<ul><li>…</li></ul>` | `<ul><li>item 1</li><li>item 2</li></ul>` |
-| `orderedList` | `<ol><li>…</li></ol>` | `<ol><li>first</li><li>second</li></ol>` |
-| `blockquote` | `<blockquote>…</blockquote>` | `<blockquote>quoted</blockquote>` |
-| `heading` | `<h1>`–`<h6>` | `<h3>Title</h3>` |
-| `codeBlock` | `<code>…</code>` | `<code>x = 1</code>` |
-| `rule` | `<hr>` | `<hr>` |
-| `taskList` | `<ul><li>[x] …</li></ul>` | `<ul><li>[x] done</li><li>[ ] todo</li></ul>` |
-| `decisionList` | `<ul><li>[x] …</li></ul>` | `<ul><li>[x] decided</li></ul>` |
+`<span adf="emoji" params='{"shortName":":name:","id":"..."}'>text</span>`
 
-### Cell-specific conventions
+- Display: `node.text or node.short_name`.
+- **Parsing**: If display equals `shortName`, `text` is `None`.
 
-| Element | Representation | Notes |
-| --- | --- | --- |
-| Hard break (within paragraph) | `<br/>` | Self-closing slash distinguishes from block separator |
-| Block separator (between blocks) | `<br>` | No self-closing slash; joins multiple blocks in one cell |
-| Pipe character | `\|` | Escaped to avoid breaking column structure |
+### Date
 
-### Cell-level ADF-only nodes
+`<time adf="date" datetime="1705276800000">2024-01-15</time>`
 
-Nodes like `panel`, `expand`, `nestedExpand`, `mediaSingle`, etc. inside table cells use inline annotations wrapping HTML fallbacks (content wrapped in `<blockquote>`):
+- `timestamp` → `datetime` standard attribute (Unix millis string, as-is).
+- Display: `YYYY-MM-DD` format (for display only; parser restores from `datetime`).
 
-```markdown
-<!-- adf:panel {"panelType": "info"} --><blockquote>content</blockquote><!-- /adf:panel -->
-```
+### Status
+
+`<span adf="status" params='{"color":"...","style":"..."}'>TEXT</span>`
+
+- `text` → extracted from content, not stored in params.
+
+### InlineCard
+
+`<a adf="inlineCard" href="...">url</a>`
+
+- `url` → `href` standard attribute.
+- `data` dict (when present) → `params`.
+
+### Placeholder
+
+`<span adf="placeholder">text</span>`
+
+### MediaInline
+
+`<span adf="mediaInline" params='{"id":"...","collection":"...","type":"...","alt":"...","width":...,"height":...}'>📎 fallback</span>`
+
+- Fallback text: same as Media (`📎 {alt or "attachment"} ({id})`).
+- `data` dict (when present) → included in params.
+- `marks`: LinkMark → `<a>` wrapper. AnnotationMark → `<mark>` wrapper. BorderMark → merged into params.
+
+### InlineExtension
+
+`<span adf="inlineExtension" params='{"extensionKey":"...","extensionType":"...","parameters":{...},"text":"..."}'></span>`
+
+Empty content (void inline).
+
+---
+
+## Marks
+
+### StrongMark
+
+`**text**`
+
+### EmMark
+
+`*text*`
+
+### StrikeMark
+
+`~~text~~`
+
+### CodeMark
+
+`` `code` ``
+
+If code contains backticks, use a longer backtick fence: ``` `` code with ` `` ```.
+
+### LinkMark
+
+`[text](url "title")`
+
+- `title` included only when present.
+
+### UnderlineMark
+
+`<u adf="underline">text</u>`
+
+### TextColorMark
+
+`<span adf="textColor" params='{"color":"..."}'>text</span>`
+
+### BackgroundColorMark
+
+`<span adf="bgColor" params='{"color":"..."}'>text</span>`
+
+### SubSupMark
+
+`<sub adf="subSup">text</sub>` / `<sup adf="subSup">text</sup>`
+
+- HTML tag determined by `type` field (`"sub"` or `"sup"`).
+
+### AnnotationMark
+
+`<mark adf="annotation" params='{"id":"..."}'>text</mark>`
+
+- `annotationType` omitted from params. The schema only defines `"inlineComment"`, so the parser restores it as default.

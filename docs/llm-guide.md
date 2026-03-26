@@ -1,77 +1,103 @@
 ---
-description: "Rules for editing Markdown produced by marklas (ADF↔Markdown converter). Use when reading or modifying Confluence/Jira content converted to Markdown, or when the document contains <!-- adf:... --> annotation comments."
+description: "Editing rules for marklas Markdown output (ADF↔Markdown). Activate when working with marklas, Confluence/Jira Markdown, or documents containing HTML elements with adf= attributes."
 user-invocable: false
 ---
 
 # Marklas Markdown Editing Guide
 
-Marklas converts Atlassian Document Format (ADF) to Markdown. The output may contain HTML comment annotations (`<!-- adf:... -->`) that preserve ADF-specific features. These annotations are invisible when rendered but are required for lossless roundtrip back to ADF.
+Marklas converts Atlassian Document Format (ADF) to Markdown. The output uses standard Markdown wherever possible and falls back to HTML elements for ADF-specific features. This guide explains the format so you can confidently read and edit it.
 
-## Annotations
+For the complete rendering format of every ADF node, see the [mapping rules](https://github.com/byExist/marklas/blob/master/docs/mapping.md).
 
-- **Do NOT delete, modify, or reorder** `<!-- adf:tag -->...<!-- /adf:tag -->` comment pairs.
-- **Do NOT create new annotations.** Only marklas should generate them.
-- **Edit only the fallback content** between the opening and closing comments.
-- **JSON attributes** inside annotation comments (e.g., `{"panelType": "info"}`) must not be changed.
+## How the Format Works
 
-Block annotation example:
+Standard Markdown elements (paragraphs, headings, bold, lists, code blocks, etc.) work exactly as you'd expect. Edit them normally.
 
-```markdown
-<!-- adf:panel {"panelType": "info"} -->
-Old content here. ← edit this part
-<!-- /adf:panel -->
-```
-
-Inline annotation example (note the spaces around content):
+ADF-only features are represented as HTML elements with an `adf` attribute that identifies the node type, and an optional `params` attribute that stores metadata as JSON:
 
 ```markdown
-<!-- adf:mention {"id": "abc123", "text": "@John"} --> `@John` <!-- /adf:mention -->
+<aside adf="panel" params='{"panelType":"info"}'>
+
+This is a panel. Edit this content freely.
+
+</aside>
 ```
-
-## Table Cells
-
-GFM tables require each cell to be a single line. Block-level content inside table cells uses inline HTML — NOT standard Markdown syntax.
-
-| Block Type | Use This                        | NOT This       |
-| ---------- | ------------------------------- | -------------- |
-| List       | `<ul><li>item</li></ul>`        | `- item`       |
-| Heading    | `<h3>Title</h3>`                | `### Title`    |
-| Code       | `<code>x = 1</code>`            | ` ```code``` ` |
-| Quote      | `<blockquote>text</blockquote>` | `> text`       |
-| Rule       | `<hr>`                          | `---`          |
-
-### Cell separators
-
-- **`<br>`** (no slash) separates blocks within a cell.
-- **`<br/>`** (self-closing) is a hard break within a paragraph.
-- **Pipe characters** in cell content must be escaped as `\|`.
-
-### Adding content to cells
-
-To add a list item, insert `<li>new item</li>` inside the existing `<ul>` tag:
 
 ```markdown
-| Items | <ul><li>First</li><li>Second</li><li>New item</li></ul> |
+Text with <span adf="mention" params='{"id":"abc123"}'>@John</span> inline.
 ```
 
-## Plain Text Editing
+The `adf` and `params` attributes are roundtrip metadata — they ensure the document converts back to ADF without loss. The content inside the element is what readers see.
 
-Standard Markdown elements (paragraphs, headings, bold, italic, links, images, code blocks, blockquotes, lists) follow normal Markdown rules.
+### Block Elements
 
-**Do not introduce raw HTML outside of table cells.** It will be dropped on conversion to ADF.
+Block-level HTML elements use blank lines to separate the open/close tags from inner content:
 
-## Non-editable Content
+```markdown
+<details adf="expand">
 
-These placeholders reference Confluence macros or attachments. Editing them has no effect on roundtrip:
+<summary>Click to expand</summary>
 
-- `` `⚙ Confluence macro` `` or `` `⚙ {extensionKey}` `` — Confluence macro (extension, bodiedExtension, syncBlock, bodiedSyncBlock, inlineExtension)
-- `` `📎 attachment` `` — file attachment (mediaSingle, mediaGroup, mediaInline)
-- `` `🔗 card link` `` — smart link with data-only blockCard/inlineCard
+Content inside the expand. Standard Markdown works here.
 
-## Summary of Restrictions
+</details>
+```
 
-- Do not add Markdown block syntax (lists, headings, code fences) inside table cells.
-- Do not remove or unbalance annotation comment pairs.
-- Do not edit placeholder content.
-- Do not add HTML comments that look like annotations (`<!-- adf:... -->`).
-- Do not introduce raw HTML outside of table cells.
+Common block elements:
+
+| Element | Tag | Editable parts |
+| --- | --- | --- |
+| Panel | `<aside>` | Inner content |
+| Expand | `<details>` | `<summary>` title + inner content |
+| Layout | `<section>` > `<div>` columns | Content within each column |
+| Decision list | `<ul>` > `<li>` items | Item text |
+
+### Void/Metadata Elements
+
+Some `<div>` elements are single-line and carry metadata only. They have no editable content:
+
+```markdown
+<div adf="table" params='{"header":"none","layout":"wide"}'></div>
+
+<div adf="extension" params='{"extensionKey":"...","extensionType":"..."}'></div>
+```
+
+### Non-editable Content
+
+Elements with `📎` (media attachments) or URL-only display text (smart links) are references to external resources. Their display content is a fallback — the actual data lives in `params`.
+
+## Table Editing
+
+### Cell content rules
+
+GFM table cells cannot contain multi-line content, so block-level content uses inline HTML:
+
+```markdown
+| Plain text cell | <ul><li>List item A</li><li>List item B</li></ul> |
+```
+
+- Simple text cells need no wrapping tags.
+- Multi-block cells wrap each block in HTML: `<p>`, `<ul>`, `<h3>`, `<code>`, `<blockquote>`, `<hr>`.
+- Pipe characters in content must be escaped: `\|`.
+- Hard breaks use `<br>`.
+
+### Cell metadata
+
+Cells with merge or background have a `<div adf="cell">` prefix. Preserve it when editing:
+
+```markdown
+| <div adf="cell" params='{"colspan":2}'></div>Merged heading |  | C |
+```
+
+The empty cell next to a merged cell is a filler — it maintains the grid structure.
+
+### Table metadata
+
+A `<div adf="table">` before a GFM table carries table-level settings. When `header` is `"none"` or `"column"`, the first GFM row is a filler (empty cells) — real data starts from the second row after the separator.
+
+## Restrictions
+
+- Preserve `adf` and `params` attributes as-is — they are roundtrip metadata.
+- Use inline HTML (not Markdown block syntax) for block content inside table cells.
+- Do not introduce raw HTML without `adf` attributes outside of table cells — it will be ignored during ADF conversion.
+- Do not create new elements with `adf` attributes — only marklas should generate them.

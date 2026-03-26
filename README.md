@@ -11,6 +11,10 @@
   Bidirectional converter between <b>Markdown</b> and <b>Atlassian Document Format (ADF)</b>.
 </p>
 
+<p align="center">
+  <a href="README.ko.md">한국어</a>
+</p>
+
 ---
 
 ## Why Marklas?
@@ -21,17 +25,19 @@ Confluence and Jira store documents in [ADF](https://developer.atlassian.com/clo
 Markdown ⇄ Union AST ⇄ ADF
 ```
 
-ADF-only features (panels, mentions, colored text, etc.) are preserved as invisible HTML comment annotations, so the full structure survives a roundtrip:
+ADF-only features (panels, mentions, colored text, etc.) are preserved as HTML elements with `adf` attributes, so the full structure survives a roundtrip:
 
 ```markdown
-<!-- adf:panel {"panelType": "info"} -->
-This is an info panel — readable as plain Markdown.
-<!-- /adf:panel -->
+<aside adf="panel" params='{"panelType":"info"}'>
 
-User <!-- adf:mention {"id": "abc123", "text": "@John"} -->`@John`<!-- /adf:mention --> approved this.
+This is an info panel — readable as plain Markdown.
+
+</aside>
+
+User <span adf="mention" params='{"id":"abc123"}'>@John</span> approved this.
 ```
 
-Pass `annotate=False` to strip annotations and get clean Markdown.
+Pass `plain=True` to strip roundtrip metadata and get clean Markdown for LLM consumption.
 
 ## Installation
 
@@ -47,11 +53,11 @@ from marklas import to_adf, to_md
 # Markdown → ADF
 adf = to_adf("## Hello\n\nThis is **bold**.")
 
-# ADF → Markdown (with annotations for lossless roundtrip)
+# ADF → Markdown (with roundtrip metadata)
 md = to_md(adf_document)
 
-# ADF → Markdown (clean, no annotations)
-clean_md = to_md(adf_document, annotate=False)
+# ADF → Markdown (clean, no metadata)
+plain_md = to_md(adf_document, plain=True)
 
 # Roundtrip
 original_adf = fetch_confluence_page()
@@ -63,19 +69,17 @@ restored_adf = to_adf(markdown)         # push back — structure preserved
 
 Markdown is significantly more compact than ADF JSON — critical for LLM-based workflows where every token counts.
 
-| | ADF JSON | Markdown (annotated) | Markdown (plain) |
+| | ADF JSON | Markdown | Markdown (plain) |
 | --- | --- | --- | --- |
-| Tokens | 243,217 | 81,246 | 41,734 |
-| **Reduction** | — | **3.0x** | **5.8x** |
+| Tokens | 243,217 | 76,332 | 47,794 |
+| **Reduction** | — | **3.2x** | **5.1x** |
 
 *Measured on 7 real Confluence pages (pretty-printed JSON) using GPT-4o tokenizer (tiktoken).*
 
 ## Documentation
 
-- [ADF ↔ Markdown Mapping Reference](docs/mapping.md) — how each ADF node maps to Markdown
-- [LLM Editing Guide](docs/llm-guide.md) — rules for LLMs/MCP servers editing marklas output
-
-> **Note**: Table cells use inline HTML (`<ul>`, `<code>`, `<br>`) for block-level content. Raw HTML and other Markdown-only constructs are dropped during ADF conversion. See the mapping reference for details.
+- [Mapping Reference](docs/mapping.md) — how each ADF node maps to Markdown
+- [LLM Editing Guide](docs/llm-guide.md) — guide for LLMs editing marklas output
 
 ## Development
 
