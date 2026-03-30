@@ -19,10 +19,10 @@
 
 ## Why Marklas?
 
-Confluence and Jira store documents in [ADF](https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/) — a verbose JSON structure. Marklas converts it to readable Markdown and back through a union AST:
+Confluence and Jira store documents in [ADF](https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/) — a verbose JSON structure. Marklas converts it to readable Markdown and back:
 
 ```
-Markdown ⇄ Union AST ⇄ ADF
+Markdown ⇄ ADF
 ```
 
 ADF-only features (panels, mentions, colored text, etc.) are preserved as HTML elements with `adf` attributes, so the full structure survives a roundtrip:

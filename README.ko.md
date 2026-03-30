@@ -22,7 +22,7 @@
 Confluence와 Jira는 문서를 [ADF](https://developer.atlassian.com/cloud/jira/platform/apis/document/structure/)로 저장합니다 — 장황한 JSON 구조입니다. Marklas는 이를 읽기 쉬운 Markdown으로 변환하고, 다시 ADF로 복원합니다:
 
 ```
-Markdown ⇄ Union AST ⇄ ADF
+Markdown ⇄ ADF
 ```
 
 ADF 전용 기능(패널, 멘션, 텍스트 색상 등)은 `adf` 속성이 있는 HTML 요소로 보존되어 라운드트립이 가능합니다:
