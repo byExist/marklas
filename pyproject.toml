@@ -8,6 +8,15 @@ authors = [
     { name = "byExist", email = "jongbeom.kwon@gmail.com" }
 ]
 requires-python = ">=3.11"
+keywords = [
+    "markdown",
+    "adf",
+    "atlassian",
+    "jira",
+    "confluence",
+    "converter",
+    "atlassian-document-format",
+]
 classifiers = [
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
@@ -19,6 +28,12 @@ classifiers = [
 dependencies = [
     "mistune>=3.2",
 ]
+
+[project.urls]
+Homepage = "https://github.com/byExist/marklas"
+Repository = "https://github.com/byExist/marklas"
+Issues = "https://github.com/byExist/marklas/issues"
+Changelog = "https://github.com/byExist/marklas/releases"
 
 [project.optional-dependencies]
 dev = [
