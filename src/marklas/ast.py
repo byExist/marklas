@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
-from dataclasses import dataclass, field
-from typing import Any, Literal, TypeAlias, Union
+from collections.abc import Iterator, Sequence
+from dataclasses import dataclass, field, fields
+from typing import Any, Literal, TypeAlias, TypeVar, Union, overload
 
 
 # ── Base ──────────────────────────────────────────────────────────────────────
@@ -658,3 +658,33 @@ DocContent: TypeAlias = Union[
     SyncBlock,
     BodiedSyncBlock,
 ]
+
+
+# ── Tree walk ────────────────────────────────────────────────────────────────
+
+
+_N = TypeVar("_N", bound=Node)
+
+
+def _walk(node: Node, node_type: type[Node] | None) -> Iterator[Node]:
+    for f in fields(node):
+        value: Any = getattr(node, f.name)
+        if not isinstance(value, Sequence) or isinstance(value, str):
+            continue
+        for child in value:  # type: ignore
+            if not isinstance(child, Node):
+                continue
+            if node_type is None or isinstance(child, node_type):
+                yield child
+            yield from _walk(child, node_type)
+
+
+@overload
+def walk(node: Node) -> Iterator[Node]: ...
+@overload
+def walk(node: Node, node_type: type[_N]) -> Iterator[_N]: ...
+
+
+def walk(node: Node, node_type: type[Node] | None = None) -> Iterator[Node]:
+    """Yield all descendant nodes from *node*, optionally filtered by *node_type*."""
+    yield from _walk(node, node_type)
