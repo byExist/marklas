@@ -65,6 +65,36 @@ markdown = to_md(original_adf)          # Markdown 에디터에서 편집
 restored_adf = to_adf(markdown)         # 다시 저장 — 구조 보존
 ```
 
+## 고급 사용법
+
+파싱과 렌더링 사이에서 AST를 직접 조작해야 하는 경우 — 예를 들어 로컬 이미지를 Confluence 첨부파일로 업로드하는 파이프라인 — 저수준 API를 사용할 수 있습니다:
+
+```python
+from marklas import parse_md, render_adf, walk
+from marklas.ast import Media
+
+doc = parse_md(markdown)
+
+for media in walk(doc, Media):
+    if media.type == "external":
+        uploaded = upload_attachment(page_id, media.url)
+        media.type = "file"
+        media.id = uploaded.media_id
+        media.collection = uploaded.collection
+        media.url = None
+
+adf = render_adf(doc)
+```
+
+| 함수 | 설명 |
+| --- | --- |
+| `parse_md(md)` | Markdown → AST |
+| `parse_adf(adf)` | ADF JSON → AST |
+| `render_md(doc)` | AST → Markdown |
+| `render_adf(doc)` | AST → ADF JSON |
+| `walk(node)` | 모든 하위 노드를 순회 |
+| `walk(node, NodeType)` | 특정 타입으로 필터링하여 순회 |
+
 ## 토큰 효율
 
 Markdown은 ADF JSON보다 훨씬 간결합니다 — 토큰이 중요한 LLM 워크플로우에 핵심적입니다.

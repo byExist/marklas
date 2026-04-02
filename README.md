@@ -65,6 +65,36 @@ markdown = to_md(original_adf)          # edit in any Markdown editor
 restored_adf = to_adf(markdown)         # push back — structure preserved
 ```
 
+## Advanced Usage
+
+For pipelines that need to inspect or modify the AST between parsing and rendering — such as uploading local images as Confluence attachments — use the lower-level API:
+
+```python
+from marklas import parse_md, render_adf, walk
+from marklas.ast import Media
+
+doc = parse_md(markdown)
+
+for media in walk(doc, Media):
+    if media.type == "external":
+        uploaded = upload_attachment(page_id, media.url)
+        media.type = "file"
+        media.id = uploaded.media_id
+        media.collection = uploaded.collection
+        media.url = None
+
+adf = render_adf(doc)
+```
+
+| Function | Description |
+| --- | --- |
+| `parse_md(md)` | Markdown → AST |
+| `parse_adf(adf)` | ADF JSON → AST |
+| `render_md(doc)` | AST → Markdown |
+| `render_adf(doc)` | AST → ADF JSON |
+| `walk(node)` | Yield all descendant nodes |
+| `walk(node, NodeType)` | Yield descendants filtered by type |
+
 ## Token Efficiency
 
 Markdown is significantly more compact than ADF JSON — critical for LLM-based workflows where every token counts.

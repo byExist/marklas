@@ -65,6 +65,36 @@ markdown = to_md(original_adf)          # Markdownエディタで編集
 restored_adf = to_adf(markdown)         # 書き戻し — 構造は保持
 ```
 
+## 高度な使い方
+
+パースとレンダリングの間でASTを直接操作する必要がある場合 — たとえばローカル画像をConfluenceの添付ファイルとしてアップロードするパイプラインなど — 低レベルAPIを使用できます：
+
+```python
+from marklas import parse_md, render_adf, walk
+from marklas.ast import Media
+
+doc = parse_md(markdown)
+
+for media in walk(doc, Media):
+    if media.type == "external":
+        uploaded = upload_attachment(page_id, media.url)
+        media.type = "file"
+        media.id = uploaded.media_id
+        media.collection = uploaded.collection
+        media.url = None
+
+adf = render_adf(doc)
+```
+
+| 関数 | 説明 |
+| --- | --- |
+| `parse_md(md)` | Markdown → AST |
+| `parse_adf(adf)` | ADF JSON → AST |
+| `render_md(doc)` | AST → Markdown |
+| `render_adf(doc)` | AST → ADF JSON |
+| `walk(node)` | すべての子孫ノードを走査 |
+| `walk(node, NodeType)` | 型でフィルタリングして走査 |
+
 ## トークン効率
 
 MarkdownはADF JSONよりはるかにコンパクトです — トークンが重要なLLMワークフローにおいて不可欠です。
