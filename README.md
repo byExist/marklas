@@ -67,23 +67,22 @@ restored_adf = to_adf(markdown)         # push back — structure preserved
 
 ## Advanced Usage
 
-For pipelines that need to inspect or modify the AST between parsing and rendering — such as uploading local images as Confluence attachments — use the lower-level API:
+For pipelines that need to modify the AST between parsing and rendering — such as uploading local images as Confluence attachments — use `Transformer`:
 
 ```python
-from marklas import parse_md, render_adf, walk
+from marklas import Transformer, parse_md, render_adf
 from marklas.ast import Media
 
-doc = parse_md(markdown)
+t = Transformer()
 
-for media in walk(doc, Media):
-    if media.type == "external":
-        uploaded = upload_attachment(page_id, media.url)
-        media.type = "file"
-        media.id = uploaded.media_id
-        media.collection = uploaded.collection
-        media.url = None
+@t.register(Media)
+def _(node: Media) -> Media | None:
+    if node.type == "external":
+        uploaded = upload_attachment(page_id, node.url)
+        return Media(type="file", id=uploaded.media_id, collection=uploaded.collection)
+    return None
 
-adf = render_adf(doc)
+adf = render_adf(t(parse_md(markdown)))
 ```
 
 | Function | Description |
@@ -92,8 +91,7 @@ adf = render_adf(doc)
 | `parse_adf(adf)` | ADF JSON → AST |
 | `render_md(doc)` | AST → Markdown |
 | `render_adf(doc)` | AST → ADF JSON |
-| `walk(node)` | Yield all descendant nodes |
-| `walk(node, NodeType)` | Yield descendants filtered by type |
+| `Transformer` | Registry of typed visitors for AST rewriting |
 
 ## Token Efficiency
 

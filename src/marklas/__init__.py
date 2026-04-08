@@ -1,6 +1,6 @@
 from marklas.adf.parser import parse as parse_adf
 from marklas.adf.renderer import render as render_adf
-from marklas.ast import walk
+from marklas.transform import Transformer
 from marklas.convert import to_adf, to_md
 from marklas.md.parser import parse as parse_md
 from marklas.md.renderer import render as render_md
@@ -12,5 +12,5 @@ __all__ = [
     "render_adf",
     "parse_md",
     "render_md",
-    "walk",
+    "Transformer",
 ]

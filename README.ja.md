@@ -67,23 +67,22 @@ restored_adf = to_adf(markdown)         # 書き戻し — 構造は保持
 
 ## 高度な使い方
 
-パースとレンダリングの間でASTを直接操作する必要がある場合 — たとえばローカル画像をConfluenceの添付ファイルとしてアップロードするパイプラインなど — 低レベルAPIを使用できます：
+パースとレンダリングの間でASTを変換する場合 — たとえばローカル画像をConfluenceの添付ファイルとしてアップロードするパイプラインなど — `Transformer`を使用します：
 
 ```python
-from marklas import parse_md, render_adf, walk
+from marklas import Transformer, parse_md, render_adf
 from marklas.ast import Media
 
-doc = parse_md(markdown)
+t = Transformer()
 
-for media in walk(doc, Media):
-    if media.type == "external":
-        uploaded = upload_attachment(page_id, media.url)
-        media.type = "file"
-        media.id = uploaded.media_id
-        media.collection = uploaded.collection
-        media.url = None
+@t.register(Media)
+def _(node: Media) -> Media | None:
+    if node.type == "external":
+        uploaded = upload_attachment(page_id, node.url)
+        return Media(type="file", id=uploaded.media_id, collection=uploaded.collection)
+    return None
 
-adf = render_adf(doc)
+adf = render_adf(t(parse_md(markdown)))
 ```
 
 | 関数 | 説明 |
@@ -92,8 +91,7 @@ adf = render_adf(doc)
 | `parse_adf(adf)` | ADF JSON → AST |
 | `render_md(doc)` | AST → Markdown |
 | `render_adf(doc)` | AST → ADF JSON |
-| `walk(node)` | すべての子孫ノードを走査 |
-| `walk(node, NodeType)` | 型でフィルタリングして走査 |
+| `Transformer` | 型別visitorを登録してASTを変換 |
 
 ## トークン効率
 
