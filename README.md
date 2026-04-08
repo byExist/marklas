@@ -82,7 +82,9 @@ def _(node: Media) -> Media | None:
         return Media(type="file", id=uploaded.media_id, collection=uploaded.collection)
     return None
 
-adf = render_adf(t(parse_md(markdown)))
+doc = parse_md(markdown)
+new_doc = t(doc)
+adf = render_adf(new_doc)
 ```
 
 | Function | Description |
