@@ -67,14 +67,15 @@ restored_adf = to_adf(markdown)         # push back — structure preserved
 
 ## Advanced Usage
 
-For pipelines that need to modify the AST between parsing and rendering — such as uploading local images as Confluence attachments — use `Transformer`:
+For pipelines that need to modify the AST between parsing and rendering, use `Transformer`:
 
 ```python
 from marklas import Transformer, parse_md, render_adf
-from marklas.ast import Media
+from marklas.ast import CodeBlock, Expand, Extension, Media, Node
 
 t = Transformer()
 
+# Replace: return a Node to substitute the original
 @t.register(Media)
 def _(node: Media) -> Media | None:
     if node.type == "external":
@@ -82,10 +83,34 @@ def _(node: Media) -> Media | None:
         return Media(type="file", id=uploaded.media_id, collection=uploaded.collection)
     return None
 
+# Splice: return a list[Node] to expand one node into many
+@t.register(CodeBlock)
+def _(node: CodeBlock) -> list[Node] | None:
+    if node.language == "mermaid":
+        return [
+            Expand(title="mermaid source", content=[node]),
+            Extension(
+                extension_key="mermaid-macro",
+                extension_type="com.example.mermaid",
+                parameters={"code": "".join(c.text for c in node.content)},
+            ),
+        ]
+    return None
+
 doc = parse_md(markdown)
 new_doc = t(doc)
 adf = render_adf(new_doc)
 ```
+
+A handler returns one of three values:
+
+| Return | Effect |
+| --- | --- |
+| `None` | Skip — pass to the next handler, or leave unchanged |
+| `Node` | Replace the original node |
+| `list[Node]` | Splice multiple nodes in place of the original |
+
+Multiple handlers can be registered for the same type; they run in registration order and the first non-`None` result wins. The tree is traversed bottom-up, and nodes returned by a handler are not revisited.
 
 | Function | Description |
 | --- | --- |

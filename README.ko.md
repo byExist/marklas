@@ -67,14 +67,15 @@ restored_adf = to_adf(markdown)         # 다시 저장 — 구조 보존
 
 ## 고급 사용법
 
-파싱과 렌더링 사이에서 AST를 변환해야 하는 경우 — 예를 들어 로컬 이미지를 Confluence 첨부파일로 업로드하는 파이프라인 — `Transformer`를 사용합니다:
+파싱과 렌더링 사이에서 AST를 변환해야 하는 경우 `Transformer`를 사용합니다:
 
 ```python
 from marklas import Transformer, parse_md, render_adf
-from marklas.ast import Media
+from marklas.ast import CodeBlock, Expand, Extension, Media, Node
 
 t = Transformer()
 
+# 교체: Node를 반환하면 원래 노드를 대체합니다
 @t.register(Media)
 def _(node: Media) -> Media | None:
     if node.type == "external":
@@ -82,10 +83,34 @@ def _(node: Media) -> Media | None:
         return Media(type="file", id=uploaded.media_id, collection=uploaded.collection)
     return None
 
+# 분할: list[Node]를 반환하면 하나의 노드를 여러 노드로 확장합니다
+@t.register(CodeBlock)
+def _(node: CodeBlock) -> list[Node] | None:
+    if node.language == "mermaid":
+        return [
+            Expand(title="mermaid source", content=[node]),
+            Extension(
+                extension_key="mermaid-macro",
+                extension_type="com.example.mermaid",
+                parameters={"code": "".join(c.text for c in node.content)},
+            ),
+        ]
+    return None
+
 doc = parse_md(markdown)
 new_doc = t(doc)
 adf = render_adf(new_doc)
 ```
+
+handler는 세 가지 값 중 하나를 반환합니다:
+
+| 반환값 | 효과 |
+| --- | --- |
+| `None` | 건너뜀 — 다음 handler에 위임하거나, 변경 없이 유지 |
+| `Node` | 원래 노드를 대체 |
+| `list[Node]` | 원래 노드 자리에 여러 노드를 삽입 |
+
+같은 타입에 여러 handler를 등록할 수 있으며, 등록 순서대로 실행되어 첫 번째 non-`None` 결과가 채택됩니다. 트리는 bottom-up으로 순회되며, handler가 반환한 노드는 재방문하지 않습니다.
 
 | 함수 | 설명 |
 | --- | --- |

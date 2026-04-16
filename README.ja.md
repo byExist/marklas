@@ -67,14 +67,15 @@ restored_adf = to_adf(markdown)         # 書き戻し — 構造は保持
 
 ## 高度な使い方
 
-パースとレンダリングの間でASTを変換する場合 — たとえばローカル画像をConfluenceの添付ファイルとしてアップロードするパイプラインなど — `Transformer`を使用します：
+パースとレンダリングの間でASTを変換する場合、`Transformer`を使用します：
 
 ```python
 from marklas import Transformer, parse_md, render_adf
-from marklas.ast import Media
+from marklas.ast import CodeBlock, Expand, Extension, Media, Node
 
 t = Transformer()
 
+# 置換: Nodeを返すと元のノードを置き換えます
 @t.register(Media)
 def _(node: Media) -> Media | None:
     if node.type == "external":
@@ -82,10 +83,34 @@ def _(node: Media) -> Media | None:
         return Media(type="file", id=uploaded.media_id, collection=uploaded.collection)
     return None
 
+# 分割: list[Node]を返すと1つのノードを複数に展開します
+@t.register(CodeBlock)
+def _(node: CodeBlock) -> list[Node] | None:
+    if node.language == "mermaid":
+        return [
+            Expand(title="mermaid source", content=[node]),
+            Extension(
+                extension_key="mermaid-macro",
+                extension_type="com.example.mermaid",
+                parameters={"code": "".join(c.text for c in node.content)},
+            ),
+        ]
+    return None
+
 doc = parse_md(markdown)
 new_doc = t(doc)
 adf = render_adf(new_doc)
 ```
+
+handlerは3つの値のいずれかを返します：
+
+| 戻り値 | 効果 |
+| --- | --- |
+| `None` | スキップ — 次のhandlerに委譲、またはそのまま保持 |
+| `Node` | 元のノードを置き換え |
+| `list[Node]` | 元のノードの位置に複数ノードを挿入 |
+
+同じ型に複数のhandlerを登録でき、登録順に実行されて最初のnon-`None`の結果が採用されます。ツリーはボトムアップで走査され、handlerが返したノードは再訪問されません。
 
 | 関数 | 説明 |
 | --- | --- |
