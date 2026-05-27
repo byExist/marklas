@@ -193,6 +193,21 @@ class TestMarks:
         types = [m["type"] for m in result["content"][0]["marks"]]
         assert types == ["strong", "em", "link"]
 
+    def test_code_drops_incompatible_marks(self):
+        marks: list[Mark] = [StrongMark(), CodeMark(), EmMark()]
+        result = _r1(Doc(content=[Paragraph(content=[Text(text="x", marks=marks)])]))
+        assert result["content"][0]["marks"] == [{"type": "code"}]
+
+    def test_code_preserves_link_and_annotation(self):
+        marks: list[Mark] = [
+            CodeMark(),
+            LinkMark(href="https://x.com"),
+            AnnotationMark(id="a1"),
+        ]
+        result = _r1(Doc(content=[Paragraph(content=[Text(text="x", marks=marks)])]))
+        types = [m["type"] for m in result["content"][0]["marks"]]
+        assert types == ["code", "link", "annotation"]
+
     def test_alignment_mark(self):
         result = _r1(
             Doc(

@@ -44,8 +44,18 @@ def _omit_none(d: dict[str, Any]) -> dict[str, Any]:
     return {k: v for k, v in d.items() if v is not None}
 
 
+_CODE_COMPATIBLE_MARKS = (ast.CodeMark, ast.LinkMark, ast.AnnotationMark)
+
+
+def _sanitize_marks(marks: Sequence[ast.Mark]) -> Sequence[ast.Mark]:
+    if any(isinstance(m, ast.CodeMark) for m in marks):
+        return [m for m in marks if isinstance(m, _CODE_COMPATIBLE_MARKS)]
+    return marks
+
+
 def _with_marks(result: dict[str, Any], marks: Sequence[ast.Mark]) -> dict[str, Any]:
     """Attach marks to a node dict if any exist."""
+    marks = _sanitize_marks(marks)
     if marks:
         result["marks"] = _render_marks(marks)
     return result

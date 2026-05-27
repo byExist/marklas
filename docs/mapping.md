@@ -537,6 +537,8 @@ Empty content (void inline).
 
 If code contains backticks, use a longer backtick fence: ``` `` code with ` `` ```.
 
+ADF rendering: per the schema, a code-marked text node accepts only `code`, `link`, and `annotation` marks. When an AST Text node carries `CodeMark` plus incompatible marks (e.g., `StrongMark` from MD `**bold `code`**`), the renderer drops the incompatible ones; `LinkMark` and `AnnotationMark` are preserved. AST and MD rendering preserve all marks faithfully.
+
 ### LinkMark
 
 `[text](url "title")`
