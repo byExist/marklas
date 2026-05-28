@@ -429,6 +429,83 @@ class TestMarks:
         assert mark.id == "a1"
 
 
+# ── Inline Composition ────────────────────────────────────────────────────────
+
+
+class TestInlineComposition:
+    def test_html_mark_preserves_multi_child_content(self):
+        doc = parse('<u adf="underline">a `c` b</u>\n')
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        assert len(para.content) == 3
+        a, c, b = para.content
+        assert isinstance(a, Text) and a.text == "a "
+        assert any(isinstance(m, UnderlineMark) for m in a.marks)
+        assert isinstance(c, Text) and c.text == "c"
+        assert any(isinstance(m, CodeMark) for m in c.marks)
+        assert any(isinstance(m, UnderlineMark) for m in c.marks)
+        assert isinstance(b, Text) and b.text == " b"
+        assert any(isinstance(m, UnderlineMark) for m in b.marks)
+
+    def test_html_mark_inside_emphasis(self):
+        doc = parse('**a <u adf="underline">b</u> c**\n')
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        for node in para.content:
+            assert isinstance(node, Text)
+            assert any(isinstance(m, StrongMark) for m in node.marks)
+        middle = next(n for n in para.content if isinstance(n, Text) and n.text == "b")
+        assert any(isinstance(m, UnderlineMark) for m in middle.marks)
+
+    def test_softbreak_propagates_parent_marks(self):
+        doc = parse("**a\nb**\n")
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        for node in para.content:
+            assert isinstance(node, Text)
+            assert any(isinstance(m, StrongMark) for m in node.marks)
+
+    def test_mention_inside_emphasis_survives(self):
+        doc = parse(
+            '**Owner: <span adf="mention" params=\'{"id":"u1"}\'>@john</span> handles**\n'
+        )
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        mention = next(n for n in para.content if isinstance(n, Mention))
+        assert mention.id == "u1"
+        assert mention.text == "john"
+
+    def test_nested_html_marks(self):
+        doc = parse(
+            '<u adf="underline"><span adf="textColor" params=\'{"color":"#f00"}\'>x</span></u>\n'
+        )
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        text = next(n for n in para.content if isinstance(n, Text))
+        assert text.text == "x"
+        assert any(isinstance(m, UnderlineMark) for m in text.marks)
+        assert any(isinstance(m, TextColorMark) for m in text.marks)
+
+    def test_link_wrapping_html_mark(self):
+        doc = parse('[<u adf="underline">x</u>](https://example.com)\n')
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        text = next(n for n in para.content if isinstance(n, Text) and n.text == "x")
+        assert any(isinstance(m, LinkMark) for m in text.marks)
+        assert any(isinstance(m, UnderlineMark) for m in text.marks)
+
+    def test_html_mark_adjacent_to_mention(self):
+        doc = parse(
+            '<u adf="underline">a</u><span adf="mention" params=\'{"id":"u1"}\'>@b</span>\n'
+        )
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        a = next(n for n in para.content if isinstance(n, Text) and n.text == "a")
+        assert any(isinstance(m, UnderlineMark) for m in a.marks)
+        mention = next(n for n in para.content if isinstance(n, Mention))
+        assert mention.id == "u1"
+
+
 # ── Inline Nodes ───────────────────────────────────────────────────────────────
 
 

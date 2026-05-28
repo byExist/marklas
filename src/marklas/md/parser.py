@@ -835,92 +835,91 @@ def _find_inline_close(
 
 
 def _normalize_inlines(tokens: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    """Normalize inline token stream.
+    """Recursively pair inline_html tokens at every nesting level.
 
     - inline_html pairs → {"_kind": "inline_html", "tag", "adf_type", "attrs", "inner"}
-    - void inline_html → same with "inner": []
     - adf-less HTML → removed
+    - tokens with children (strong, emphasis, link, etc.) → children normalized
     - other tokens → pass through
+
+    After this pass, no raw inline_html open/close tokens remain anywhere in the
+    tree; `_flatten_inlines` can assume the tree is fully normalized.
     """
     result: list[dict[str, Any]] = []
     i = 0
     while i < len(tokens):
         token = tokens[i]
 
-        if token.get("type") != "inline_html":
+        if token.get("type") == "inline_html":
+            raw = token.get("raw", "")
+            tag, attrs, closing = _parse_tag(raw)
+
+            if closing or not _has_adf(attrs):
+                i += 1
+                continue
+
+            adf_type = attrs.get("adf", "")
+            close_idx = _find_inline_close(tokens, i + 1, tag)
+            if close_idx is not None:
+                result.append(
+                    {
+                        "_kind": "inline_html",
+                        "tag": tag,
+                        "adf_type": adf_type,
+                        "attrs": attrs,
+                        "inner": _normalize_inlines(tokens[i + 1 : close_idx]),
+                    }
+                )
+                i = close_idx + 1
+                continue
+
+            i += 1
+            continue
+
+        if "children" in token:
+            result.append({**token, "children": _normalize_inlines(token["children"])})
+        else:
             result.append(token)
-            i += 1
-            continue
-
-        raw = token.get("raw", "")
-        tag, attrs, closing = _parse_tag(raw)
-
-        if closing or not _has_adf(attrs):
-            i += 1
-            continue
-
-        adf_type = attrs.get("adf", "")
-
-        close_idx = _find_inline_close(tokens, i + 1, tag)
-        if close_idx is not None:
-            result.append(
-                {
-                    "_kind": "inline_html",
-                    "tag": tag,
-                    "adf_type": adf_type,
-                    "attrs": attrs,
-                    "inner": tokens[i + 1 : close_idx],
-                }
-            )
-            i = close_idx + 1
-            continue
-
         i += 1
 
     return result
 
 
 def _parse_inlines(tokens: list[dict[str, Any]]) -> list[ast.Inline]:
+    return _flatten_inlines(_normalize_inlines(tokens), [])
+
+
+def _flatten_inlines(
+    tokens: list[dict[str, Any]], parent_marks: list[ast.Mark]
+) -> list[ast.Inline]:
+    """Walk normalized tokens, accumulating marks. Assumes input is normalized."""
     result: list[ast.Inline] = []
-    for token in _normalize_inlines(tokens):
+    for token in tokens:
         if token.get("_kind") == "inline_html":
-            result.append(
-                _parse_inline_html(
-                    token["tag"], token["adf_type"], token["attrs"], token["inner"]
-                )
-            )
+            result.extend(_parse_inline_html(token, parent_marks))
         else:
-            result.extend(_flatten_marks(token, []))
+            result.extend(_flatten_token(token, parent_marks))
     return result
 
 
 # ── Mark flattening ───────────────────────────────────────────────────────────
 
 
-def _flatten_children(
-    children: list[dict[str, Any]], marks: list[ast.Mark]
-) -> list[ast.Inline]:
-    result: list[ast.Inline] = []
-    for child in children:
-        result.extend(_flatten_marks(child, marks))
-    return result
-
-
-def _flatten_marks(
+def _flatten_token(
     token: dict[str, Any], parent_marks: list[ast.Mark]
 ) -> list[ast.Inline]:
     t = token.get("type", "")
     match t:
         case "strong":
-            return _flatten_children(
+            return _flatten_inlines(
                 token.get("children", []), [*parent_marks, ast.StrongMark()]
             )
         case "emphasis":
-            return _flatten_children(
+            return _flatten_inlines(
                 token.get("children", []), [*parent_marks, ast.EmMark()]
             )
         case "strikethrough":
-            return _flatten_children(
+            return _flatten_inlines(
                 token.get("children", []), [*parent_marks, ast.StrikeMark()]
             )
         case "codespan":
@@ -934,20 +933,22 @@ def _flatten_marks(
                 *parent_marks,
                 ast.LinkMark(href=href, title=title),
             ]
-            return _flatten_children(token.get("children", []), link_marks)
+            return _flatten_inlines(token.get("children", []), link_marks)
         case "text":
             text = token.get("raw", "")
             if parent_marks:
-                return [ast.Text(text=text, marks=parent_marks)]
+                return [ast.Text(text=text, marks=list(parent_marks))]
             return [ast.Text(text=text)]
         case "softbreak":
+            if parent_marks:
+                return [ast.Text(text=" ", marks=list(parent_marks))]
             return [ast.Text(text=" ")]
         case "linebreak":
             return [ast.HardBreak()]
         case _:
             children = token.get("children", [])
             if children:
-                return _flatten_children(children, parent_marks)
+                return _flatten_inlines(children, parent_marks)
             return []
 
 
@@ -959,40 +960,46 @@ def _inline_content_text(tokens: list[dict[str, Any]]) -> str:
 
 
 def _parse_inline_html(
-    tag: str, adf_type: str, attrs: dict[str, str], content_tokens: list[dict[str, Any]]
-) -> ast.Inline:
-    content = _inline_content_text(content_tokens)
+    token: dict[str, Any], parent_marks: list[ast.Mark]
+) -> list[ast.Inline]:
+    tag = token["tag"]
+    adf_type = token["adf_type"]
+    attrs = token["attrs"]
+    inner = token["inner"]
+    content = _inline_content_text(inner)
     match adf_type:
         case "mention":
-            return _parse_mention(attrs, content)
+            return [_parse_mention(attrs, content)]
         case "emoji":
-            return _parse_emoji(attrs, content)
+            return [_parse_emoji(attrs, content)]
         case "date":
-            return _parse_date(attrs)
+            return [_parse_date(attrs)]
         case "status":
-            return _parse_status(attrs, content)
+            return [_parse_status(attrs, content)]
         case "inlineCard":
-            return _parse_inline_card(attrs)
+            return [_parse_inline_card(attrs)]
         case "placeholder":
-            return _parse_placeholder(content)
+            return [_parse_placeholder(content)]
         case "mediaInline":
-            return _parse_media_inline(attrs)
+            return [_parse_media_inline(attrs)]
         case "inlineExtension":
-            return _parse_inline_data(attrs)
+            return [_parse_inline_data(attrs)]
         case "underline" | "textColor" | "bgColor" | "subSup" | "annotation":
-            return _parse_html_mark(tag, adf_type, attrs, content_tokens, content)
+            return _parse_html_mark(tag, adf_type, attrs, inner, parent_marks)
         case _:
-            return ast.Text(text=content)
+            text = ast.Text(text=content)
+            if parent_marks:
+                text.marks = list(parent_marks)
+            return [text]
 
 
 def _parse_html_mark(
     tag: str,
     adf_type: str,
     attrs: dict[str, str],
-    content_tokens: list[dict[str, Any]],
-    content: str,
-) -> ast.Inline:
-    """Parse HTML mark element → Text with mark attached."""
+    inner: list[dict[str, Any]],
+    parent_marks: list[ast.Mark],
+) -> list[ast.Inline]:
     mark: ast.Mark
     match adf_type:
         case "underline":
@@ -1010,13 +1017,17 @@ def _parse_html_mark(
                 annotation_type=p.get("annotationType", "inlineComment"),
             )
         case _:
-            return ast.Text(text=content)
+            content = _inline_content_text(inner)
+            text = ast.Text(text=content)
+            if parent_marks:
+                text.marks = list(parent_marks)
+            return [text]
 
-    inlines = _parse_inlines(content_tokens)
+    inlines = _flatten_inlines(inner, parent_marks)
     for node in inlines:
         if isinstance(node, ast.Text):
             node.marks = [*node.marks, mark]
-    return inlines[0] if inlines else ast.Text(text=content)
+    return inlines
 
 
 def _parse_mention(attrs: dict[str, str], content: str) -> ast.Mention:
