@@ -126,15 +126,15 @@ Markdown은 ADF JSON보다 훨씬 간결합니다 — 토큰이 중요한 LLM �
 
 | | ADF JSON | Markdown | Markdown (plain) |
 | --- | --- | --- | --- |
-| 토큰 수 | 243,217 | 76,332 | 47,794 |
-| **절감률** | — | **3.2x** | **5.1x** |
+| 토큰 수 | 1,530,294 | 610,596 | 261,752 |
+| **절감률** | — | **2.5x** | **5.8x** |
 
-*실제 Confluence 페이지 7개 기준 (pretty-printed JSON), GPT-4o 토크나이저(tiktoken) 사용.*
+*실제 Confluence 페이지 48개 기준 (compact JSON), GPT-4o 토크나이저(tiktoken) 사용.*
 
 ## 문서
 
-- [매핑 레퍼런스](docs/mapping.md) — ADF 노드별 Markdown 변환 규칙
-- [LLM 편집 가이드](docs/llm-guide.md) — marklas 출력을 편집하는 LLM을 위한 가이드
+- [포맷 레퍼런스](docs/format.md) — ADF 노드별 Markdown 변환 규칙
+- [편집 스킬](docs/editing.md) — marklas 출력을 편집하는 LLM agent용 규칙
 
 ## 개발
 

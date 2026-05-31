@@ -126,15 +126,15 @@ MarkdownはADF JSONよりはるかにコンパクトです — トークンが�
 
 | | ADF JSON | Markdown | Markdown (plain) |
 | --- | --- | --- | --- |
-| トークン数 | 243,217 | 76,332 | 47,794 |
-| **削減率** | — | **3.2x** | **5.1x** |
+| トークン数 | 1,530,294 | 610,596 | 261,752 |
+| **削減率** | — | **2.5x** | **5.8x** |
 
-*実際のConfluenceページ7件で計測（pretty-printed JSON）、GPT-4oトークナイザー（tiktoken）使用。*
+*実際のConfluenceページ48件で計測（compact JSON）、GPT-4oトークナイザー（tiktoken）使用。*
 
 ## ドキュメント
 
-- [マッピングリファレンス](docs/mapping.md) — ADFノードごとのMarkdown変換ルール
-- [LLM編集ガイド](docs/llm-guide.md) — marklas出力を編集するLLM向けガイド
+- [フォーマットリファレンス](docs/format.md) — ADFノードごとのMarkdown変換ルール
+- [編集スキル](docs/editing.md) — marklas出力を編集するLLMエージェント向けルール
 
 ## 開発
 
