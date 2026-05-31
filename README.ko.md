@@ -126,10 +126,10 @@ Markdown은 ADF JSON보다 훨씬 간결합니다 — 토큰이 중요한 LLM �
 
 | | ADF JSON | Markdown | Markdown (plain) |
 | --- | --- | --- | --- |
-| 토큰 수 | 1,530,294 | 610,596 | 261,752 |
-| **절감률** | — | **2.5x** | **5.8x** |
+| 토큰 수 | 2,173,468 | 858,970 | 560,765 |
+| **절감률** | — | **2.5x** | **3.9x** |
 
-*실제 Confluence 페이지 48개 기준 (compact JSON), GPT-4o 토크나이저(tiktoken) 사용.*
+*실제 Confluence 페이지 204개 기준 (compact JSON), GPT-4o 토크나이저(tiktoken) 사용.*
 
 ## 문서
 
