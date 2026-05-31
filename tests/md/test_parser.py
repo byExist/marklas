@@ -2,13 +2,14 @@
 
 from __future__ import annotations
 
-from marklas.ast import DocContent
+from marklas.ast import DocContent, NestedExpand, TableCellContent
 from marklas.ast import (
     AlignmentMark,
     AnnotationMark,
     BackgroundColorMark,
     BlockCard,
     Blockquote,
+    BorderMark,
     BreakoutMark,
     BulletList,
     Caption,
@@ -473,7 +474,9 @@ class TestInlineComposition:
         assert isinstance(para, Paragraph)
         mention = next(n for n in para.content if isinstance(n, Mention))
         assert mention.id == "u1"
-        assert mention.text == "john"
+        # mention.text mirrors the inner content verbatim, including the "@"
+        # prefix that Atlassian editors emit as part of the display label.
+        assert mention.text == "@john"
 
     def test_nested_html_marks(self):
         doc = parse(
@@ -504,6 +507,253 @@ class TestInlineComposition:
         assert any(isinstance(m, UnderlineMark) for m in a.marks)
         mention = next(n for n in para.content if isinstance(n, Mention))
         assert mention.id == "u1"
+
+
+class TestListItemBlockComposition:
+    # list_item children must go through _normalize_blocks so paired
+    # block_html tokens get merged. mediaSingle is the only paired
+    # HTML extension that ADF schema permits as listItem content.
+
+    def test_list_item_preserves_media_single(self):
+        node = _rt_block(
+            BulletList(
+                content=[
+                    ListItem(
+                        content=[
+                            MediaSingle(
+                                layout="center",
+                                content=[Media(type="file", id="abc", collection="c")],
+                            )
+                        ]
+                    )
+                ]
+            )
+        )
+        assert isinstance(node, BulletList)
+        item = node.content[0]
+        assert isinstance(item, ListItem)
+        media_single = item.content[0]
+        assert isinstance(media_single, MediaSingle)
+        media = media_single.content[0]
+        assert isinstance(media, Media)
+        assert media.id == "abc"
+
+
+def _cell_with(node: TableCellContent) -> TableCellContent:
+    """Wrap a node in a single-cell table, round-trip, return the cell's first
+    block."""
+    doc = _roundtrip(
+        Doc(
+            content=[
+                Table(
+                    content=[
+                        TableRow(content=[TableCell(content=[node])]),
+                    ]
+                )
+            ]
+        )
+    )
+    table = doc.content[0]
+    assert isinstance(table, Table)
+    row = table.content[0]
+    assert isinstance(row, TableRow)
+    cell = row.content[0]
+    assert isinstance(cell, TableCell)
+    return cell.content[0]
+
+
+class TestTableCellBlockComposition:
+    # GFM tokenizes every cell child as inline_html (or text/strong/...).
+    # _parse_cell_content must regroup paired/void inline_html tokens and
+    # promote them back to the block-level nodes that ADF schema permits
+    # inside table_cell_content.
+
+    def test_heading(self):
+        node = _cell_with(Heading(level=3, content=[Text(text="H")]))
+        assert isinstance(node, Heading)
+        assert node.level == 3
+
+    def test_code_block(self):
+        node = _cell_with(CodeBlock(language="py", content=[Text(text="x=1")]))
+        assert isinstance(node, CodeBlock)
+        first = node.content[0]
+        assert isinstance(first, Text)
+        assert first.text == "x=1"
+
+    def test_bullet_list(self):
+        node = _cell_with(
+            BulletList(
+                content=[ListItem(content=[Paragraph(content=[Text(text="L")])])]
+            )
+        )
+        assert isinstance(node, BulletList)
+        assert len(node.content) == 1
+
+    def test_ordered_list(self):
+        node = _cell_with(
+            OrderedList(
+                content=[ListItem(content=[Paragraph(content=[Text(text="O")])])]
+            )
+        )
+        assert isinstance(node, OrderedList)
+        assert len(node.content) == 1
+
+    def test_rule(self):
+        node = _cell_with(Rule())
+        assert isinstance(node, Rule)
+
+    def test_blockquote(self):
+        node = _cell_with(Blockquote(content=[Paragraph(content=[Text(text="Q")])]))
+        assert isinstance(node, Blockquote)
+
+    def test_media_single(self):
+        node = _cell_with(
+            MediaSingle(
+                layout="center",
+                content=[Media(type="file", id="abc", collection="c")],
+            )
+        )
+        assert isinstance(node, MediaSingle)
+        media = node.content[0]
+        assert isinstance(media, Media)
+        assert media.id == "abc"
+
+    def test_media_group(self):
+        node = _cell_with(
+            MediaGroup(content=[Media(type="file", id="abc", collection="c")])
+        )
+        assert isinstance(node, MediaGroup)
+        assert isinstance(node.content[0], Media)
+
+    def test_panel(self):
+        node = _cell_with(
+            Panel(panel_type="info", content=[Paragraph(content=[Text(text="P")])])
+        )
+        assert isinstance(node, Panel)
+        assert node.panel_type == "info"
+
+    def test_nested_expand(self):
+        node = _cell_with(
+            NestedExpand(title="T", content=[Paragraph(content=[Text(text="P")])])
+        )
+        assert isinstance(node, NestedExpand)
+        assert node.title == "T"
+
+    def test_task_list(self):
+        node = _cell_with(
+            TaskList(content=[TaskItem(state="TODO", content=[Text(text="T")])])
+        )
+        assert isinstance(node, TaskList)
+        first = node.content[0]
+        assert isinstance(first, TaskItem)
+        assert first.state == "TODO"
+
+    def test_decision_list(self):
+        node = _cell_with(
+            DecisionList(
+                content=[DecisionItem(state="DECIDED", content=[Text(text="D")])]
+            )
+        )
+        assert isinstance(node, DecisionList)
+        first = node.content[0]
+        assert isinstance(first, DecisionItem)
+        assert first.state == "DECIDED"
+
+    def test_inline_atom_mention_survives(self):
+        # Mention is an inline-level paired HTML — must not be promoted
+        # to a block node and lose its outer adf= attributes.
+        node = _cell_with(Paragraph(content=[Mention(id="u1", text="John")]))
+        assert isinstance(node, Paragraph)
+        mention = node.content[0]
+        assert isinstance(mention, Mention)
+        assert mention.id == "u1"
+
+    def test_inline_atom_mixed_with_text(self):
+        # Text + inline atom + text must remain in a single Paragraph.
+        node = _cell_with(
+            Paragraph(
+                content=[
+                    Text(text="Hi "),
+                    Mention(id="u1", text="John"),
+                    Text(text=" bye"),
+                ]
+            )
+        )
+        assert isinstance(node, Paragraph)
+        assert len(node.content) == 3
+        assert isinstance(node.content[1], Mention)
+
+    def test_paragraph_alignment_mark(self):
+        node = _cell_with(
+            Paragraph(
+                content=[Text(text="centered")],
+                marks=[AlignmentMark(align="center")],
+            )
+        )
+        assert isinstance(node, Paragraph)
+        assert any(isinstance(m, AlignmentMark) for m in node.marks)
+
+    def test_heading_indentation_mark(self):
+        node = _cell_with(
+            Heading(
+                level=3,
+                content=[Text(text="H")],
+                marks=[IndentationMark(level=2)],
+            )
+        )
+        assert isinstance(node, Heading)
+        assert any(isinstance(m, IndentationMark) for m in node.marks)
+
+    def test_code_block_breakout_mark(self):
+        node = _cell_with(
+            CodeBlock(
+                language="py",
+                content=[Text(text="x=1")],
+                marks=[BreakoutMark(mode="wide")],
+            )
+        )
+        assert isinstance(node, CodeBlock)
+        assert any(isinstance(m, BreakoutMark) for m in node.marks)
+
+    def test_hard_break_in_paragraph(self):
+        # Hard break inside a table cell paragraph (renderer emits <br>).
+        node = _cell_with(
+            Paragraph(content=[Text(text="line 1"), HardBreak(), Text(text="line 2")])
+        )
+        assert isinstance(node, Paragraph)
+        assert any(isinstance(n, HardBreak) for n in node.content)
+
+    def test_multi_paragraph_preserved(self):
+        # Renderer emits multiple ADF paragraphs as <p>...</p><p>...</p>;
+        # they must round-trip back to multiple Paragraph nodes.
+        doc = _roundtrip(
+            Doc(
+                content=[
+                    Table(
+                        content=[
+                            TableRow(
+                                content=[
+                                    TableCell(
+                                        content=[
+                                            Paragraph(content=[Text(text="a")]),
+                                            Paragraph(content=[Text(text="b")]),
+                                        ]
+                                    )
+                                ]
+                            )
+                        ]
+                    )
+                ]
+            )
+        )
+        table = doc.content[0]
+        assert isinstance(table, Table)
+        row = table.content[0]
+        assert isinstance(row, TableRow)
+        cell = row.content[0]
+        assert isinstance(cell, TableCell)
+        assert len(cell.content) == 2
+        assert all(isinstance(p, Paragraph) for p in cell.content)
 
 
 # ── Inline Nodes ───────────────────────────────────────────────────────────────
@@ -687,6 +937,28 @@ class TestMediaSingle:
         assert isinstance(media, Media)
         assert media.id == "abc"
 
+    def test_media_border_mark(self):
+        # BorderMark on a Media node is serialized into the surrounding
+        # <span adf="media"> params as borderSize/borderColor.
+        node = _rt_block(
+            MediaSingle(
+                content=[
+                    Media(
+                        type="file",
+                        id="abc",
+                        collection="c",
+                        marks=[BorderMark(size=2, color="#758195")],
+                    )
+                ],
+            )
+        )
+        assert isinstance(node, MediaSingle)
+        media = node.content[0]
+        assert isinstance(media, Media)
+        border = next(m for m in media.marks if isinstance(m, BorderMark))
+        assert border.size == 2
+        assert border.color == "#758195"
+
     def test_with_caption(self):
         node = _rt_block(
             MediaSingle(
@@ -738,6 +1010,31 @@ class TestExtension:
         assert node.extension_key == "k"
 
 
+class TestBodiedExtension:
+    # BodiedExtension serializes its content as raw ADF JSON inside the
+    # surrounding tag's params attribute. The MD parser must deserialize
+    # those JSON dicts back into AST nodes, otherwise the renderer crashes
+    # when it encounters a bare dict where it expects a node.
+
+    def test_paragraph_content_round_trips_as_node(self):
+        from marklas.ast import BodiedExtension
+
+        node = _rt_block(
+            BodiedExtension(
+                extension_key="k",
+                extension_type="t",
+                content=[Paragraph(content=[Text(text="hello")])],
+            )
+        )
+        assert isinstance(node, BodiedExtension)
+        assert len(node.content) == 1
+        inner = node.content[0]
+        assert isinstance(inner, Paragraph)
+        first = inner.content[0]
+        assert isinstance(first, Text)
+        assert first.text == "hello"
+
+
 class TestSyncBlock:
     def test_simple(self):
         node = _rt_block(SyncBlock(resource_id="r1"))
@@ -769,6 +1066,53 @@ class TestLayoutSection:
         col = node.content[0]
         assert isinstance(col, LayoutColumn)
         assert col.width == 50.0
+
+    def test_column_containing_table_with_meta(self):
+        # Renderer emits a self-contained <div adf="table" params="..."></div>
+        # metadata token before the table. _find_block_close must not count
+        # this token as a nested <div> open, otherwise the surrounding
+        # layoutColumn's </div> goes unmatched and the section collapses.
+        node = _rt_block(
+            LayoutSection(
+                content=[
+                    LayoutColumn(
+                        width=100.0,
+                        content=[
+                            Table(
+                                layout="align-start",
+                                width=1800.0,
+                                content=[
+                                    TableRow(
+                                        content=[
+                                            TableHeader(
+                                                content=[
+                                                    Paragraph(content=[Text(text="H")])
+                                                ]
+                                            )
+                                        ]
+                                    ),
+                                    TableRow(
+                                        content=[
+                                            TableCell(
+                                                content=[
+                                                    Paragraph(content=[Text(text="D")])
+                                                ]
+                                            )
+                                        ]
+                                    ),
+                                ],
+                            )
+                        ],
+                    )
+                ]
+            )
+        )
+        assert isinstance(node, LayoutSection)
+        assert len(node.content) == 1
+        col = node.content[0]
+        assert isinstance(col, LayoutColumn)
+        assert len(col.content) == 1
+        assert isinstance(col.content[0], Table)
 
 
 # ── Table ──────────────────────────────────────────────────────────────────────

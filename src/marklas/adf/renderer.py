@@ -17,7 +17,7 @@ def render(doc: ast.Doc) -> dict[str, Any]:
     return {
         "type": "doc",
         "version": doc.version,
-        "content": _render_children(doc.content, _render_block),
+        "content": _render_children(doc.content, render_block),
     }
 
 
@@ -120,7 +120,7 @@ def _render_marks(marks: Sequence[ast.Mark]) -> list[dict[str, Any]]:
 # ── Block dispatch ───────────────────────────────────────────────────────────
 
 
-def _render_block(node: ast.Node) -> dict[str, Any] | None:
+def render_block(node: ast.Node) -> dict[str, Any] | None:
     """Dispatch a block node. Accepts Node because it serves multiple content contexts."""
     match node:
         case ast.Paragraph():
@@ -130,7 +130,7 @@ def _render_block(node: ast.Node) -> dict[str, Any] | None:
         case ast.CodeBlock():
             return _render_code_block(node)
         case ast.Blockquote():
-            return _render_blockquote(node)
+            return render_blockquote(node)
         case ast.BulletList():
             return _render_bullet_list(node)
         case ast.OrderedList():
@@ -150,7 +150,7 @@ def _render_block(node: ast.Node) -> dict[str, Any] | None:
         case ast.MediaGroup():
             return _render_media_group(node)
         case ast.BlockCard():
-            return _render_block_card(node)
+            return render_block_card(node)
         case ast.EmbedCard():
             return _render_embed_card(node)
         case ast.TaskList():
@@ -206,10 +206,10 @@ def _render_code_block(node: ast.CodeBlock) -> dict[str, Any]:
     return _with_marks(result, node.marks)
 
 
-def _render_blockquote(node: ast.Blockquote) -> dict[str, Any]:
+def render_blockquote(node: ast.Blockquote) -> dict[str, Any]:
     return {
         "type": "blockquote",
-        "content": _render_children(node.content, _render_block),
+        "content": _render_children(node.content, render_block),
     }
 
 
@@ -225,7 +225,7 @@ def _render_ordered_list(node: ast.OrderedList) -> dict[str, Any]:
         "type": "orderedList",
         "content": [_render_list_item(i) for i in node.content],
     }
-    if node.order is not None and node.order != 1:
+    if node.order is not None:
         result["attrs"] = {"order": node.order}
     return result
 
@@ -237,7 +237,7 @@ def _render_rule() -> dict[str, Any]:
 def _render_list_item(node: ast.ListItem) -> dict[str, Any]:
     return {
         "type": "listItem",
-        "content": _render_children(node.content, _render_block),
+        "content": _render_children(node.content, render_block),
     }
 
 
@@ -245,9 +245,10 @@ def _render_list_item(node: ast.ListItem) -> dict[str, Any]:
 
 
 def _render_table(node: ast.Table) -> dict[str, Any]:
+    rendered_rows = [_render_table_row(r) for r in node.content]
     result: dict[str, Any] = {
         "type": "table",
-        "content": [_render_table_row(r) for r in node.content],
+        "content": rendered_rows,
     }
     attrs = _omit_none(
         {
@@ -259,7 +260,34 @@ def _render_table(node: ast.Table) -> dict[str, Any]:
     )
     if attrs:
         result["attrs"] = attrs
+    # Distribute the AST's column-major widths back onto each cell where
+    # the ADF spec stores it. Using the grid walker keeps cell-vs-column
+    # alignment correct under colspan/rowspan.
+    if node.colwidths:
+        _distribute_colwidths(node, rendered_rows)
     return result
+
+
+def _distribute_colwidths(
+    table: ast.Table, rendered_rows: list[dict[str, Any]]
+) -> None:
+    """Spread `table.colwidths` (column-major) back onto each rendered cell.
+
+    The ast carries a single width-per-column array; the ADF spec wants it
+    stored per cell. Use the grid walker to map each cell to its column
+    range and attach the slice to the parallel rendered dict.
+    """
+    widths = table.colwidths or []
+    if not widths:
+        return
+    for r, c, ci, cell in table.iter_cells():
+        cs = cell.colspan or 1
+        slice_ = widths[c : c + cs]
+        if not slice_ or not any(w > 0 for w in slice_):
+            continue
+        rendered_cell = rendered_rows[r]["content"][ci]
+        attrs = rendered_cell.setdefault("attrs", {})
+        attrs["colwidth"] = slice_
 
 
 def _render_table_row(node: ast.TableRow) -> dict[str, Any]:
@@ -273,13 +301,12 @@ def _render_table_cell(node: ast.TableCell | ast.TableHeader) -> dict[str, Any]:
     cell_type = "tableHeader" if isinstance(node, ast.TableHeader) else "tableCell"
     result: dict[str, Any] = {
         "type": cell_type,
-        "content": _render_children(node.content, _render_block),
+        "content": _render_children(node.content, render_block),
     }
     attrs = _omit_none(
         {
             "colspan": node.colspan,
             "rowspan": node.rowspan,
-            "colwidth": node.colwidth,
             "background": node.background,
         }
     )
@@ -304,14 +331,14 @@ def _render_panel(node: ast.Panel) -> dict[str, Any]:
     return {
         "type": "panel",
         "attrs": attrs,
-        "content": _render_children(node.content, _render_block),
+        "content": _render_children(node.content, render_block),
     }
 
 
 def _render_expand(node: ast.Expand) -> dict[str, Any]:
     result: dict[str, Any] = {
         "type": "expand",
-        "content": _render_children(node.content, _render_block),
+        "content": _render_children(node.content, render_block),
     }
     if node.title:
         result["attrs"] = {"title": node.title}
@@ -322,7 +349,7 @@ def _render_nested_expand(node: ast.NestedExpand) -> dict[str, Any]:
     result: dict[str, Any] = {
         "type": "nestedExpand",
         "attrs": {},
-        "content": _render_children(node.content, _render_block),
+        "content": _render_children(node.content, render_block),
     }
     if node.title:
         result["attrs"]["title"] = node.title
@@ -373,7 +400,7 @@ def _render_media_group(node: ast.MediaGroup) -> dict[str, Any]:
     return {"type": "mediaGroup", "content": [_render_media(m) for m in node.content]}
 
 
-def _render_block_card(node: ast.BlockCard) -> dict[str, Any]:
+def render_block_card(node: ast.BlockCard) -> dict[str, Any]:
     attrs = _omit_none(
         {
             "url": node.url,
@@ -421,7 +448,7 @@ def _render_task_item(node: ast.TaskItem | ast.BlockTaskItem) -> dict[str, Any]:
     if isinstance(node, ast.TaskItem):
         content = _render_inlines(node.content)
     else:
-        content = _render_children(node.content, _render_block)
+        content = _render_children(node.content, render_block)
     if content:
         result["content"] = content
     return result
@@ -458,7 +485,7 @@ def _render_layout_column(node: ast.LayoutColumn) -> dict[str, Any]:
     return {
         "type": "layoutColumn",
         "attrs": {"width": node.width},
-        "content": _render_children(node.content, _render_block),
+        "content": _render_children(node.content, render_block),
     }
 
 
@@ -489,7 +516,7 @@ def _render_bodied_extension(node: ast.BodiedExtension) -> dict[str, Any]:
     result: dict[str, Any] = {
         "type": "bodiedExtension",
         "attrs": attrs,
-        "content": _render_children(node.content, _render_block),
+        "content": _render_children(node.content, render_block),
     }
     return _with_marks(result, node.marks)
 
@@ -506,7 +533,7 @@ def _render_bodied_sync_block(node: ast.BodiedSyncBlock) -> dict[str, Any]:
     result: dict[str, Any] = {
         "type": "bodiedSyncBlock",
         "attrs": {"resourceId": node.resource_id},
-        "content": _render_children(node.content, _render_block),
+        "content": _render_children(node.content, render_block),
     }
     return _with_marks(result, node.marks)
 
@@ -554,7 +581,7 @@ def _render_text(node: ast.Text) -> dict[str, Any]:
 
 
 def _render_hard_break() -> dict[str, Any]:
-    return {"type": "hardBreak", "attrs": {"text": "\n"}}
+    return {"type": "hardBreak"}
 
 
 def _render_mention(node: ast.Mention) -> dict[str, Any]:

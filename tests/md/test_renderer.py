@@ -82,7 +82,7 @@ class TestParagraph:
         assert _render(Paragraph(content=[Text(text="hello")])) == "hello\n"
 
     def test_empty(self):
-        assert _render(Paragraph(content=[])) == "&nbsp;\n"
+        assert _render(Paragraph(content=[])) == "<p></p>\n"
 
     def test_with_alignment_mark(self):
         result = _render(
@@ -313,7 +313,9 @@ class TestMarks:
                 ]
             )
         )
-        assert "[click](https://example.com)" in result
+        # href is wrapped in angle brackets so URL-encoded characters and
+        # parens inside the URL don't terminate the destination early.
+        assert "[click](<https://example.com>)" in result
 
     def test_link_with_title(self):
         result = _render(
@@ -326,7 +328,7 @@ class TestMarks:
                 ]
             )
         )
-        assert '[click](https://example.com "Example")' in result
+        assert '[click](<https://example.com> "Example")' in result
 
     def test_underline(self):
         result = _render(
@@ -362,7 +364,7 @@ class TestMarks:
                 ]
             )
         )
-        assert '<mark adf="annotation"' in result
+        assert '<span adf="annotation"' in result
         assert "annotated" in result
         assert '"id":"ann-1"' in result
 
@@ -389,7 +391,11 @@ class TestMarks:
         result = _render(
             Paragraph(content=[Text(text=" hello ", marks=[StrongMark()])])
         )
-        assert " **hello** " in result
+        # CommonMark flanking moves both spaces outside the **strong** run.
+        # The leading space is then dropped (mistune trims paragraph leading
+        # whitespace on parse, so we drop it on render to match); the
+        # trailing space stays because it's still inside the paragraph.
+        assert "**hello** " in result
 
     def test_code_with_backticks(self):
         result = _render(Paragraph(content=[Text(text="a`b", marks=[CodeMark()])]))
@@ -441,7 +447,7 @@ class TestInlineNodes:
         result = _render(
             Paragraph(content=[Text(text="line1"), HardBreak(), Text(text="line2")])
         )
-        assert "line1\\\nline2" in result
+        assert "line1<br>line2" in result
 
     def test_media_inline(self):
         result = _render(

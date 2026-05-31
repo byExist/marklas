@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Sequence
+from collections.abc import Iterator, Sequence
 from dataclasses import dataclass, field
 from typing import Any, Literal, TypeAlias, Union
 
@@ -119,7 +119,6 @@ class Text(Node):
 
 @dataclass
 class HardBreak(Node):
-    # text: str | None = None  # always "\n", injected by ADF renderer
     pass
 
 
@@ -312,7 +311,6 @@ class TableCell(Node):
     content: Sequence[TableCellContent]
     colspan: int | None = None
     rowspan: int | None = None
-    colwidth: list[int] | None = None
     background: str | None = None
 
 
@@ -336,7 +334,47 @@ class Table(Node):
         | None
     ) = None
     width: float | None = None
+    # Column widths in the order of the grid columns (one entry per column,
+    # not per cell). ADF stores width on each cell's `attrs.colwidth`, but
+    # the value is semantically a column-level property — same column → same
+    # width — and we consolidate it here so the model reflects that.
+    colwidths: list[float] | None = None
     # marks: Sequence[FragmentMark] — FragmentMark itself is commented out
+
+    def iter_cells(
+        self,
+    ) -> Iterator[tuple[int, int, int, TableCell | TableHeader]]:
+        """Walk each cell with its grid position and index within the row.
+
+        Tuple shape: ``(row_index, col_index, cell_index, cell)``.
+
+        - ``row_index`` / ``col_index`` — visual grid position, accounting
+          for any prior row's ``rowspan`` that claims a slot in this row.
+        - ``cell_index`` — index inside ``row.content`` (sequential ADF order,
+          ignoring grid layout).
+
+        Both indices are needed: ``col_index`` tells you *what column* this
+        cell occupies (for colwidth distribution); ``cell_index`` finds the
+        corresponding rendered/raw cell dict in a parallel structure.
+        """
+        rows = self.content
+        num_rows = len(rows)
+        occupied: set[tuple[int, int]] = set()
+        for r, row in enumerate(rows):
+            c = 0
+            for ci, cell in enumerate(row.content):
+                while (r, c) in occupied:
+                    c += 1
+                yield r, c, ci, cell
+                cs = cell.colspan or 1
+                rs = cell.rowspan or 1
+                for dr in range(rs):
+                    rr = r + dr
+                    if rr >= num_rows:
+                        break
+                    for dc in range(cs):
+                        occupied.add((rr, c + dc))
+                c += cs
 
 
 @dataclass

@@ -214,13 +214,79 @@ def _parse_list_item(node: dict[str, Any]) -> ast.ListItem:
 
 def _parse_table(node: dict[str, Any]) -> ast.Table:
     attrs = _get_attrs(node)
-    return ast.Table(
-        content=[_parse_table_row(r) for r in node.get("content", [])],
+    raw_rows = cast(list[dict[str, Any]], node.get("content", []))
+    table = ast.Table(
+        content=[_parse_table_row(r) for r in raw_rows],
         display_mode=attrs.get("displayMode"),
         is_number_column_enabled=attrs.get("isNumberColumnEnabled"),
         layout=attrs.get("layout"),
         width=attrs.get("width"),
     )
+    # Order matters: consolidate first (raw cells still align 1:1 with ast
+    # cells), then equalize (which mutates ast cell colspans).
+    table.colwidths = _consolidate_colwidths(table, raw_rows)
+    _equalize_row_widths(table)
+    return table
+
+
+def _consolidate_colwidths(
+    table: ast.Table, raw_rows: list[dict[str, Any]]
+) -> list[float] | None:
+    """Collapse per-cell `attrs.colwidth` into one width per grid column.
+
+    ADF stores colwidth on each cell, but it's semantically a column
+    property (every cell sharing a column has the same width in any
+    sane table). Walk the grid via ``Table.iter_cells`` and read each
+    cell's raw colwidth from the parallel raw_rows array; record the
+    first non-zero width seen per column.
+    """
+    col_to_width: dict[int, float] = {}
+    for r, c, ci, cell in table.iter_cells():
+        raw_cells = cast(list[dict[str, Any]], raw_rows[r].get("content", []))
+        raw_attrs = cast(dict[str, Any], raw_cells[ci].get("attrs") or {})
+        raw_cw = raw_attrs.get("colwidth")
+        if not isinstance(raw_cw, list):
+            continue
+        cs = cell.colspan or 1
+        for i, w in enumerate(cast(list[Any], raw_cw[:cs])):
+            col = c + i
+            if col not in col_to_width and isinstance(w, (int, float)) and w > 0:
+                col_to_width[col] = float(w)
+    if not col_to_width:
+        return None
+    max_col = max(col_to_width) + 1
+    return [col_to_width.get(i, 0.0) for i in range(max_col)]
+
+
+def _equalize_row_widths(table: ast.Table) -> None:
+    """Make every row span the same number of columns.
+
+    ADF allows rows with different total cell widths — Confluence simply
+    extends the last visible cell's colspan to fill the gap at render
+    time. Without this normalization, our md → ADF round-trip would
+    instead insert explicit empty cells, changing the row's cell count.
+    Make the implicit colspan explicit at parse time so the cell count
+    survives the round-trip.
+
+    This is the *sparse → semi-dense* half of the round-trip pair; the
+    inverse step (dense → sparse) lives in
+    ``marklas.md.parser.block._sparsify_rows`` and drops the padding
+    cells GFM rendering inserts at rowspan-occupied slots.
+    """
+    rows = table.content
+    if not rows:
+        return
+    row_widths = [0] * len(rows)
+    for r, c, _ci, cell in table.iter_cells():
+        end = c + (cell.colspan or 1)
+        if end > row_widths[r]:
+            row_widths[r] = end
+    target = max(row_widths, default=0)
+    for r, row in enumerate(rows):
+        if row_widths[r] < target and row.content:
+            deficit = target - row_widths[r]
+            last = row.content[-1]
+            last.colspan = (last.colspan or 1) + deficit
 
 
 def _parse_table_row(node: dict[str, Any]) -> ast.TableRow:
@@ -236,7 +302,6 @@ def _parse_table_cell(node: dict[str, Any]) -> ast.TableCell | ast.TableHeader:
         ),
         colspan=attrs.get("colspan"),
         rowspan=attrs.get("rowspan"),
-        colwidth=attrs.get("colwidth"),
         background=attrs.get("background"),
     )
 
@@ -494,7 +559,31 @@ def _resolve_emoji_text(text: str | None, emoji_id: str | None) -> str | None:
 
 
 def _parse_inlines(nodes: list[dict[str, Any]]) -> list[ast.Inline]:
-    return [n for node in nodes if (n := _parse_inline(node)) is not None]
+    """Parse inline nodes, splitting text on ``\\n`` into text + HardBreak.
+
+    ADF's schema defines ``hardBreak.attrs.text`` as the literal ``"\\n"``,
+    so a ``\\n`` character inside a text node is canonically a hard line
+    break. Split here so downstream code sees one canonical shape: text
+    nodes never contain ``\\n``, and visual line breaks are always
+    ``ast.HardBreak`` nodes.
+    """
+    result: list[ast.Inline] = []
+    for node in nodes:
+        if node.get("type") == "text":
+            text = node.get("text", "")
+            if "\n" in text:
+                marks = _parse_marks(node.get("marks", []))
+                segments = text.split("\n")
+                for i, seg in enumerate(segments):
+                    if i > 0:
+                        result.append(ast.HardBreak())
+                    if seg:
+                        result.append(ast.Text(text=seg, marks=list(marks)))
+                continue
+        n = _parse_inline(node)
+        if n is not None:
+            result.append(n)
+    return result
 
 
 def _parse_inline(node: dict[str, Any]) -> ast.Inline | None:

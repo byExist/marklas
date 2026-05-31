@@ -731,7 +731,7 @@ class TestInlines:
                 ]
             )
         )
-        assert result["content"][1] == {"type": "hardBreak", "attrs": {"text": "\n"}}
+        assert result["content"][1] == {"type": "hardBreak"}
 
     def test_mention(self):
         result = _r1(
@@ -844,6 +844,9 @@ class TestLossyFields:
         assert "localId" in result["attrs"]
         assert "localId" in result["content"][0]["attrs"]
 
-    def test_hard_break_text_injected(self):
+    def test_hard_break_omits_redundant_attrs(self):
+        # hardBreak.attrs is optional per ADF schema and `text` is fixed to
+        # "\n" (no information content) — emit only `type` for parity with
+        # Confluence/Jira source documents.
         result = _r1(Doc(content=[Paragraph(content=[HardBreak()])]))
-        assert result["content"][0]["attrs"]["text"] == "\n"
+        assert result["content"][0] == {"type": "hardBreak"}

@@ -8,12 +8,12 @@ import re
 from collections.abc import Sequence
 from contextlib import contextmanager
 from contextvars import ContextVar
-from dataclasses import fields
-
 from datetime import UTC, datetime
-from typing import Any, Generator, cast
+from typing import Any, Generator
 
 from marklas import ast
+
+from . import cell
 
 
 # ── Rendering context ──────────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ def _escape_params(json_str: str) -> str:
     return json_str.replace("&", "&amp;").replace("'", "&#39;")
 
 
-def _build_params(fields: dict[str, Any]) -> str | None:
+def build_params(fields: dict[str, Any]) -> str | None:
     """Build escaped params JSON. Returns None if all values are None."""
     d = {k: v for k, v in fields.items() if v is not None}
     if not d:
@@ -83,22 +83,22 @@ def _attr_str(
     return (" " + " ".join(parts)) if parts else ""
 
 
-_PLAIN_STRIP_TAGS = {"span", "time", "div", "section", "mark"}
+_PLAIN_STRIP_TAGS = {"span", "time", "div", "section"}
 
 
-def _el(tag: str, content: str, **attrs: Any) -> str:
+def el(tag: str, content: str, **attrs: Any) -> str:
     """<tag attrs>content</tag>"""
     if _is_plain() and tag in _PLAIN_STRIP_TAGS:
         return content
     return f"<{tag}{_attr_str(**attrs)}>{content}</{tag}>"
 
 
-def _block_el(tag: str, content: str, **attrs: Any) -> str:
+def block_el(tag: str, content: str, **attrs: Any) -> str:
     """<tag attrs>\\n\\ncontent\\n\\n</tag> (block context only)"""
     if _is_plain() and tag in _PLAIN_STRIP_TAGS:
         return content
     if _in_cell():
-        return _el(tag, content, **attrs)
+        return el(tag, content, **attrs)
     return f"<{tag}{_attr_str(**attrs)}>\n\n{content}\n\n</{tag}>"
 
 
@@ -121,12 +121,48 @@ _MD_ESCAPE = str.maketrans(
         "]": "\\]",
         "`": "\\`",
         "~": "\\~",
+        # `<` opens inline_html in mistune's eyes. Without escape, text like
+        # ` <br> ` would be reabsorbed as a HardBreak; `<span>literal</span>`
+        # would be stripped as adf-less inline html.
+        "<": "\\<",
     }
 )
 
 
-def _escape_md(text: str) -> str:
-    return text.translate(_MD_ESCAPE)
+def inline_safe(text: str | None) -> str:
+    """Escape text for an *unprotected* inline MD position.
+
+    "Unprotected" = the surrounding block is parsed by mistune's inline
+    parser, so markdown rules apply to the content (plain ``ast.Text``
+    in a Paragraph/Heading, inline-parsed HTML body, etc.).
+
+    Two transformations:
+
+    1. ``\\n`` → space — ADF has no soft-break concept; an embedded ``\\n``
+       has no canonical visual mapping, so collapse to a space (CommonMark
+       softbreak semantics) before it surfaces as a real newline that
+       would split the surrounding block.
+    2. MD specials → backslash-escaped — so ``*foo*`` in a user-typed
+       display name doesn't reparse as emphasis.
+
+    See :func:`_wrap_code` / :func:`_wrap_codespan` for the *protected*
+    (codespan) counterpart, and :func:`html_body_safe` for the *raw
+    block_html* counterpart.
+    """
+    return (text or "").replace("\n", " ").translate(_MD_ESCAPE)
+
+
+def html_body_safe(text: str | None) -> str:
+    """Collapse ``\\n`` for an inline position inside a raw block_html body.
+
+    Counterpart to :func:`inline_safe` for positions where mistune captures
+    the whole tag (including body) as one block_html token, so the body
+    skips inline parsing entirely. MD escape would survive as literal
+    backslashes on round-trip; the only transformation still necessary is
+    collapsing ``\\n`` so the body stays a single line and the tag isn't
+    split.
+    """
+    return (text or "").replace("\n", " ")
 
 
 def _escape_pipe(text: str) -> str:
@@ -143,7 +179,7 @@ def _code_fence(code: str) -> str:
 
 
 def _media_fallback(id: str | None, alt: str | None) -> str:
-    label = alt or "attachment"
+    label = inline_safe(alt or "attachment")
     return f"📎 {label} ({id})" if id else f"📎 {label}"
 
 
@@ -153,7 +189,7 @@ def _media_fallback(id: str | None, alt: str | None) -> str:
 def render(doc: ast.Doc, *, plain: bool = False) -> str:
     token = _plain_ctx.set(plain)
     try:
-        parts = _render_blocks(doc.content)
+        parts = render_blocks(doc.content)
         return "\n\n".join(parts) + "\n" if parts else ""
     finally:
         _plain_ctx.reset(token)
@@ -162,26 +198,17 @@ def render(doc: ast.Doc, *, plain: bool = False) -> str:
 # ── Block marks ────────────────────────────────────────────────────────────────
 
 
-_BLOCK_MARK_TYPES = (
-    ast.AlignmentMark,
-    ast.IndentationMark,
-    ast.BreakoutMark,
-    ast.DataConsumerMark,
-    ast.BorderMark,
-)
-
-
 def _block_marks_data(marks: Sequence[ast.Mark]) -> str | None:
     """<data adf="marks" params='...'> for block context. None if no block marks."""
     if _is_plain():
         return None
-    d = _block_marks_params(marks)
+    d = block_marks_params(marks)
     if not d:
         return None
-    return _data("marks", _build_params(d))
+    return _data("marks", build_params(d))
 
 
-def _block_marks_params(marks: Sequence[ast.Mark]) -> dict[str, Any]:
+def block_marks_params(marks: Sequence[ast.Mark]) -> dict[str, Any]:
     """Block mark fields as dict for cell context params merging."""
     d: dict[str, Any] = {}
     for m in marks:
@@ -207,11 +234,29 @@ def _block_marks_params(marks: Sequence[ast.Mark]) -> dict[str, Any]:
 # ── Block rendering ────────────────────────────────────────────────────────────
 
 
-def _render_blocks(children: Sequence[ast.Node]) -> list[str]:
-    return [_render_block(c) for c in children]
+def render_blocks(children: Sequence[ast.Node]) -> list[str]:
+    parts: list[str] = []
+    prev_marker: str | None = None
+    for c in children:
+        # CommonMark merges adjacent bullet lists that share a marker into a
+        # single list — so two ADF bulletLists in a row round-trip as one.
+        # Alternate between "-" and "*" to keep them separate.
+        if isinstance(c, ast.BulletList) and not _in_cell():
+            marker = "*" if prev_marker == "-" else "-"
+            rendered = _render_bullet_list(c, marker=marker)
+            prev_marker = marker
+        else:
+            rendered = render_block(c)
+            prev_marker = None
+        # Drop blocks that rendered to nothing (plain-mode empty paragraphs,
+        # void metadata divs). Otherwise the outer "\n\n".join would emit
+        # them as extra blank lines between real content.
+        if rendered:
+            parts.append(rendered)
+    return parts
 
 
-def _render_block(node: ast.Node) -> str:
+def render_block(node: ast.Node) -> str:
     match node:
         case ast.Paragraph():
             return _render_paragraph(node)
@@ -236,7 +281,7 @@ def _render_block(node: ast.Node) -> str:
         case ast.NestedExpand():
             return _render_nested_expand(node)
         case ast.TaskList():
-            return _render_task_list(node)
+            return render_task_list(node)
         case ast.DecisionList():
             return _render_decision_list(node)
         case ast.MediaSingle():
@@ -264,25 +309,69 @@ def _render_block(node: ast.Node) -> str:
 # ── Block renderers (각 함수가 block/cell 컨텍스트 내부 처리) ──────────────────
 
 
+_ORDERED_LIST_MARKER_RE = re.compile(r"^( {0,3})(\d+)([.)])(\s)")
+_BULLET_LIST_MARKER_RE = re.compile(r"^( {0,3})([-+*])(\s)")
+
+
 def _render_paragraph(node: ast.Paragraph) -> str:
-    content = _render_inlines(node.content)
-    if _in_cell():
-        marks_dict = _block_marks_params(node.marks)
-        params = _build_params(marks_dict)
-        return _el("p", content, params=params)
+    return cell.render_paragraph(node) if _in_cell() else _render_paragraph_block(node)
+
+
+def _render_paragraph_block(node: ast.Paragraph) -> str:
+    # Drop leading and trailing HardBreaks: a `<br>` at the very start
+    # or end of a paragraph adds nothing visually (the paragraph break
+    # above/below already implies a line break) and produces awkward
+    # `<br>text…` or `…text<br>` output. Symmetric with heading.
+    inlines = list(node.content)
+    while inlines and isinstance(inlines[0], ast.HardBreak):
+        inlines.pop(0)
+    while inlines and isinstance(inlines[-1], ast.HardBreak):
+        inlines.pop()
+    # Collapse a paragraph whose remaining content is all whitespace text
+    # + hardBreaks: visually empty already, but " \\\n " round-trips as
+    # paragraph(text="\\"). Treat it as empty so the empty-paragraph path runs.
+    if all(
+        (isinstance(x, ast.Text) and not x.text.strip()) or isinstance(x, ast.HardBreak)
+        for x in inlines
+    ):
+        inlines = []
+    content = render_inlines(inlines)
     marks_prefix = _block_marks_data(node.marks)
-    result = content or "&nbsp;"
+    # Empty paragraph → "<p></p>": survives the round-trip as paired
+    # block_html. Plain mode drops the marker — it's a round-trip device.
+    if not content.strip():
+        if _is_plain():
+            return marks_prefix or ""
+        result = "<p></p>"
+        if marks_prefix:
+            return f"{marks_prefix}\n\n{result}"
+        return result
+    # Strip leading whitespace — CommonMark trims it on parse anyway, and
+    # keeping it would make mistune absorb the paragraph as indented lazy-
+    # continuation content of any preceding list.
+    result = content.lstrip()
+    # Escape a leading list marker so a paragraph that starts with one
+    # ("4. 프린터 설정 안내", "- 항목") isn't reinterpreted as a list.
+    result = _ORDERED_LIST_MARKER_RE.sub(r"\1\2\\\3\4", result)
+    result = _BULLET_LIST_MARKER_RE.sub(r"\1\\\2\3", result)
     if marks_prefix:
         return f"{marks_prefix}\n\n{result}"
     return result
 
 
 def _render_heading(node: ast.Heading) -> str:
-    content = _render_inlines(node.content)
-    if _in_cell():
-        marks_dict = _block_marks_params(node.marks)
-        params = _build_params(marks_dict)
-        return _el(f"h{node.level}", content, params=params)
+    return cell.render_heading(node) if _in_cell() else _render_heading_block(node)
+
+
+def _render_heading_block(node: ast.Heading) -> str:
+    # Drop edge hardBreaks: rendering "# \\\n..." makes mistune treat the
+    # backslash as the heading body and shove the rest into the next block.
+    inlines = list(node.content)
+    while inlines and isinstance(inlines[0], ast.HardBreak):
+        inlines.pop(0)
+    while inlines and isinstance(inlines[-1], ast.HardBreak):
+        inlines.pop()
+    content = render_inlines(inlines)
     marks_prefix = _block_marks_data(node.marks)
     result = f"{'#' * node.level} {content}"
     if marks_prefix:
@@ -291,13 +380,13 @@ def _render_heading(node: ast.Heading) -> str:
 
 
 def _render_code_block(node: ast.CodeBlock) -> str:
+    return (
+        cell.render_code_block(node) if _in_cell() else _render_code_block_block(node)
+    )
+
+
+def _render_code_block_block(node: ast.CodeBlock) -> str:
     code = "".join(t.text for t in node.content)
-    if _in_cell():
-        marks_dict = _block_marks_params(node.marks)
-        if node.language:
-            marks_dict["language"] = node.language
-        params = _build_params(marks_dict)
-        return _el("code", code.replace("\n", "<br>"), params=params)
     marks_prefix = _block_marks_data(node.marks)
     fence = _code_fence(code)
     lang = node.language or ""
@@ -308,41 +397,56 @@ def _render_code_block(node: ast.CodeBlock) -> str:
 
 
 def _render_blockquote(node: ast.Blockquote) -> str:
-    if _in_cell():
-        parts = _render_blocks(node.content)
-        return _el("blockquote", "".join(parts))
-    inner = "\n\n".join(_render_blocks(node.content))
+    return (
+        cell.render_blockquote(node) if _in_cell() else _render_blockquote_block(node)
+    )
+
+
+def _render_blockquote_block(node: ast.Blockquote) -> str:
+    inner = "\n\n".join(render_blocks(node.content))
     return "\n".join(f"> {line}" if line else ">" for line in inner.split("\n"))
 
 
-def _li_content(children: Sequence[ast.Node]) -> str:
-    """List item content in cell context. Single Paragraph → bare text."""
-    if len(children) == 1 and isinstance(children[0], ast.Paragraph):
-        return _render_inlines(children[0].content)
-    return "".join(_render_block(c) for c in children)
-
-
-def _render_bullet_list(node: ast.BulletList) -> str:
+def _render_bullet_list(node: ast.BulletList, marker: str = "-") -> str:
     if _in_cell():
-        items = "".join(_el("li", _li_content(item.content)) for item in node.content)
-        return _el("ul", items)
-    return "\n".join(_render_list_item(item, "- ") for item in node.content)
+        return cell.render_bullet_list(node)
+    return _render_bullet_list_block(node, marker=marker)
+
+
+def _is_list_loose(items: Sequence[ast.Node]) -> bool:
+    """CommonMark list is loose if any item directly contains more than
+    one block-level element. ADF list items always wrap inline content
+    in a `paragraph`, so `len(content) > 1` means paragraph + nested
+    block — necessarily loose. Single-paragraph items are tight.
+    """
+    return any(len(getattr(item, "content", [])) > 1 for item in items)
+
+
+def _render_bullet_list_block(node: ast.BulletList, marker: str = "-") -> str:
+    sep = "\n\n" if _is_list_loose(node.content) else "\n"
+    return sep.join(_render_list_item(item, f"{marker} ") for item in node.content)
 
 
 def _render_ordered_list(node: ast.OrderedList) -> str:
+    return (
+        cell.render_ordered_list(node)
+        if _in_cell()
+        else _render_ordered_list_block(node)
+    )
+
+
+def _render_ordered_list_block(node: ast.OrderedList) -> str:
     start = node.order or 1
-    if _in_cell():
-        items = "".join(_el("li", _li_content(item.content)) for item in node.content)
-        return _el("ol", items, start=start if start != 1 else None)
-    parts: list[str] = []
-    for i, item in enumerate(node.content):
-        parts.append(_render_list_item(item, f"{start + i}. "))
-    return "\n".join(parts)
+    sep = "\n\n" if _is_list_loose(node.content) else "\n"
+    parts = [
+        _render_list_item(item, f"{start + i}. ") for i, item in enumerate(node.content)
+    ]
+    return sep.join(parts)
 
 
 def _render_list_item(node: ast.ListItem, marker: str) -> str:
     indent = " " * len(marker)
-    parts = _render_blocks(node.content)
+    parts = render_blocks(node.content)
     if not parts:
         return marker.rstrip()
     body = "\n\n".join(parts)
@@ -357,8 +461,8 @@ def _render_rule() -> str:
     return "<hr>" if _in_cell() else "---"
 
 
-def _render_panel(node: ast.Panel) -> str:
-    params = _build_params(
+def panel_params(node: ast.Panel) -> str | None:
+    return build_params(
         {
             "panelType": node.panel_type,
             "panelIcon": node.panel_icon,
@@ -367,56 +471,57 @@ def _render_panel(node: ast.Panel) -> str:
             "panelColor": node.panel_color,
         }
     )
-    if _in_cell():
-        content = "".join(_render_blocks(node.content))
-    else:
-        content = "\n\n".join(_render_blocks(node.content))
-    return _block_el("aside", content, adf="panel", params=params)
+
+
+def _render_panel(node: ast.Panel) -> str:
+    return cell.render_panel(node) if _in_cell() else _render_panel_block(node)
+
+
+def _render_panel_block(node: ast.Panel) -> str:
+    content = "\n\n".join(render_blocks(node.content))
+    return block_el("aside", content, adf="panel", params=panel_params(node))
 
 
 def _render_expand(node: ast.Expand) -> str:
+    return cell.render_expand(node) if _in_cell() else _render_expand_block(node)
+
+
+def _render_expand_block(node: ast.Expand) -> str:
     marks_prefix = _block_marks_data(node.marks)
-    summary = _el("summary", node.title) if node.title else ""
-    if _in_cell():
-        content = "".join(_render_blocks(node.content))
-        result = _el("details", summary + content, adf="expand")
-    else:
-        content = "\n\n".join(_render_blocks(node.content))
-        inner = f"{summary}\n\n{content}" if summary else content
-        result = _block_el("details", inner, adf="expand")
-    if marks_prefix and not _in_cell():
+    summary = el("summary", html_body_safe(node.title)) if node.title else ""
+    content = "\n\n".join(render_blocks(node.content))
+    inner = f"{summary}\n\n{content}" if summary else content
+    result = block_el("details", inner, adf="expand")
+    if marks_prefix:
         return f"{marks_prefix}\n\n{result}"
     return result
 
 
 def _render_nested_expand(node: ast.NestedExpand) -> str:
-    summary = _el("summary", node.title) if node.title else ""
     if _in_cell():
-        content = "".join(_render_blocks(node.content))
-        return _el("details", summary + content, adf="nestedExpand")
-    content = "\n\n".join(_render_blocks(node.content))
+        return cell.render_nested_expand(node)
+    return _render_nested_expand_block(node)
+
+
+def _render_nested_expand_block(node: ast.NestedExpand) -> str:
+    summary = el("summary", html_body_safe(node.title)) if node.title else ""
+    content = "\n\n".join(render_blocks(node.content))
     inner = f"{summary}\n\n{content}" if summary else content
-    return _block_el("details", inner, adf="nestedExpand")
+    return block_el("details", inner, adf="nestedExpand")
 
 
-def _render_task_list(node: ast.TaskList) -> str:
-    if _in_cell():
-        items: list[str] = []
-        for child in node.content:
-            match child:
-                case ast.TaskItem():
-                    content = _render_inlines(child.content)
-                    params = _build_params({"state": child.state})
-                    items.append(_el("li", content, adf="taskItem", params=params))
-                case ast.BlockTaskItem():
-                    content = "".join(_render_blocks(child.content))
-                    params = _build_params({"state": child.state})
-                    items.append(_el("li", content, adf="taskItem", params=params))
-                case ast.TaskList():
-                    items.append(_render_task_list(child))
-                case _:
-                    pass
-        return _el("ul", "".join(items), adf="taskList")
+def render_task_list(node: ast.TaskList) -> str:
+    return cell.render_task_list(node) if _in_cell() else _render_task_list_block(node)
+
+
+def _render_task_list_block(node: ast.TaskList) -> str:
+    # Loose iff any BlockTaskItem has multi-block content; TaskItem is
+    # inline-only (effectively single-block), and nested TaskList carries
+    # its own loose decision.
+    loose = any(
+        isinstance(c, ast.BlockTaskItem) and len(c.content) > 1 for c in node.content
+    )
+    sep = "\n\n" if loose else "\n"
     parts: list[str] = []
     for child in node.content:
         match child:
@@ -425,16 +530,16 @@ def _render_task_list(node: ast.TaskList) -> str:
             case ast.BlockTaskItem():
                 parts.append(_render_block_task_item(child))
             case ast.TaskList():
-                nested = _render_task_list(child)
+                nested = render_task_list(child)
                 parts.append("\n".join("  " + line for line in nested.split("\n")))
             case _:
                 pass
-    return "\n".join(parts)
+    return sep.join(parts)
 
 
 def _render_task_item(node: ast.TaskItem) -> str:
     checkbox = "[x]" if node.state == "DONE" else "[ ]"
-    content = _render_inlines(node.content)
+    content = render_inlines(node.content)
     return f"- {checkbox} {content}"
 
 
@@ -442,7 +547,7 @@ def _render_block_task_item(node: ast.BlockTaskItem) -> str:
     checkbox = "[x]" if node.state == "DONE" else "[ ]"
     marker = f"- {checkbox} "
     indent = " " * len(marker)
-    parts = _render_blocks(node.content)
+    parts = render_blocks(node.content)
     if not parts:
         return marker.rstrip()
     body = "\n\n".join(parts)
@@ -455,13 +560,13 @@ def _render_block_task_item(node: ast.BlockTaskItem) -> str:
 
 def _render_decision_list(node: ast.DecisionList) -> str:
     items = "".join(_render_decision_item(item) for item in node.content)
-    return _block_el("ul", items, adf="decisionList")
+    return block_el("ul", items, adf="decisionList")
 
 
 def _render_decision_item(node: ast.DecisionItem) -> str:
-    content = _render_inlines(node.content)
-    params = _build_params({"state": node.state})
-    return _el("li", content, adf="decisionItem", params=params)
+    content = render_inlines(node.content)
+    params = build_params({"state": node.state})
+    return el("li", content, adf="decisionItem", params=params)
 
 
 def _render_media_single(node: ast.MediaSingle) -> str:
@@ -475,7 +580,7 @@ def _render_media_single(node: ast.MediaSingle) -> str:
         params_dict["linkHref"] = m.href
         if m.title:
             params_dict["linkTitle"] = m.title
-    params = _build_params(params_dict)
+    params = build_params(params_dict)
     parts: list[str] = []
     for child in node.content:
         match child:
@@ -486,12 +591,12 @@ def _render_media_single(node: ast.MediaSingle) -> str:
             case _:
                 pass
     content = "".join(parts)
-    return _block_el("figure", content, adf="mediaSingle", params=params)
+    return block_el("figure", content, adf="mediaSingle", params=params)
 
 
 def _render_media_group(node: ast.MediaGroup) -> str:
     content = "".join(_render_media(m) for m in node.content)
-    return _block_el("div", content, adf="mediaGroup")
+    return block_el("div", content, adf="mediaGroup")
 
 
 def _render_media(node: ast.Media) -> str:
@@ -509,24 +614,24 @@ def _render_media(node: ast.Media) -> str:
         if isinstance(m, ast.BorderMark):
             params_dict["borderSize"] = m.size
             params_dict["borderColor"] = m.color
-    params = _build_params(params_dict)
-    result = _el("span", display, adf="media", params=params)
+    params = build_params(params_dict)
+    result = el("span", display, adf="media", params=params)
     for m in node.marks:
         if isinstance(m, ast.LinkMark):
-            result = _el("a", result, href=m.href, title=m.title)
+            result = el("a", result, href=m.href, title=m.title)
         elif isinstance(m, ast.AnnotationMark):
-            result = _el(
-                "mark",
+            result = el(
+                "span",
                 result,
                 adf="annotation",
-                params=_build_params({"id": m.id}),
+                params=build_params({"id": m.id}),
             )
     return result
 
 
 def _render_caption(node: ast.Caption) -> str:
-    content = _render_inlines(node.content)
-    return _el("figcaption", content, adf="caption")
+    content = render_inlines(node.content)
+    return el("figcaption", content, adf="caption")
 
 
 def _render_block_card(node: ast.BlockCard) -> str:
@@ -537,13 +642,13 @@ def _render_block_card(node: ast.BlockCard) -> str:
         "data": node.data,
         "datasource": node.datasource,
     }
-    params = _build_params(params_dict)
+    params = build_params(params_dict)
     display = node.url or ""
-    return _block_el("div", display, adf="blockCard", params=params)
+    return block_el("div", display, adf="blockCard", params=params)
 
 
 def _render_embed_card(node: ast.EmbedCard) -> str:
-    params = _build_params(
+    params = build_params(
         {
             "url": node.url,
             "layout": node.layout,
@@ -552,27 +657,30 @@ def _render_embed_card(node: ast.EmbedCard) -> str:
             "originalWidth": node.original_width,
         }
     )
-    return _block_el("div", node.url, adf="embedCard", params=params)
+    return block_el("div", node.url, adf="embedCard", params=params)
 
 
 def _render_layout_section(node: ast.LayoutSection) -> str:
-    marks_prefix = _block_marks_data(node.marks)
     columns = "\n\n".join(_render_layout_column(col) for col in node.content)
-    result = _block_el("section", columns, adf="layoutSection")
-    if marks_prefix and not _in_cell():
+    result = block_el("section", columns, adf="layoutSection")
+    # The marks prefix is a block-context-only sentinel (`<data adf="marks">`
+    # on its own line); inside cells it would break the single-line cell.
+    if _in_cell():
+        return result
+    marks_prefix = _block_marks_data(node.marks)
+    if marks_prefix:
         return f"{marks_prefix}\n\n{result}"
     return result
 
 
 def _render_layout_column(node: ast.LayoutColumn) -> str:
-    params = _build_params({"width": node.width})
-    content = "\n\n".join(_render_blocks(node.content))
-    return _block_el("div", content, adf="layoutColumn", params=params)
+    params = build_params({"width": node.width})
+    content = "\n\n".join(render_blocks(node.content))
+    return block_el("div", content, adf="layoutColumn", params=params)
 
 
 def _render_extension(node: ast.Extension) -> str:
-    marks_prefix = _block_marks_data(node.marks)
-    params = _build_params(
+    params = build_params(
         {
             "extensionKey": node.extension_key,
             "extensionType": node.extension_type,
@@ -581,15 +689,76 @@ def _render_extension(node: ast.Extension) -> str:
             "layout": node.layout,
         }
     )
-    result = _data("extension", params)
-    if marks_prefix and not _in_cell():
+    visual = _nested_table_visual(node) if node.extension_key == "nested-table" else ""
+    if visual:
+        # Paired form so the inner table is visible to plain Markdown
+        # renderers. Round-trip safety still rides on `params` (which
+        # carries the full `parameters.adf`), so the inner is parser-ignored.
+        result = el("div", visual, adf="extension", params=params)
+    else:
+        result = _data("extension", params)
+    if _in_cell():
+        return result
+    marks_prefix = _block_marks_data(node.marks)
+    if marks_prefix:
         return f"{marks_prefix}\n\n{result}"
     return result
 
 
+def _nested_table_visual(node: ast.Extension) -> str:
+    """Render the inner ADF doc embedded in ``parameters.adf`` for visibility.
+
+    Confluence wraps cell-nested tables in a ``nested-table`` extension
+    whose ``parameters.adf`` field carries the original doc as a JSON
+    string (since ADF forbids ``table`` inside a ``tableCell``). We
+    decode it and emit the inner table as inline HTML — GFM table
+    syntax would explode the outer cell on the first `|`. The ``params``
+    JSON on the outer element still carries the original ADF verbatim,
+    so the inner is purely cosmetic from the parser's perspective.
+    """
+    from marklas.adf.parser import parse as parse_adf_doc
+
+    inner_json = (node.parameters or {}).get("adf")
+    if not isinstance(inner_json, str) or not inner_json:
+        return ""
+    try:
+        inner_doc_raw = json.loads(inner_json)
+    except json.JSONDecodeError:
+        return ""
+    try:
+        inner_doc = parse_adf_doc(inner_doc_raw)
+    except Exception:
+        return ""
+    parts: list[str] = []
+    for child in inner_doc.content:
+        if isinstance(child, ast.Table):
+            parts.append(_render_table_html(child))
+    return "".join(parts)
+
+
+def _render_table_html(table: ast.Table) -> str:
+    """Emit a Table as inline HTML so it can live inside a single cell."""
+    row_parts: list[str] = []
+    for row in table.content:
+        cell_parts: list[str] = []
+        for tc in row.content:
+            tag = "th" if isinstance(tc, ast.TableHeader) else "td"
+            extra: dict[str, Any] = {}
+            if tc.colspan and tc.colspan != 1:
+                extra["colspan"] = tc.colspan
+            if tc.rowspan and tc.rowspan != 1:
+                extra["rowspan"] = tc.rowspan
+            with _cell_context():
+                inner = _render_cell_content(tc.content)
+            attr = _attr_str(**extra)
+            cell_parts.append(f"<{tag}{attr}>{inner}</{tag}>")
+        row_parts.append(f"<tr>{''.join(cell_parts)}</tr>")
+    return f"<table>{''.join(row_parts)}</table>"
+
+
 def _render_bodied_extension(node: ast.BodiedExtension) -> str:
     content_dicts = [_node_to_dict(c) for c in node.content]
-    params = _build_params(
+    params = build_params(
         {
             "extensionKey": node.extension_key,
             "extensionType": node.extension_type,
@@ -603,17 +772,19 @@ def _render_bodied_extension(node: ast.BodiedExtension) -> str:
 
 
 def _render_sync_block(node: ast.SyncBlock) -> str:
-    marks_prefix = _block_marks_data(node.marks)
-    params = _build_params({"resourceId": node.resource_id})
+    params = build_params({"resourceId": node.resource_id})
     result = _data("syncBlock", params)
-    if marks_prefix and not _in_cell():
+    if _in_cell():
+        return result
+    marks_prefix = _block_marks_data(node.marks)
+    if marks_prefix:
         return f"{marks_prefix}\n\n{result}"
     return result
 
 
 def _render_bodied_sync_block(node: ast.BodiedSyncBlock) -> str:
     content_dicts = [_node_to_dict(c) for c in node.content]
-    params = _build_params(
+    params = build_params(
         {
             "resourceId": node.resource_id,
             "content": content_dicts,
@@ -633,7 +804,7 @@ def _render_table(node: ast.Table) -> str:
     mode = _header_mode(node)
 
     with _cell_context():
-        grid = _build_grid(rows)
+        grid = _build_grid(rows, mode)
 
     if not grid or not grid[0]:
         return ""
@@ -662,7 +833,21 @@ def _render_table(node: ast.Table) -> str:
     return table_md
 
 
-def _build_grid(rows: Sequence[ast.TableRow]) -> list[list[str]]:
+def _expected_header(mode: str, r: int, c: int) -> bool:
+    """Whether the cell at (r, c) is implicitly a TableHeader given table mode.
+
+    mode is one of "row" / "column" / "both" / "none" (see `_header_mode`).
+    """
+    if mode == "row":
+        return r == 0
+    if mode == "column":
+        return c == 0
+    if mode == "both":
+        return r == 0 or c == 0
+    return False
+
+
+def _build_grid(rows: Sequence[ast.TableRow], mode: str) -> list[list[str]]:
     """Build 2D cell grid, expanding colspan/rowspan into filler cells."""
     num_rows = len(rows)
     if num_rows == 0:
@@ -673,14 +858,14 @@ def _build_grid(rows: Sequence[ast.TableRow]) -> list[list[str]]:
 
     for r, row in enumerate(rows):
         c = 0
-        for cell in row.content:
+        for tc in row.content:
             while c < max_cols and grid[r][c] is not None:
                 c += 1
             if c >= max_cols:
                 break
-            cs = cell.colspan or 1
-            rs = cell.rowspan or 1
-            grid[r][c] = _render_cell(cell)
+            cs = tc.colspan or 1
+            rs = tc.rowspan or 1
+            grid[r][c] = _render_cell(tc, expected_header=_expected_header(mode, r, c))
             for dr in range(rs):
                 for dc in range(cs):
                     if dr == 0 and dc == 0:
@@ -706,27 +891,11 @@ def _table_meta(node: ast.Table, mode: str) -> str | None:
         d["isNumberColumnEnabled"] = node.is_number_column_enabled
     if node.width is not None:
         d["width"] = node.width
-    colwidths = _collect_colwidths(node)
-    if colwidths:
-        d["colwidths"] = colwidths
+    if node.colwidths:
+        d["colwidths"] = node.colwidths
     if not d:
         return None
-    return _data("table", _build_params(d))
-
-
-def _collect_colwidths(node: ast.Table) -> list[int] | None:
-    """Extract column widths from first row's cells."""
-    if not node.content:
-        return None
-    widths: list[int] = []
-    has_any = False
-    for cell in node.content[0].content:
-        if cell.colwidth:
-            widths.extend(cell.colwidth)
-            has_any = True
-        else:
-            widths.extend([0] * (cell.colspan or 1))
-    return widths if has_any else None
+    return _data("table", build_params(d))
 
 
 def _header_mode(node: ast.Table) -> str:
@@ -752,8 +921,13 @@ def _header_mode(node: ast.Table) -> str:
     return "none"
 
 
-def _cell_meta(cell: ast.TableCell) -> str:
-    """<data adf="cell" params='...'> prefix if colspan/rowspan/background."""
+def _cell_meta(cell: ast.TableCell, header_override: bool | None = None) -> str:
+    """<data adf="cell" params='...'> prefix if colspan/rowspan/background.
+
+    `header_override`, when set, records that this cell's type (TableHeader
+    vs TableCell) deviates from what the table's header mode would imply
+    — so the parser can restore the deviation on round-trip.
+    """
     d: dict[str, Any] = {}
     if cell.colspan and cell.colspan > 1:
         d["colspan"] = cell.colspan
@@ -761,13 +935,17 @@ def _cell_meta(cell: ast.TableCell) -> str:
         d["rowspan"] = cell.rowspan
     if cell.background:
         d["background"] = cell.background
+    if header_override is not None:
+        d["header"] = header_override
     if not d:
         return ""
-    return _data("cell", _build_params(d))
+    return _data("cell", build_params(d))
 
 
-def _render_cell(cell: ast.TableCell) -> str:
-    meta = _cell_meta(cell)
+def _render_cell(cell: ast.TableCell, *, expected_header: bool = False) -> str:
+    actual_header = isinstance(cell, ast.TableHeader)
+    override = actual_header if actual_header != expected_header else None
+    meta = _cell_meta(cell, header_override=override)
     content = _render_cell_content(cell.content)
     return _escape_pipe(meta + content)
 
@@ -778,15 +956,15 @@ def _render_cell_content(children: Sequence[ast.Node]) -> str:
         return ""
     if len(children) == 1 and isinstance(children[0], ast.Paragraph):
         p = children[0]
-        if not _block_marks_params(p.marks):
-            return _render_inlines(p.content)
-    return "".join(_render_block(c) for c in children)
+        if not block_marks_params(p.marks):
+            return render_inlines(p.content)
+    return "".join(render_block(c) for c in children)
 
 
 # ── Inline rendering ──────────────────────────────────────────────────────────
 
 
-def _render_inlines(children: Sequence[ast.Inline]) -> str:
+def render_inlines(children: Sequence[ast.Inline]) -> str:
     return "".join(_render_inline(c) for c in children)
 
 
@@ -820,61 +998,92 @@ def _render_inline(node: ast.Inline) -> str:
 
 
 def _render_text(node: ast.Text) -> str:
+    # All inline-safety (\n→space, MD escape) is folded into `inline_safe`
+    # via `_apply_marks` → `_wrap_code`/`inline_safe`.
     return _apply_marks(node.text, node.marks)
 
 
 def _render_hard_break() -> str:
-    return "<br>" if _in_cell() else "\\\n"
+    # `<br>` (not CommonMark's `\\\n`) in every context: the real newline
+    # in `\\\n` lets mistune's block parser re-classify the next line
+    # (e.g. `- `, `# `, `1.`, `---`) as starting a new block, splitting
+    # one paragraph into many. `<br>` is inline_html — no real newline,
+    # so block dispatch can't re-trigger. Parser already maps inline
+    # `<br>` back to HardBreak via `normalize_inlines`.
+    return "<br>"
 
 
 def _render_mention(node: ast.Mention) -> str:
-    display = node.text or f"@{node.id}"
-    params = _build_params(
+    display = inline_safe(node.text or f"@{node.id}")
+    params = build_params(
         {
             "id": node.id,
             "accessLevel": node.access_level,
             "userType": node.user_type,
         }
     )
-    return _el("span", display, adf="mention", params=params)
+    return el("span", display, adf="mention", params=params)
 
 
 def _render_emoji(node: ast.Emoji) -> str:
-    display = node.text or node.short_name
-    params = _build_params(
+    display = inline_safe(node.text or node.short_name)
+    params = build_params(
         {
             "shortName": node.short_name,
             "id": node.id,
         }
     )
-    return _el("span", display, adf="emoji", params=params)
+    return el("span", display, adf="emoji", params=params)
 
 
 def _render_date(node: ast.Date) -> str:
     ts = int(node.timestamp) / 1000
     dt = datetime.fromtimestamp(ts, tz=UTC)
     display = dt.strftime("%Y-%m-%d")
-    return _el("time", display, adf="date", datetime=node.timestamp)
+    return el("time", display, adf="date", datetime=node.timestamp)
 
 
 def _render_status(node: ast.Status) -> str:
-    params = _build_params(
+    params = build_params(
         {
             "color": node.color,
             "style": node.style,
         }
     )
-    return _el("span", node.text, adf="status", params=params)
+    # Codespan-wrap the text so plain-Markdown viewers render it as a
+    # distinct chip; the parser unwraps the codespan transparently.
+    # Status text goes inside a codespan, which is protected from MD
+    # interpretation — pass raw text; `_wrap_codespan` handles \n→space.
+    return el("span", _wrap_codespan(node.text), adf="status", params=params)
+
+
+def _wrap_codespan(text: str) -> str:
+    """Wrap `text` in an inline-code span, padding the fence if needed.
+
+    Counterpart to :func:`inline_safe` for the *protected* inline category:
+    inside a codespan, MD specials render as literal characters, so the
+    only safety transformation needed is collapsing ``\\n`` to space.
+    """
+    if not text:
+        return ""
+    text = text.replace("\n", " ")
+    runs = _BACKTICK_RE.findall(text)
+    fence = "`" * (max((len(r) for r in runs), default=0) + 1)
+    # CommonMark trims one leading/trailing space inside a codespan when
+    # both ends are spaces, and a span starting/ending with a backtick
+    # needs the pad to disambiguate from the fence.
+    pad = " " if text.startswith("`") or text.endswith("`") else ""
+    return f"{fence}{pad}{text}{pad}{fence}"
 
 
 def _render_inline_card(node: ast.InlineCard) -> str:
-    params = _build_params({"data": node.data}) if node.data else None
+    params = build_params({"data": node.data}) if node.data else None
     display = node.url or ""
-    return _el("a", display, adf="inlineCard", href=node.url, params=params)
+    return el("a", display, adf="inlineCard", href=node.url, params=params)
 
 
 def _render_placeholder(node: ast.Placeholder) -> str:
-    return _el("span", node.text, adf="placeholder")
+    return el("span", inline_safe(node.text), adf="placeholder")
 
 
 def _render_media_inline(node: ast.MediaInline) -> str:
@@ -893,23 +1102,23 @@ def _render_media_inline(node: ast.MediaInline) -> str:
         if isinstance(m, ast.BorderMark):
             params_dict["borderSize"] = m.size
             params_dict["borderColor"] = m.color
-    params = _build_params(params_dict)
-    result = _el("span", display, adf="mediaInline", params=params)
+    params = build_params(params_dict)
+    result = el("span", display, adf="mediaInline", params=params)
     for m in node.marks:
         if isinstance(m, ast.LinkMark):
-            result = _el("a", result, href=m.href, title=m.title)
+            result = el("a", result, href=m.href, title=m.title)
         elif isinstance(m, ast.AnnotationMark):
-            result = _el(
-                "mark",
+            result = el(
+                "span",
                 result,
                 adf="annotation",
-                params=_build_params({"id": m.id}),
+                params=build_params({"id": m.id}),
             )
     return result
 
 
 def _render_inline_extension(node: ast.InlineExtension) -> str:
-    params = _build_params(
+    params = build_params(
         {
             "extensionKey": node.extension_key,
             "extensionType": node.extension_type,
@@ -917,14 +1126,21 @@ def _render_inline_extension(node: ast.InlineExtension) -> str:
             "text": node.text,
         }
     )
-    return _el("span", "", adf="inlineExtension", params=params)
+    return el("span", "", adf="inlineExtension", params=params)
 
 
 # ── Mark rendering ─────────────────────────────────────────────────────────────
 
 
 def _wrap_code(text: str) -> str:
-    """Wrap text in code span backticks, handling embedded backticks."""
+    """Wrap text in code span backticks, handling embedded backticks.
+
+    Counterpart to :func:`inline_safe` for the *protected* inline category:
+    a codespan keeps its content as raw text (no MD escape interpretation),
+    so the only transformation needed is collapsing ``\\n`` to space so the
+    span doesn't sprout a real newline that breaks the surrounding block.
+    """
+    text = text.replace("\n", " ")
     if "`" not in text:
         return f"`{text}`"
     runs = _BACKTICK_RE.findall(text)
@@ -936,36 +1152,42 @@ def _wrap_code(text: str) -> str:
 
 
 def _wrap_flanking(text: str, delimiter: str) -> str:
-    """Move leading/trailing spaces outside delimiter for CommonMark flanking."""
-    leading = len(text) - len(text.lstrip(" "))
-    trailing = len(text) - len(text.rstrip(" "))
-    inner = text.strip(" ")
+    """Move leading/trailing whitespace outside delimiter for CommonMark flanking.
+
+    CommonMark's flanking rule rejects any Unicode whitespace adjacent to
+    the delimiter (not just ASCII space). NBSP (U+00A0) inside ADF text
+    must be pushed outside too, or `**foo\\u00a0**` re-parses as plain
+    text on the next round-trip.
+    """
+    inner = text.strip()
     if not inner:
         return text
-    return f"{' ' * leading}{delimiter}{inner}{delimiter}{' ' * trailing}"
+    leading_end = text.find(inner)
+    trailing_start = leading_end + len(inner)
+    return f"{text[:leading_end]}{delimiter}{inner}{delimiter}{text[trailing_start:]}"
 
 
 def _wrap_html_mark(text: str, mark: ast.Mark) -> str:
     match mark:
         case ast.UnderlineMark():
-            return _el("u", text, adf="underline")
+            return el("u", text, adf="underline")
         case ast.TextColorMark(color=color):
-            return _el(
-                "span", text, adf="textColor", params=_build_params({"color": color})
+            return el(
+                "span", text, adf="textColor", params=build_params({"color": color})
             )
         case ast.BackgroundColorMark(color=color):
-            return _el(
-                "span", text, adf="bgColor", params=_build_params({"color": color})
+            return el(
+                "span", text, adf="bgColor", params=build_params({"color": color})
             )
         case ast.SubSupMark(type=type_):
             tag = "sub" if type_ == "sub" else "sup"
-            return _el(tag, text, adf="subSup")
+            return el(tag, text, adf="subSup")
         case ast.AnnotationMark(id=id_):
-            return _el(
-                "mark",
+            return el(
+                "span",
                 text,
                 adf="annotation",
-                params=_build_params({"id": id_}),
+                params=build_params({"id": id_}),
             )
         case _:
             return text
@@ -973,7 +1195,7 @@ def _wrap_html_mark(text: str, mark: ast.Mark) -> str:
 
 def _apply_marks(text: str, marks: Sequence[ast.Mark]) -> str:
     if not marks:
-        return _escape_md(text)
+        return inline_safe(text)
 
     code: ast.CodeMark | None = None
     native: list[ast.Mark] = []
@@ -992,7 +1214,7 @@ def _apply_marks(text: str, marks: Sequence[ast.Mark]) -> str:
                 html.append(m)
 
     # innermost: code (no MD escape) or escaped text
-    result = _wrap_code(text) if code else _escape_md(text)
+    result = _wrap_code(text) if code else inline_safe(text)
 
     # native MD marks
     for m in native:
@@ -1006,10 +1228,12 @@ def _apply_marks(text: str, marks: Sequence[ast.Mark]) -> str:
             case _:
                 pass
 
-    # link
+    # link — wrap href in angle brackets so URL-encoded characters and
+    # parens inside the URL don't terminate the link destination early
+    # (CommonMark: "<...>" allows any non-< non-> non-newline content).
     if link:
         title = f' "{link.title}"' if link.title else ""
-        result = f"[{result}]({link.href}{title})"
+        result = f"[{result}](<{link.href}>{title})"
 
     # HTML marks (outermost)
     for m in html:
@@ -1022,52 +1246,14 @@ def _apply_marks(text: str, marks: Sequence[ast.Mark]) -> str:
 
 
 def _node_to_dict(node: ast.Node) -> dict[str, Any]:
-    """AST node → ADF-compatible dict (BodiedExtension/BodiedSyncBlock content)."""
+    """AST node → ADF-compatible dict (BodiedExtension/BodiedSyncBlock content).
 
-    d: dict[str, Any] = {"type": _node_type_name(node)}
-    for f in fields(node):
-        val = getattr(node, f.name)
-        if val is None:
-            continue
-        key = _snake_to_camel(f.name)
-        if isinstance(val, ast.Node):
-            d[key] = _node_to_dict(val)
-        elif isinstance(val, Sequence) and not isinstance(val, str):
-            items: list[Any] = []
-            for v in cast(Sequence[Any], val):
-                if isinstance(v, ast.Node):
-                    items.append(_node_to_dict(v))
-                elif isinstance(v, ast.Mark):
-                    items.append(_mark_to_dict(v))
-                else:
-                    items.append(v)
-            d[key] = items
-        elif isinstance(val, ast.Mark):
-            d[key] = _mark_to_dict(val)
-        else:
-            d[key] = val
-    return d
+    Delegates to the canonical ADF renderer so per-node fields end up under
+    the ADF-required `attrs` envelope.
+    """
+    from marklas.adf import renderer as _adf_renderer  # lazy: avoid import cycle
 
-
-def _mark_to_dict(mark: ast.Mark) -> dict[str, Any]:
-    d: dict[str, Any] = {"type": _node_type_name(mark)}
-    attrs: dict[str, Any] = {}
-    for f in fields(mark):
-        val = getattr(mark, f.name)
-        if val is not None:
-            attrs[_snake_to_camel(f.name)] = val
-    if attrs:
-        d["attrs"] = attrs
-    return d
-
-
-def _node_type_name(obj: ast.Node | ast.Mark) -> str:
-    name = type(obj).__name__
-    if name.endswith("Mark"):
-        name = name[:-4]
-    return name[0].lower() + name[1:]
-
-
-def _snake_to_camel(s: str) -> str:
-    parts = s.split("_")
-    return parts[0] + "".join(p.capitalize() for p in parts[1:])
+    result = _adf_renderer.render_block(node)
+    if result is None:
+        raise ValueError(f"cannot render {type(node).__name__} to ADF dict")
+    return result
