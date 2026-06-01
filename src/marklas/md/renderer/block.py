@@ -306,7 +306,7 @@ def render_block(node: ast.Node) -> str:
             raise ValueError(f"Unknown block: {type(node).__name__}")
 
 
-# ── Block renderers (각 함수가 block/cell 컨텍스트 내부 처리) ──────────────────
+# ── Block renderers (each function handles block/cell context internally) ───
 
 
 _ORDERED_LIST_MARKER_RE = re.compile(r"^( {0,3})(\d+)([.)])(\s)")
@@ -351,7 +351,7 @@ def _render_paragraph_block(node: ast.Paragraph) -> str:
     # continuation content of any preceding list.
     result = content.lstrip()
     # Escape a leading list marker so a paragraph that starts with one
-    # ("4. 프린터 설정 안내", "- 항목") isn't reinterpreted as a list.
+    # ("4. Setup guide", "- item") isn't reinterpreted as a list.
     result = _ORDERED_LIST_MARKER_RE.sub(r"\1\2\\\3\4", result)
     result = _BULLET_LIST_MARKER_RE.sub(r"\1\\\2\3", result)
     if marks_prefix:

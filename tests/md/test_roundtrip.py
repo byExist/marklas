@@ -190,7 +190,7 @@ class TestBlocks:
         assert first.text == "한글 테스트입니다"
 
     def test_unicode_emoji_in_text(self):
-        node = _rt1(Paragraph(content=[Text(text="🎉 축하합니다 🎊")]))
+        node = _rt1(Paragraph(content=[Text(text="🎉 celebrate 🎊")]))
         assert isinstance(node, Paragraph)
         first = node.content[0]
         assert isinstance(first, Text)
