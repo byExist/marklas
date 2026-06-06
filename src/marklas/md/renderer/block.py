@@ -1225,7 +1225,7 @@ def _apply_marks(text: str, marks: Sequence[ast.Mark]) -> str:
                 result = _wrap_flanking(result, "*")
             case ast.StrikeMark():
                 result = _wrap_flanking(result, "~~")
-            case _:
+            case _:  # pragma: no cover
                 pass
 
     # link — wrap href in angle brackets so URL-encoded characters and
