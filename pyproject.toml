@@ -39,12 +39,24 @@ Changelog = "https://github.com/byExist/marklas/releases"
 dev = [
     "black>=26.1.0",
     "jsonschema>=4.26.0",
+    "pyright>=1.1.400",
     "pytest>=8.0.0",
     "pytest-cov>=4.1.0",
 ]
 
 [tool.pytest.ini_options]
 addopts = ["--import-mode=importlib"]
+
+[tool.pyright]
+include = ["src", "tests"]
+typeCheckingMode = "strict"
+strict = ["src"]
+venvPath = "."
+venv = ".venv"
+
+[[tool.pyright.executionEnvironments]]
+root = "tests"
+reportPrivateUsage = "none"
 
 [build-system]
 requires = ["uv_build>=0.9.21,<0.10.0"]
