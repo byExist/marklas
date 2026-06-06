@@ -5,5 +5,4 @@ __pycache__/
 dist/
 .vscode/
 sample/
-uv.lock
 .coverage
