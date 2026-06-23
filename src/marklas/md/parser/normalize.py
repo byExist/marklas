@@ -42,12 +42,6 @@ from .ir import HtmlPaired, HtmlVoid, Token
 # ── Tokenize ──────────────────────────────────────────────────────────────────
 
 
-_md = mistune.create_markdown(
-    renderer="ast",
-    plugins=["table", "strikethrough", "task_lists"],
-)
-
-
 # Make a container's open/close tag line (or a one-line ``<summary>``) its own
 # single-line block_html. Otherwise CommonMark rule 6 lets the tag swallow
 # everything up to the next blank line, so a blank-line-free
@@ -70,11 +64,22 @@ def _parse_adf_tag_line(_block: Any, m: re.Match[str], state: Any) -> int:
     return m.end()
 
 
-# Before `raw_html` so it wins position ties. Top-level rules only: these tags
-# map to nodes (panel, expand, …) reachable only via the top-level HTML-pairing
-# path — lists/blockquotes can't validly hold them, cells use a separate path.
-_md.block.register(
-    "adf_tag_line", _ADF_TAG_LINE, _parse_adf_tag_line, before="raw_html"
+def _adf_containers(md: mistune.Markdown) -> None:
+    """mistune plugin: register the `adf_tag_line` rule.
+
+    Inserted before `raw_html` so it wins position ties. Top-level rules only:
+    these tags map to nodes (panel, expand, …) reachable only via the top-level
+    HTML-pairing path — lists/blockquotes can't validly hold them, cells use a
+    separate path.
+    """
+    md.block.register(
+        "adf_tag_line", _ADF_TAG_LINE, _parse_adf_tag_line, before="raw_html"
+    )
+
+
+_md = mistune.create_markdown(
+    renderer="ast",
+    plugins=["table", "strikethrough", "task_lists", _adf_containers],
 )
 
 # Public alias of `_md.inline` for builders that need to re-tokenize raw
