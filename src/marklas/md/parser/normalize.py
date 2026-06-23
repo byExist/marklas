@@ -47,6 +47,36 @@ _md = mistune.create_markdown(
     plugins=["table", "strikethrough", "task_lists"],
 )
 
+
+# Make a container's open/close tag line (or a one-line ``<summary>``) its own
+# single-line block_html. Otherwise CommonMark rule 6 lets the tag swallow
+# everything up to the next blank line, so a blank-line-free
+# ``<details>…</details>`` collapses into one opaque token and its inner is
+# lost. Separating the tags lets the inner parse in-place, matching the
+# renderer's blank-line form that the pairing logic already handles.
+# (Combined regex is re.M, not DOTALL → line-scoped via ``[^\n]``; one-line
+# void elements like ``<div adf="extension">…</div>`` deliberately don't match.)
+_ADF_TAG_LINE = (
+    r"^ {0,3}(?:"
+    r"</?(?:details|aside|section|figure|div|ul)\b[^\n>]*>"
+    r"|<summary>[^\n]*</summary>"
+    r"|</?summary>"
+    r")[ \t]*\n"
+)
+
+
+def _parse_adf_tag_line(_block: Any, m: re.Match[str], state: Any) -> int:
+    state.append_token({"type": "block_html", "raw": m.group(0)})
+    return m.end()
+
+
+# Before `raw_html` so it wins position ties. Top-level rules only: these tags
+# map to nodes (panel, expand, …) reachable only via the top-level HTML-pairing
+# path — lists/blockquotes can't validly hold them, cells use a separate path.
+_md.block.register(
+    "adf_tag_line", _ADF_TAG_LINE, _parse_adf_tag_line, before="raw_html"
+)
+
 # Public alias of `_md.inline` for builders that need to re-tokenize raw
 # block_html inner text (e.g. `<li adf="decisionItem">**bold**</li>` —
 # mistune skips inline parsing for block_html, so marks like strong/em/

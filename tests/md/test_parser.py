@@ -907,6 +907,67 @@ class TestExpand:
         assert node.title is None
 
 
+class TestJammedContainers:
+    """Hand-written containers without the blank lines the renderer emits.
+
+    mistune folds a blank-line-free ``<tag>…</tag>`` into a single
+    ``block_html`` token; the parser must re-separate it so the inner
+    content survives (regression test for issue #1).
+    """
+
+    def test_expand_without_blank_lines(self):
+        # The exact shape from issue #1.
+        doc = parse(
+            '<details adf="expand">\n'
+            "<summary>Some summary value here</summary>\n"
+            "Some inner content here\n"
+            "</details>"
+        )
+        assert len(doc.content) == 1
+        expand = doc.content[0]
+        assert isinstance(expand, Expand)
+        assert expand.title == "Some summary value here"
+        assert expand.content == [
+            Paragraph(content=[Text(text="Some inner content here")])
+        ]
+
+    def test_panel_without_blank_lines(self):
+        doc = parse('<aside adf="panel">\nbody text\n</aside>')
+        assert len(doc.content) == 1
+        panel = doc.content[0]
+        assert isinstance(panel, Panel)
+        assert panel.content == [Paragraph(content=[Text(text="body text")])]
+
+    def test_nested_container_without_blank_lines(self):
+        # A panel jammed inside an expand — one unjam pass separates every
+        # level at once (Expand validly contains Panel).
+        doc = parse(
+            '<details adf="expand">\n'
+            "<summary>T</summary>\n"
+            '<aside adf="panel">\n'
+            "inner\n"
+            "</aside>\n"
+            "</details>"
+        )
+        assert len(doc.content) == 1
+        expand = doc.content[0]
+        assert isinstance(expand, Expand)
+        assert expand.title == "T"
+        panel = expand.content[0]
+        assert isinstance(panel, Panel)
+        assert panel.content == [Paragraph(content=[Text(text="inner")])]
+
+    def test_void_extension_still_void_when_self_contained(self):
+        # A genuine void element (payload in params) must NOT be routed
+        # through the container path — its empty inner is correct.
+        doc = parse(
+            '<div adf="extension" '
+            'params=\'{"extensionKey":"k","extensionType":"t"}\'></div>'
+        )
+        assert len(doc.content) == 1
+        assert isinstance(doc.content[0], Extension)
+
+
 class TestDecisionList:
     def test_simple(self):
         node = _rt_block(

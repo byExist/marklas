@@ -76,6 +76,29 @@ class TestSplitHtmlString:
         assert result[-1] == {"type": "text", "raw": "trailing"}
 
 
+class TestAdfTagLineRule:
+    """The registered `adf_tag_line` block rule separates a blank-line-free
+    container into discrete open/inner/close tokens at tokenize time, so the
+    standard pairing logic can recover the inner content (issue #1)."""
+
+    def test_jammed_container_tokenized_as_separate_tags(self) -> None:
+        tokens = tokenize(
+            '<details adf="expand">\n<summary>t</summary>\nbody\n</details>'
+        )
+        # Not a single merged block_html: open, summary, body, close.
+        raws = [t.get("raw", "") for t in tokens if t.get("type") == "block_html"]
+        assert any(r.strip() == '<details adf="expand">' for r in raws)
+        assert any(r.strip() == "</details>" for r in raws)
+        assert any(t.get("type") == "paragraph" for t in tokens)
+
+    def test_self_contained_one_line_element_stays_opaque(self) -> None:
+        # A void element with content + close on one line is NOT matched by
+        # the rule, so it remains a single block_html (handled as void later).
+        tokens = tokenize('<div adf="extension" params=\'{"extensionKey":"k"}\'></div>')
+        block_htmls = [t for t in tokens if t.get("type") == "block_html"]
+        assert len(block_htmls) == 1
+
+
 class TestNormalizeBlocks:
     def test_already_normalized_passes_through(self) -> None:
         already = HtmlPaired(tag="x", attrs={}, inner=[])
