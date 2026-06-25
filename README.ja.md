@@ -134,7 +134,6 @@ MarkdownはADF JSONよりはるかにコンパクトです — トークンが�
 ## ドキュメント
 
 - [フォーマットリファレンス](docs/format.md) — ADFノードごとのMarkdown変換ルール
-- [編集スキル](docs/editing.md) — marklas出力を編集するLLMエージェント向けルール
 
 ## 開発
 

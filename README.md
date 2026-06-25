@@ -134,7 +134,7 @@ Markdown is significantly more compact than ADF JSON — critical for LLM-based 
 ## Documentation
 
 - [Format Reference](docs/format.md) — how each ADF node maps to Markdown
-- [Editing Skill](docs/editing.md) — rules for LLM agents editing marklas output
+- [ARCHITECTURE.md](ARCHITECTURE.md) — parser internals and conversion fidelity (for contributors)
 
 ## Development
 

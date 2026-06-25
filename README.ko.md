@@ -134,7 +134,6 @@ Markdown은 ADF JSON보다 훨씬 간결합니다 — 토큰이 중요한 LLM �
 ## 문서
 
 - [포맷 레퍼런스](docs/format.md) — ADF 노드별 Markdown 변환 규칙
-- [편집 스킬](docs/editing.md) — marklas 출력을 편집하는 LLM agent용 규칙
 
 ## 개발
 

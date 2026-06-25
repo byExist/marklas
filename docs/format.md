@@ -1,8 +1,6 @@
 # Marklas Format Reference
 
-How each ADF node is rendered to Markdown, and how Markdown is parsed back to ADF. This is the implementation contract — if the renderer disagrees with this document, the renderer is right.
-
-Editing rules for LLM agents working with marklas output: [editing](editing.md).
+How each ADF node maps to Markdown — the syntax to read in marklas output and to reproduce when authoring.
 
 ---
 
@@ -47,23 +45,6 @@ Inside a cell the same element collapses to one line:
 - Inline: `<span>`, `<a>`, `<time>`, `<u>`, `<sub>`, `<sup>`.
 - Semantic tag preferred when meaning fits (`<aside>` for Panel, `<details>` for Expand, `<time>` for Date). Otherwise `<div>` (block) / `<span>` (inline).
 
-### Plain Mode
-
-`render_md(doc, plain=True)` strips roundtrip-only metadata so the output reads as clean Markdown. The result does not roundtrip back to the original ADF.
-
-- `adf` and `params` attributes removed everywhere.
-- Void/metadata `<div>` elements (block marks, table metadata, cell metadata, Extension, BlockCard, EmbedCard, layout columns) dropped entirely.
-- Empty `<p></p>` paragraph markers dropped (the marker is a roundtrip device).
-- Listed tags are unwrapped (content preserved, tag removed):
-
-| Tag | Applies to |
-| --- | --- |
-| `<span>` | Mention, Emoji, Status, TextColor, BgColor, Placeholder, MediaInline, InlineExtension, AnnotationMark |
-| `<time>` | Date |
-| `<div>` | MediaGroup, BlockCard, EmbedCard, LayoutColumn, void/metadata |
-| `<section>` | LayoutSection |
-| `<p>` | Paragraph (cell context) |
-
 ### Block Marks
 
 Marks attached to block nodes are emitted as a void `<div>` placed immediately before the block. In cell context they are folded into the block element's `params`.
@@ -79,7 +60,6 @@ content
 | `AlignmentMark` | Paragraph, Heading | `"align": "center"` |
 | `IndentationMark` | Paragraph, Heading | `"indent": 2` |
 | `BreakoutMark` | CodeBlock, Expand, LayoutSection | `"breakoutMode": "wide"` |
-| `DataConsumerMark` | various | `"dataConsumerSources": [...]` |
 | `BorderMark` | Media, MediaInline | merged into media `params` |
 
 ### Inline Mark Order
@@ -91,41 +71,9 @@ When multiple marks apply to the same text run, they nest innermost-to-outermost
 3. `LinkMark` — `[text](url)`
 4. HTML marks — `UnderlineMark`, `TextColorMark`, `BackgroundColorMark`, `SubSupMark`, `AnnotationMark`
 
-Spaces adjacent to a Markdown delimiter (`**`, `*`, `~~`) violate CommonMark flanking. The renderer moves them outside: `** hello **` → ` **hello** `.
+### Parsing
 
-### Roundtrip Parsing
-
-The parser restores AST from rendered Markdown:
-
-- An HTML element with `adf=<type>` becomes the corresponding AST node. Extra fields come from `params` (HTML-unescaped, then JSON-parsed).
-- A `<div adf="marks">` attaches block marks to the next block.
-- A `<div adf="table">` attaches table metadata to the next GFM table.
-- A `<div adf="cell">` attaches cell metadata to its cell.
-- Native Markdown (headings, lists, blockquotes, …) parses directly to the corresponding AST node.
-
-### Raw Markdown Parsing
-
-When the input has no `adf=` attributes, the parser treats it as plain Markdown:
-
-| Markdown | AST |
-| --- | --- |
-| Text | `Paragraph > Text` |
-| `# ~ ######` | `Heading` |
-| `` ```lang ``` `` | `CodeBlock` |
-| `> ` | `Blockquote` |
-| `- ` / `* ` | `BulletList > ListItem` |
-| `N. ` | `OrderedList > ListItem` |
-| `- [ ]` / `- [x]` | `TaskList > TaskItem` |
-| `---` | `Rule` |
-| `**text**` | `Text` + `StrongMark` |
-| `*text*` | `Text` + `EmMark` |
-| `~~text~~` | `Text` + `StrikeMark` |
-| `` `code` `` | `Text` + `CodeMark` |
-| `[t](u "title")` | `Text` + `LinkMark` |
-| `![alt](url)` solo | `MediaSingle > Media(type="external")` |
-| `![alt](url)` inline | unsupported (ADF has no inline external image) |
-| `SoftBreak` | space |
-| HTML without `adf=` | ignored (content too) |
+Rendered Markdown roundtrips back to the original ADF, and plain Markdown with no `adf=` attributes parses as standard Markdown — so any valid Markdown is valid input.
 
 ---
 
@@ -133,9 +81,8 @@ When the input has no `adf=` attributes, the parser treats it as plain Markdown:
 
 ### Paragraph
 
-Block: plain text. Empty Paragraph → `<p></p>` (paired HTML; dropped in plain mode).
+Block: plain text. Empty Paragraph → `<p></p>` (paired HTML).
 Cell: `<p>text</p>`. Empty Paragraph → `<p></p>`. A cell with a single Paragraph is unwrapped (bare text, no `<p>` tag).
-Parsing: paired `<p></p>` or legacy `&nbsp;` / `\xa0` → empty Paragraph.
 
 ### Heading
 
@@ -146,11 +93,11 @@ Cell: `<h1>` ~ `<h6>`.
 
 Block: triple-backtick fence with optional language. Code containing `` ``` `` uses a longer fence.
 
-```
+~~~
 ```python
 print("hi")
 ```
-```
+~~~
 
 Cell: `<code>code</code>`. Newlines → `<br>`. Language → `params='{"language":"python"}'`.
 
@@ -168,7 +115,6 @@ Cell: `<ul><li>content</li></ul>`. Single-Paragraph items unwrap to bare text in
 
 Block: `N. ` prefix (sequential numbering from `order`, default 1).
 Cell: `<ol start="N"><li>...</li></ol>`. `start` omitted when 1.
-Parsing: `start=1` stored as `order=None` (symmetric with ADF parser).
 
 ### Rule
 
@@ -218,8 +164,6 @@ Block (native MD):
 Cell: `<ul adf="taskList"><li adf="taskItem" params='{"state":"TODO"}'>text</li></ul>`.
 
 `BlockTaskItem` carries block content (Paragraph + Extension, etc.) and renders as a list item with indented continuation blocks.
-
-Parsing: 2+ block children in a task item produce `BlockTaskItem`.
 
 ### DecisionList / DecisionItem
 
@@ -335,25 +279,23 @@ Inline: trailing `\` + newline. Cell: `<br>`. Trailing HardBreak at the end of a
 
 `<span adf="mention" params='{"id":"...","accessLevel":"...","userType":"..."}'>@text</span>`
 
-`text` includes the `@` prefix. Parser: `@`-prefix display whose tail equals `id` → stores `text=None`.
+`text` includes the `@` prefix.
 
 ### Emoji
 
 `<span adf="emoji" params='{"shortName":":name:","id":"..."}'>text</span>`
 
-Display: `node.text or node.short_name`. Parser: display equal to `shortName` → `text=None`.
-
 ### Date
 
 `<time adf="date" datetime="1705276800000">2024-01-15</time>`
 
-`timestamp` (Unix millis string) goes in `datetime`. Display in `YYYY-MM-DD` for legibility; parser restores from `datetime`.
+`timestamp` (Unix millis string) goes in `datetime`. Display in `YYYY-MM-DD` for legibility.
 
 ### Status
 
 ``<span adf="status" params='{"color":"...","style":"..."}'>`TEXT`</span>``
 
-Inner text is wrapped in a backtick codespan so plain-Markdown viewers render it as a visually distinct chip. The parser unwraps the codespan transparently — the codespan exists only for visual emphasis.
+Inner text is wrapped in a backtick codespan so plain-Markdown viewers render it as a visually distinct chip; the codespan is visual only.
 
 ### InlineCard
 
@@ -396,11 +338,7 @@ Void inline (no content).
 
 ### CodeMark compatibility
 
-The ADF schema allows only `code`, `link`, and `annotation` marks on a code-marked text node. When the AST has `CodeMark` combined with incompatible marks (e.g., `StrongMark` arising from `**bold `code`**`), the ADF renderer drops the incompatible marks; `LinkMark` and `AnnotationMark` are preserved. AST and Markdown rendering preserve every mark faithfully.
-
-### AnnotationMark notes
-
-`annotationType` is omitted from `params` since the ADF schema only defines `"inlineComment"`. The parser restores the default.
+A code span keeps only `code`, `link`, and `annotation` marks in ADF; other marks combined with it (e.g. bold in `` **bold `code`** ``) are dropped on the ADF side.
 
 ---
 
@@ -425,7 +363,7 @@ The metadata block is omitted when no non-default attributes exist.
 | `displayMode` | |
 | `isNumberColumnEnabled` | |
 | `width` | |
-| `colwidths` | One entry per grid column (column-major). ADF stores it per cell; marklas consolidates because every cell in a column shares the same width |
+| `colwidths` | One entry per grid column (column-major) |
 
 ### Header modes
 
@@ -446,7 +384,7 @@ The metadata `<div>` is emitted only when at least one of `colspan>1`, `rowspan>
 
 ### Cell merge
 
-Merged cells produce empty filler cells in adjacent positions to maintain the GFM grid. The parser drops these padding cells when reconstructing the AST.
+Merged cells produce empty filler cells in adjacent positions to maintain the GFM grid.
 
 ### Examples
 
@@ -480,31 +418,3 @@ Merged cells produce empty filler cells in adjacent positions to maintain the GF
 | A | <div adf="cell" params='{"rowspan":2,"background":"#ff0"}'></div>Vertical | C |
 | D |  | F |
 ```
-
----
-
-## Lossy Items
-
-These are editor-runtime metadata. They have no effect on document content, structure, or formatting, and are not preserved in roundtrip.
-
-| Item | Description |
-| --- | --- |
-| `local_id` (all nodes) | Collaborative-editing node identifier (UUID) |
-| `CodeBlock.unique_id` | Collaborative-editing code block identifier |
-| `FragmentMark` | Table collaborative-editing fragment tracking |
-| `HardBreak.text` | Always `"\n"` — no information |
-| `LinkMark.id` | Atlassian internal link ID |
-| `LinkMark.collection` | Media collection reference |
-| `occurrence_key` (LinkMark, Media, MediaInline) | Duplicate media embed tracking |
-
-## Markdown-only Items
-
-Elements that exist in Markdown but have no ADF equivalent.
-
-| Element | Reason |
-| --- | --- |
-| `SoftBreak` | Never generated from ADF |
-| Generic `HtmlBlock` / `HtmlInline` | Marklas uses specific patterns; generic containers unnecessary |
-| `BulletList.tight` / `OrderedList.tight` | Fixed format; no ADF counterpart |
-| `ListItem.checked` | ADF uses `TaskItem.state` |
-| `Table.alignments` | ADF tables have no column alignment |
