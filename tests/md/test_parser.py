@@ -912,11 +912,12 @@ class TestJammedContainers:
 
     mistune folds a blank-line-free ``<tag>…</tag>`` into a single
     ``block_html`` token; the parser must re-separate it so the inner
-    content survives (regression test for issue #1).
+    content survives. The same applies to a self-contained marker
+    ``<div adf="…"></div>`` jammed against the block it annotates: without a
+    blank line it would otherwise swallow that block.
     """
 
     def test_expand_without_blank_lines(self):
-        # The exact shape from issue #1.
         doc = parse(
             '<details adf="expand">\n'
             "<summary>Some summary value here</summary>\n"
@@ -966,6 +967,47 @@ class TestJammedContainers:
         )
         assert len(doc.content) == 1
         assert isinstance(doc.content[0], Extension)
+
+    def test_table_marker_without_blank_line(self):
+        # The table-meta marker jammed against the GFM table it annotates.
+        # Without unjamming, the marker swallows the whole table and it is lost.
+        doc = parse(
+            '<div adf="table" '
+            'params=\'{"layout":"full-width","isNumberColumnEnabled":false}\'>'
+            "</div>\n"
+            "| Element | Usage |\n"
+            "| --- | --- |\n"
+            "| Headings | Section headers |\n"
+        )
+        assert len(doc.content) == 1
+        table = doc.content[0]
+        assert isinstance(table, Table)
+        assert table.layout == "full-width"
+        # Header row + one body row.
+        assert len(table.content) == 2
+        assert isinstance(table.content[0].content[0], TableHeader)
+
+    def test_marks_marker_without_blank_line(self):
+        # Same class of bug for the block-marks marker: the annotated
+        # paragraph (and its mark) must both survive.
+        doc = parse(
+            '<div adf="marks" params=\'{"align":"center"}\'></div>\nHello world\n'
+        )
+        assert len(doc.content) == 1
+        para = doc.content[0]
+        assert isinstance(para, Paragraph)
+        assert para.content == [Text(text="Hello world")]
+        assert AlignmentMark(align="center") in para.marks
+
+    def test_self_contained_marker_does_not_swallow_following_block(self):
+        doc = parse(
+            '<div adf="extension" '
+            'params=\'{"extensionKey":"k","extensionType":"t"}\'></div>\n'
+            "After the extension\n"
+        )
+        assert len(doc.content) == 2
+        assert isinstance(doc.content[0], Extension)
+        assert doc.content[1] == Paragraph(content=[Text(text="After the extension")])
 
 
 class TestDecisionList:

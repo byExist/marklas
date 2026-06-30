@@ -42,17 +42,21 @@ from .ir import HtmlPaired, HtmlVoid, Token
 # ── Tokenize ──────────────────────────────────────────────────────────────────
 
 
-# Make a container's open/close tag line (or a one-line ``<summary>``) its own
+# Make a container's open/close tag line — or a whole-line empty self-contained
+# element (``<div adf="table" …></div>``) or one-line ``<summary>`` — its own
 # single-line block_html. Otherwise CommonMark rule 6 lets the tag swallow
-# everything up to the next blank line, so a blank-line-free
-# ``<details>…</details>`` collapses into one opaque token and its inner is
-# lost. Separating the tags lets the inner parse in-place, matching the
-# renderer's blank-line form that the pairing logic already handles.
-# (Combined regex is re.M, not DOTALL → line-scoped via ``[^\n]``; one-line
-# void elements like ``<div adf="extension">…</div>`` deliberately don't match.)
+# everything up to the next blank line, so a blank-line-free container (or a
+# marker ``<div></div>`` jammed against the block it annotates) collapses into
+# one opaque token and the following content is lost. Separating them lets the
+# rest parse in place, matching the renderer's blank-line form the pairing logic
+# already handles. The self-contained branch requires an empty inner (``></``)
+# so content-bearing one-liners (``<ul adf="decisionList"><li>…</li></ul>``)
+# stay opaque for the inline re-split path.
+_ADF_CONTAINER_TAGS = r"details|aside|section|figure|div|ul"
 _ADF_TAG_LINE = (
     r"^ {0,3}(?:"
-    r"</?(?:details|aside|section|figure|div|ul)\b[^\n>]*>"
+    rf"<(?:{_ADF_CONTAINER_TAGS})\b[^\n>]*></(?:{_ADF_CONTAINER_TAGS})>"
+    rf"|</?(?:{_ADF_CONTAINER_TAGS})\b[^\n>]*>"
     r"|<summary>[^\n]*</summary>"
     r"|</?summary>"
     r")[ \t]*\n"
@@ -256,7 +260,6 @@ def normalize_blocks(tokens: Sequence[Token]) -> list[Token]:
     while i < len(tokens):
         token = tokens[i]
         if isinstance(token, (HtmlPaired, HtmlVoid)):
-            # Already normalized: pass through.
             result.append(token)
             i += 1
             continue
@@ -302,7 +305,6 @@ def normalize_blocks(tokens: Sequence[Token]) -> list[Token]:
                         [{"type": "text", "raw": inner_text}] if inner_text else []
                     )
                     result.append(HtmlPaired(tag="p", attrs=attrs, inner=inner_tokens))
-                # adf-less void of any other shape: drop
                 i += 1
                 continue
 
