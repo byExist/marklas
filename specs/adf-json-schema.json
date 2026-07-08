@@ -310,6 +310,9 @@
                   "$ref": "#/definitions/paragraph_with_no_marks_node"
                 },
                 {
+                  "$ref": "#/definitions/paragraph_with_font_size_node"
+                },
+                {
                   "$ref": "#/definitions/extension_with_marks_node"
                 }
               ]
@@ -318,6 +321,9 @@
               "anyOf": [
                 {
                   "$ref": "#/definitions/paragraph_with_no_marks_node"
+                },
+                {
+                  "$ref": "#/definitions/paragraph_with_font_size_node"
                 },
                 {
                   "$ref": "#/definitions/extension_with_marks_node"
@@ -706,6 +712,12 @@
             },
             "localId": {
               "type": "string"
+            },
+            "wrap": {
+              "type": "boolean"
+            },
+            "hideLineNumbers": {
+              "type": "boolean"
             }
           },
           "additionalProperties": false
@@ -743,6 +755,12 @@
             },
             "localId": {
               "type": "string"
+            },
+            "wrap": {
+              "type": "boolean"
+            },
+            "hideLineNumbers": {
+              "type": "boolean"
             }
           },
           "additionalProperties": false
@@ -1196,6 +1214,26 @@
         }
       ]
     },
+    "fontSize_mark": {
+      "type": "object",
+      "properties": {
+        "type": {
+          "enum": ["fontSize"]
+        },
+        "attrs": {
+          "type": "object",
+          "properties": {
+            "fontSize": {
+              "enum": ["small"]
+            }
+          },
+          "required": ["fontSize"],
+          "additionalProperties": false
+        }
+      },
+      "required": ["type", "attrs"],
+      "additionalProperties": false
+    },
     "formatted_text_inline_node": {
       "allOf": [
         {
@@ -1553,6 +1591,9 @@
             },
             "localId": {
               "type": "string"
+            },
+            "valign": {
+              "enum": ["top", "middle", "bottom"]
             }
           },
           "required": ["width"],
@@ -1677,55 +1718,37 @@
         },
         "content": {
           "type": "array",
-          "items": [
-            {
-              "anyOf": [
-                {
-                  "$ref": "#/definitions/paragraph_with_no_marks_node"
-                },
-                {
-                  "$ref": "#/definitions/mediaSingle_caption_node"
-                },
-                {
-                  "$ref": "#/definitions/mediaSingle_full_node"
-                },
-                {
-                  "$ref": "#/definitions/codeBlock_node"
-                },
-                {
-                  "$ref": "#/definitions/extension_with_marks_node"
-                }
-              ]
-            },
-            {
-              "anyOf": [
-                {
-                  "$ref": "#/definitions/paragraph_with_no_marks_node"
-                },
-                {
-                  "$ref": "#/definitions/bulletList_node"
-                },
-                {
-                  "$ref": "#/definitions/orderedList_node"
-                },
-                {
-                  "$ref": "#/definitions/taskList_node"
-                },
-                {
-                  "$ref": "#/definitions/mediaSingle_caption_node"
-                },
-                {
-                  "$ref": "#/definitions/mediaSingle_full_node"
-                },
-                {
-                  "$ref": "#/definitions/codeBlock_node"
-                },
-                {
-                  "$ref": "#/definitions/extension_with_marks_node"
-                }
-              ]
-            }
-          ],
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/paragraph_with_font_size_node"
+              },
+              {
+                "$ref": "#/definitions/paragraph_with_no_marks_node"
+              },
+              {
+                "$ref": "#/definitions/bulletList_node"
+              },
+              {
+                "$ref": "#/definitions/orderedList_node"
+              },
+              {
+                "$ref": "#/definitions/taskList_node"
+              },
+              {
+                "$ref": "#/definitions/mediaSingle_caption_node"
+              },
+              {
+                "$ref": "#/definitions/mediaSingle_full_node"
+              },
+              {
+                "$ref": "#/definitions/codeBlock_node"
+              },
+              {
+                "$ref": "#/definitions/extension_with_marks_node"
+              }
+            ]
+          },
           "minItems": 1
         }
       },
@@ -1742,6 +1765,9 @@
           "type": "array",
           "items": {
             "anyOf": [
+              {
+                "$ref": "#/definitions/dataConsumer_mark"
+              },
               {
                 "$ref": "#/definitions/link_mark"
               },
@@ -1847,6 +1873,9 @@
           "type": "array",
           "items": {
             "anyOf": [
+              {
+                "$ref": "#/definitions/dataConsumer_mark"
+              },
               {
                 "$ref": "#/definitions/link_mark"
               },
@@ -2063,6 +2092,9 @@
             "$ref": "#/definitions/paragraph_with_no_marks_node"
           },
           {
+            "$ref": "#/definitions/paragraph_with_font_size_node"
+          },
+          {
             "$ref": "#/definitions/heading_with_no_marks_node"
           },
           {
@@ -2151,6 +2183,9 @@
       "anyOf": [
         {
           "$ref": "#/definitions/paragraph_with_no_marks_node"
+        },
+        {
+          "$ref": "#/definitions/paragraph_with_font_size_node"
         },
         {
           "$ref": "#/definitions/panel_node"
@@ -2279,6 +2314,9 @@
                 "$ref": "#/definitions/paragraph_with_no_marks_node"
               },
               {
+                "$ref": "#/definitions/paragraph_with_font_size_node"
+              },
+              {
                 "$ref": "#/definitions/heading_with_no_marks_node"
               },
               {
@@ -2361,7 +2399,33 @@
             "marks": {
               "type": "array",
               "items": {
-                "$ref": "#/definitions/alignment_mark"
+                "anyOf": [
+                  {
+                    "$ref": "#/definitions/fontSize_mark"
+                  },
+                  {
+                    "$ref": "#/definitions/alignment_mark"
+                  }
+                ]
+              }
+            }
+          },
+          "additionalProperties": true
+        }
+      ]
+    },
+    "paragraph_with_font_size_node": {
+      "allOf": [
+        {
+          "$ref": "#/definitions/paragraph_node"
+        },
+        {
+          "type": "object",
+          "properties": {
+            "marks": {
+              "type": "array",
+              "items": {
+                "$ref": "#/definitions/fontSize_mark"
               }
             }
           },
@@ -2380,7 +2444,14 @@
             "marks": {
               "type": "array",
               "items": {
-                "$ref": "#/definitions/indentation_mark"
+                "anyOf": [
+                  {
+                    "$ref": "#/definitions/fontSize_mark"
+                  },
+                  {
+                    "$ref": "#/definitions/indentation_mark"
+                  }
+                ]
               }
             }
           },
@@ -2640,6 +2711,9 @@
             },
             "localId": {
               "type": "string"
+            },
+            "valign": {
+              "enum": ["top", "middle", "bottom"]
             }
           },
           "additionalProperties": false
@@ -2677,6 +2751,9 @@
             },
             "localId": {
               "type": "string"
+            },
+            "valign": {
+              "enum": ["top", "middle", "bottom"]
             }
           },
           "additionalProperties": false
@@ -2819,31 +2896,19 @@
         },
         "content": {
           "type": "array",
-          "items": [
-            {
-              "anyOf": [
-                {
-                  "$ref": "#/definitions/taskItem_node"
-                },
-                {
-                  "$ref": "#/definitions/blockTaskItem_node"
-                }
-              ]
-            },
-            {
-              "anyOf": [
-                {
-                  "$ref": "#/definitions/taskItem_node"
-                },
-                {
-                  "$ref": "#/definitions/taskList_node"
-                },
-                {
-                  "$ref": "#/definitions/blockTaskItem_node"
-                }
-              ]
-            }
-          ],
+          "items": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/taskItem_node"
+              },
+              {
+                "$ref": "#/definitions/taskList_node"
+              },
+              {
+                "$ref": "#/definitions/blockTaskItem_node"
+              }
+            ]
+          },
           "minItems": 1
         }
       },
