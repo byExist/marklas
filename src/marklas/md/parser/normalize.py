@@ -427,4 +427,11 @@ def parse_block_marks(params: dict[str, Any]) -> list[ast.Mark]:
                 size=params["borderSize"], color=params.get("borderColor", "")
             )
         )
+    if "fontSize" in params:
+        marks.append(ast.FontSizeMark(size=params["fontSize"]))
+    if "unknownMarks" in params:
+        for um in params["unknownMarks"]:
+            marks.append(
+                ast.UnknownMark(type=um.get("type", ""), attrs=um.get("attrs"))
+            )
     return marks

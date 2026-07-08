@@ -23,9 +23,24 @@ class TestParseMark:
     def test_fragment_returns_none(self) -> None:
         assert _parse_mark({"type": "fragment"}) is None
 
-    def test_unknown_mark_raises(self) -> None:
-        with pytest.raises(ValueError, match="Unknown mark type"):
-            _parse_mark({"type": "definitelyNotARealMark"})
+    def test_font_size_parsed(self) -> None:
+        assert _parse_mark({"type": "fontSize", "attrs": {"fontSize": "small"}}) == (
+            ast.FontSizeMark(size="small")
+        )
+
+    def test_unknown_mark_preserved(self) -> None:
+        mark = _parse_mark({"type": "definitelyNotARealMark", "attrs": {"foo": "bar"}})
+        assert mark == ast.UnknownMark(
+            type="definitelyNotARealMark", attrs={"foo": "bar"}
+        )
+
+    def test_unknown_mark_without_attrs(self) -> None:
+        assert _parse_mark({"type": "someMark"}) == ast.UnknownMark(type="someMark")
+
+    def test_unknown_mark_empty_attrs_preserved(self) -> None:
+        assert _parse_mark({"type": "x", "attrs": {}}) == ast.UnknownMark(
+            type="x", attrs={}
+        )
 
 
 class TestParseBlockUnknown:

@@ -226,6 +226,15 @@ def block_marks_params(marks: Sequence[ast.Mark]) -> dict[str, Any]:
             case ast.BorderMark(size=size, color=color):
                 d["borderSize"] = size
                 d["borderColor"] = color
+            case ast.FontSizeMark(size=fsize):
+                d["fontSize"] = fsize
+            case ast.UnknownMark(type=type_, attrs=attrs):
+                entry = (
+                    {"type": type_}
+                    if attrs is None
+                    else {"type": type_, "attrs": attrs}
+                )
+                d.setdefault("unknownMarks", []).append(entry)
             case _:
                 pass
     return d
@@ -1188,6 +1197,13 @@ def _wrap_html_mark(text: str, mark: ast.Mark) -> str:
                 text,
                 adf="annotation",
                 params=build_params({"id": id_}),
+            )
+        case ast.UnknownMark(type=type_, attrs=attrs):
+            return el(
+                "span",
+                text,
+                adf="unknownMark",
+                params=build_params({"type": type_, "attrs": attrs}),
             )
         case _:
             return text

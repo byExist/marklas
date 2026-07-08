@@ -71,11 +71,12 @@ def _parse_mark(mark: dict[str, Any]) -> ast.Mark | None:
             return ast.BorderMark(
                 size=attrs.get("size", 1), color=attrs.get("color", "")
             )
+        case "fontSize":
+            return ast.FontSizeMark(size=attrs.get("fontSize", ""))
         case "fragment":
             return None  # lossy: editor runtime metadata
         case _:
-            msg = f"Unknown mark type: {mark.get('type')}"
-            raise ValueError(msg)
+            return ast.UnknownMark(type=mark.get("type", ""), attrs=mark.get("attrs"))
 
 
 def _parse_marks(marks: list[dict[str, Any]]) -> list[ast.Mark]:

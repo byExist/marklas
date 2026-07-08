@@ -64,6 +64,11 @@ class EmMark(Mark):
     pass
 
 
+@dataclass
+class FontSizeMark(Mark):
+    size: str
+
+
 # @dataclass
 # class FragmentMark(Mark):
 #     name: str | None = None
@@ -106,6 +111,12 @@ class TextColorMark(Mark):
 @dataclass
 class UnderlineMark(Mark):
     pass
+
+
+@dataclass
+class UnknownMark(Mark):
+    type: str
+    attrs: dict[str, Any] | None = None
 
 
 # ── Inline Nodes ──────────────────────────────────────────────────────────────

@@ -214,7 +214,14 @@ def _build_paired_inline(
             return [_build_media_inline(token.attrs)]
         case "inlineExtension":
             return [_build_inline_extension(token.attrs)]
-        case "underline" | "textColor" | "bgColor" | "subSup" | "annotation":
+        case (
+            "underline"
+            | "textColor"
+            | "bgColor"
+            | "subSup"
+            | "annotation"
+            | "unknownMark"
+        ):
             return _apply_html_mark(
                 token.tag, token.adf_type, token.attrs, token.inner, parent_marks
             )
@@ -251,6 +258,9 @@ def _apply_html_mark(
                 id=p.get("id", ""),
                 annotation_type=p.get("annotationType", "inlineComment"),
             )
+        case "unknownMark":
+            p = get_params(attrs)
+            mark = ast.UnknownMark(type=p.get("type", ""), attrs=p.get("attrs"))
         case _:
             content = inline_text(inner)
             text = ast.Text(text=content)

@@ -573,6 +573,48 @@ class TestMarks:
             )
         )
 
+    def test_font_size(self):
+        _rt(
+            _doc(
+                {
+                    "type": "paragraph",
+                    "content": [_text("small")],
+                    "marks": [{"type": "fontSize", "attrs": {"fontSize": "small"}}],
+                }
+            )
+        )
+
+    def test_unknown_mark_preserved(self):
+        _rt(
+            _doc(
+                _p(
+                    _text(
+                        "x",
+                        marks=[
+                            {
+                                "type": "confluenceInlineComment",
+                                "attrs": {"reference": "r1"},
+                            }
+                        ],
+                    )
+                )
+            )
+        )
+
+    def test_unknown_mark_without_attrs(self):
+        _rt(_doc(_p(_text("x", marks=[{"type": "someMark"}]))))
+
+    def test_unknown_block_mark_preserved(self):
+        _rt(
+            _doc(
+                {
+                    "type": "paragraph",
+                    "content": [_text("x")],
+                    "marks": [{"type": "weirdBlockMark", "attrs": {"y": 2}}],
+                }
+            )
+        )
+
     def test_multiple_marks(self):
         _rt(
             _doc(

@@ -25,6 +25,7 @@ from marklas.ast import (
     EmMark,
     Expand,
     Extension,
+    FontSizeMark,
     HardBreak,
     Heading,
     IndentationMark,
@@ -56,6 +57,7 @@ from marklas.ast import (
     Text,
     TextColorMark,
     UnderlineMark,
+    UnknownMark,
 )
 
 
@@ -264,6 +266,16 @@ class TestInlineMarks:
         assert isinstance(first, Text)
         ann = next(m for m in first.marks if isinstance(m, AnnotationMark))
         assert ann.id == "a1"
+
+    def test_unknown_mark(self):
+        mark = UnknownMark(type="confluenceInlineComment", attrs={"reference": "r1"})
+        node = _rt1(Paragraph(content=[Text(text="x", marks=[mark])]))
+        assert isinstance(node, Paragraph)
+        first = node.content[0]
+        assert isinstance(first, Text)
+        um = next(m for m in first.marks if isinstance(m, UnknownMark))
+        assert um.type == "confluenceInlineComment"
+        assert um.attrs == {"reference": "r1"}
 
     def test_two_marks_strong_em(self):
         node = _rt1(Paragraph(content=[Text(text="x", marks=[StrongMark(), EmMark()])]))
@@ -591,3 +603,26 @@ class TestBlockMarks:
         assert isinstance(node, Paragraph)
         mark = next(m for m in node.marks if isinstance(m, IndentationMark))
         assert mark.level == 2
+
+    def test_font_size(self):
+        node = _rt1(
+            Paragraph(
+                content=[Text(text="small")],
+                marks=[FontSizeMark(size="small")],
+            )
+        )
+        assert isinstance(node, Paragraph)
+        mark = next(m for m in node.marks if isinstance(m, FontSizeMark))
+        assert mark.size == "small"
+
+    def test_unknown_block_mark(self):
+        node = _rt1(
+            Paragraph(
+                content=[Text(text="x")],
+                marks=[UnknownMark(type="weirdBlock", attrs={"y": 2})],
+            )
+        )
+        assert isinstance(node, Paragraph)
+        mark = next(m for m in node.marks if isinstance(m, UnknownMark))
+        assert mark.type == "weirdBlock"
+        assert mark.attrs == {"y": 2}

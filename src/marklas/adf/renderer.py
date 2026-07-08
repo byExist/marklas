@@ -108,6 +108,13 @@ def _render_mark(mark: ast.Mark) -> dict[str, Any]:
             return {"type": "dataConsumer", "attrs": {"sources": mark.sources}}
         case ast.BorderMark():
             return {"type": "border", "attrs": {"size": mark.size, "color": mark.color}}
+        case ast.FontSizeMark():
+            return {"type": "fontSize", "attrs": {"fontSize": mark.size}}
+        case ast.UnknownMark():
+            result: dict[str, Any] = {"type": mark.type}
+            if mark.attrs is not None:
+                result["attrs"] = mark.attrs
+            return result
         case _:
             msg = f"Unknown mark type: {type(mark)}"
             raise ValueError(msg)
