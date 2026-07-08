@@ -379,6 +379,57 @@ class TestMarks:
         assert isinstance(media, Media)
         assert media.marks == [BorderMark(size=1, color="#c0")]
 
+    def test_unknown_mark_ignored(self):
+        """Unknown mark types are silently dropped — text content preserved."""
+        node = _p1(
+            [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "styled text",
+                            "marks": [
+                                {"type": "fontSize", "attrs": {"size": 24}},
+                                {"type": "strong"},
+                            ],
+                        }
+                    ],
+                }
+            ]
+        )
+        assert isinstance(node, Paragraph)
+        text = node.content[0]
+        assert isinstance(text, Text)
+        assert text.text == "styled text"
+        # fontSize dropped, strong preserved
+        assert text.marks == [StrongMark()]
+
+    def test_all_unknown_marks_dropped(self):
+        """When all marks are unknown, text still parses with empty marks list."""
+        node = _p1(
+            [
+                {
+                    "type": "paragraph",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "plain text",
+                            "marks": [
+                                {"type": "confluenceInlineComment", "attrs": {}},
+                                {"type": "typeAheadQuery", "attrs": {}},
+                            ],
+                        }
+                    ],
+                }
+            ]
+        )
+        assert isinstance(node, Paragraph)
+        text = node.content[0]
+        assert isinstance(text, Text)
+        assert text.text == "plain text"
+        assert text.marks == []
+
 
 # ── Block nodes ──────────────────────────────────────────────────────────────
 

@@ -23,9 +23,8 @@ class TestParseMark:
     def test_fragment_returns_none(self) -> None:
         assert _parse_mark({"type": "fragment"}) is None
 
-    def test_unknown_mark_raises(self) -> None:
-        with pytest.raises(ValueError, match="Unknown mark type"):
-            _parse_mark({"type": "definitelyNotARealMark"})
+    def test_unknown_mark_returns_none(self) -> None:
+        assert _parse_mark({"type": "definitelyNotARealMark"}) is None
 
 
 class TestParseBlockUnknown:

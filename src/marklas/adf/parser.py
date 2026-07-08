@@ -74,8 +74,7 @@ def _parse_mark(mark: dict[str, Any]) -> ast.Mark | None:
         case "fragment":
             return None  # lossy: editor runtime metadata
         case _:
-            msg = f"Unknown mark type: {mark.get('type')}"
-            raise ValueError(msg)
+            return None  # lossy: unsupported mark — preserve text, drop formatting
 
 
 def _parse_marks(marks: list[dict[str, Any]]) -> list[ast.Mark]:
