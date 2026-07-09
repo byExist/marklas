@@ -57,6 +57,7 @@ from marklas.ast import (
     Text,
     TextColorMark,
     UnderlineMark,
+    UnknownBlock,
     UnknownInline,
     UnknownMark,
 )
@@ -86,6 +87,19 @@ class TestBlocks:
         first = node.content[0]
         assert isinstance(first, Text)
         assert first.text == "hello"
+
+    def test_unknown_block(self):
+        raw = {
+            "type": "someFutureBlock",
+            "attrs": {"x": 1},
+            "marks": [{"type": "breakout", "attrs": {"mode": "wide"}}],
+            "content": [
+                {"type": "paragraph", "content": [{"type": "text", "text": "nested"}]}
+            ],
+        }
+        node = _rt1(UnknownBlock(raw=raw))
+        assert isinstance(node, UnknownBlock)
+        assert node.raw == raw
 
     def test_paragraph_empty(self):
         node = _rt1(Paragraph())

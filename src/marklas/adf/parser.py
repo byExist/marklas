@@ -141,7 +141,7 @@ def _parse_block(node: dict[str, Any]) -> ast.Node | None:
         case "bodiedSyncBlock":
             return _parse_bodied_sync_block(node)
         case _:
-            return None
+            return ast.UnknownBlock(raw=deepcopy(node))
 
 
 # ── Block parsers ────────────────────────────────────────────────────────────

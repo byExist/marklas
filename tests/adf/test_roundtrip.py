@@ -93,6 +93,62 @@ class TestBlocks:
     def test_paragraph_empty(self):
         _rt(_doc({"type": "paragraph"}))
 
+    def test_unknown_block_preserved(self):
+        _rt(
+            _doc(
+                _p(_text("before")),
+                {
+                    "type": "someFutureBlock",
+                    "attrs": {"x": 1},
+                    "content": [_p(_text("nested content"))],
+                },
+                _p(_text("after")),
+            )
+        )
+
+    def test_unknown_block_bare(self):
+        _rt(_doc({"type": "weirdBlock"}))
+
+    def test_unknown_block_with_inline_content(self):
+        _rt(_doc({"type": "weirdLeaf", "content": [_text("direct inline")]}))
+
+    def test_unknown_block_with_marks(self):
+        _rt(
+            _doc(
+                {
+                    "type": "someFutureBlock",
+                    "attrs": {"x": 1},
+                    "marks": [{"type": "breakout", "attrs": {"mode": "wide"}}],
+                    "content": [_p(_text("body"))],
+                }
+            )
+        )
+
+    def test_unknown_block_in_table_cell(self):
+        _rt(
+            _doc(
+                {
+                    "type": "table",
+                    "content": [
+                        {
+                            "type": "tableRow",
+                            "content": [
+                                {
+                                    "type": "tableCell",
+                                    "content": [
+                                        {
+                                            "type": "myBlock",
+                                            "content": [_p(_text("x"))],
+                                        }
+                                    ],
+                                }
+                            ],
+                        }
+                    ],
+                }
+            )
+        )
+
     def test_heading(self):
         _rt(
             _doc(

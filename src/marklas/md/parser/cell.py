@@ -230,7 +230,13 @@ def _promote_paired(
     # "<div ...></div>" into open/close tokens. Their content (if any) is
     # already encoded in attrs.params, so route them through the void
     # dispatch like at top level.
-    if adf_type in {"extension", "bodiedExtension", "syncBlock", "bodiedSyncBlock"}:
+    if adf_type in {
+        "extension",
+        "bodiedExtension",
+        "syncBlock",
+        "bodiedSyncBlock",
+        "unknownBlock",
+    }:
         node = block.build_html_void(HtmlVoid(tag=tag, attrs=attrs))
         if node is not None and is_table_cell(node):
             return node

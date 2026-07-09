@@ -44,9 +44,21 @@ class TestParseMark:
 
 
 class TestParseBlockUnknown:
-    def test_unknown_block_returns_none(self) -> None:
+    def test_unknown_block_preserved(self) -> None:
+        raw = {
+            "type": "ghost",
+            "attrs": {"x": 1},
+            "marks": [{"type": "breakout", "attrs": {"mode": "wide"}}],
+            "content": [
+                {"type": "paragraph", "content": [{"type": "text", "text": "inner"}]}
+            ],
+        }
+        doc = parse({"type": "doc", "version": 1, "content": [raw]})
+        assert list(doc.content) == [ast.UnknownBlock(raw=raw)]
+
+    def test_unknown_block_bare(self) -> None:
         doc = parse({"type": "doc", "version": 1, "content": [{"type": "ghost"}]})
-        assert list(doc.content) == []
+        assert list(doc.content) == [ast.UnknownBlock(raw={"type": "ghost"})]
 
 
 class TestColwidths:

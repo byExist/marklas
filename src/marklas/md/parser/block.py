@@ -194,6 +194,8 @@ def build_html_void(token: HtmlVoid) -> ast.Node | None:
             return _build_sync_block(token.attrs)
         case "bodiedSyncBlock":
             return _build_bodied_sync_block(token.attrs)
+        case "unknownBlock":
+            return _build_unknown_block(token.attrs)
         case _:
             return None
 
@@ -741,6 +743,10 @@ def _build_bodied_sync_block(attrs: Mapping[str, str]) -> ast.BodiedSyncBlock:
         resource_id=p.get("resourceId", ""),
         content=collect(_adf_dict_nodes(p.get("content", [])), is_bodied_sync),
     )
+
+
+def _build_unknown_block(attrs: Mapping[str, str]) -> ast.UnknownBlock:
+    return ast.UnknownBlock(raw=get_params(attrs))
 
 
 def _adf_dict_nodes(nodes: list[Any]) -> list[ast.Node]:

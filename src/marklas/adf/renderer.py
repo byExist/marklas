@@ -175,6 +175,8 @@ def render_block(node: ast.Node) -> dict[str, Any] | None:
             return _render_sync_block(node)
         case ast.BodiedSyncBlock():
             return _render_bodied_sync_block(node)
+        case ast.UnknownBlock():
+            return deepcopy(node.raw)
         case _:
             msg = f"Unknown block node: {type(node)}"
             raise ValueError(msg)

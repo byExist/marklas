@@ -534,6 +534,15 @@ class BodiedSyncBlock(Node):
 
 
 @dataclass
+class UnknownBlock(Node):
+    raw: dict[str, Any]
+
+    @property
+    def type(self) -> str:
+        return self.raw.get("type", "")
+
+
+@dataclass
 class Doc(Node):
     content: Sequence[DocContent]
     version: int = 1
@@ -549,6 +558,7 @@ BlockquoteContent: TypeAlias = Union[
     MediaSingle,
     MediaGroup,
     Extension,
+    UnknownBlock,
 ]
 
 ListItemContent: TypeAlias = Union[
@@ -559,6 +569,7 @@ ListItemContent: TypeAlias = Union[
     MediaSingle,
     CodeBlock,
     Extension,
+    UnknownBlock,
 ]
 
 PanelContent: TypeAlias = Union[
@@ -574,6 +585,7 @@ PanelContent: TypeAlias = Union[
     Rule,
     DecisionList,
     Extension,
+    UnknownBlock,
 ]
 
 TableCellContent: TypeAlias = Union[
@@ -593,6 +605,7 @@ TableCellContent: TypeAlias = Union[
     EmbedCard,
     Extension,
     NestedExpand,
+    UnknownBlock,
 ]
 
 NestedExpandContent: TypeAlias = Union[
@@ -609,6 +622,7 @@ NestedExpandContent: TypeAlias = Union[
     Panel,
     Blockquote,
     Extension,
+    UnknownBlock,
 ]
 
 ExpandContent: TypeAlias = Union[
@@ -629,9 +643,10 @@ ExpandContent: TypeAlias = Union[
     EmbedCard,
     Extension,
     NestedExpand,
+    UnknownBlock,
 ]
 
-BlockTaskItemContent: TypeAlias = Union[Paragraph, Extension]
+BlockTaskItemContent: TypeAlias = Union[Paragraph, Extension, UnknownBlock]
 
 TaskListContent: TypeAlias = Union[TaskItem, BlockTaskItem, TaskList]
 
@@ -652,6 +667,7 @@ NonNestableBlockContent: TypeAlias = Union[
     BlockCard,
     EmbedCard,
     Extension,
+    UnknownBlock,
 ]
 
 BlockContent: TypeAlias = Union[
@@ -673,6 +689,7 @@ BlockContent: TypeAlias = Union[
     DecisionList,
     Extension,
     BodiedExtension,
+    UnknownBlock,
 ]
 
 BodiedSyncBlockContent: TypeAlias = Union[
@@ -693,6 +710,7 @@ BodiedSyncBlockContent: TypeAlias = Union[
     Rule,
     Table,
     TaskList,
+    UnknownBlock,
 ]
 
 DocContent: TypeAlias = Union[
@@ -717,4 +735,5 @@ DocContent: TypeAlias = Union[
     BodiedExtension,
     SyncBlock,
     BodiedSyncBlock,
+    UnknownBlock,
 ]

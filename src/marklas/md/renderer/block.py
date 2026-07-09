@@ -311,6 +311,8 @@ def render_block(node: ast.Node) -> str:
             return _render_sync_block(node)
         case ast.BodiedSyncBlock():
             return _render_bodied_sync_block(node)
+        case ast.UnknownBlock():
+            return _render_unknown_block(node)
         case _:
             raise ValueError(f"Unknown block: {type(node).__name__}")
 
@@ -800,6 +802,10 @@ def _render_bodied_sync_block(node: ast.BodiedSyncBlock) -> str:
         }
     )
     return _data("bodiedSyncBlock", params)
+
+
+def _render_unknown_block(node: ast.UnknownBlock) -> str:
+    return _data("unknownBlock", build_params(node.raw))
 
 
 # ── Table ──────────────────────────────────────────────────────────────────────
