@@ -476,6 +476,56 @@ class TestInlines:
             )
         )
 
+    def test_unknown_inline_preserved(self):
+        _rt(
+            _doc(
+                _p(
+                    _text("a "),
+                    {"type": "someFutureInline", "attrs": {"y": 2}},
+                    _text(" b"),
+                )
+            )
+        )
+
+    def test_unknown_inline_without_attrs(self):
+        _rt(_doc(_p({"type": "weirdInline"})))
+
+    def test_unknown_inline_with_marks(self):
+        _rt(
+            _doc(
+                _p(
+                    {
+                        "type": "someFutureInline",
+                        "attrs": {"y": 2},
+                        "marks": [{"type": "strong"}],
+                    }
+                )
+            )
+        )
+
+    def test_unknown_inline_in_caption(self):
+        _rt(
+            _doc(
+                {
+                    "type": "mediaSingle",
+                    "attrs": {"layout": "center"},
+                    "content": [
+                        {
+                            "type": "media",
+                            "attrs": {"id": "1", "type": "file", "collection": "c"},
+                        },
+                        {
+                            "type": "caption",
+                            "content": [
+                                _text("cap "),
+                                {"type": "weirdInline", "attrs": {"k": 1}},
+                            ],
+                        },
+                    ],
+                }
+            )
+        )
+
 
 # ── Marks ────────────────────────────────────────────────────────────────────
 

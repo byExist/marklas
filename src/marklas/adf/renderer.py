@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Sequence
+from copy import deepcopy
 from typing import Any
 from uuid import uuid4
 
@@ -570,6 +571,8 @@ def _render_inline(node: ast.Inline) -> dict[str, Any]:
             return _render_media_inline(node)
         case ast.InlineExtension():
             return _render_inline_extension(node)
+        case ast.UnknownInline():
+            return deepcopy(node.raw)
         case _:
             msg = f"Unknown inline node: {type(node)}"
             raise ValueError(msg)

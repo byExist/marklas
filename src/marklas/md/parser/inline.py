@@ -214,6 +214,8 @@ def _build_paired_inline(
             return [_build_media_inline(token.attrs)]
         case "inlineExtension":
             return [_build_inline_extension(token.attrs)]
+        case "unknownInline":
+            return [_build_unknown_inline(token.attrs)]
         case (
             "underline"
             | "textColor"
@@ -340,3 +342,7 @@ def _build_inline_extension(attrs: Mapping[str, str]) -> ast.InlineExtension:
         parameters=p.get("parameters"),
         text=p.get("text"),
     )
+
+
+def _build_unknown_inline(attrs: Mapping[str, str]) -> ast.UnknownInline:
+    return ast.UnknownInline(raw=get_params(attrs))

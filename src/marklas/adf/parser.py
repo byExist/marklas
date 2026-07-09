@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from collections.abc import Sequence
+from copy import deepcopy
 from typing import Any, cast
 
 from marklas import ast
@@ -610,7 +611,7 @@ def _parse_inline(node: dict[str, Any]) -> ast.Inline | None:
         case "inlineExtension":
             return _parse_inline_extension(node)
         case _:
-            return None
+            return ast.UnknownInline(raw=deepcopy(node))
 
 
 # ── Inline parsers ───────────────────────────────────────────────────────────

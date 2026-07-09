@@ -57,6 +57,7 @@ from marklas.ast import (
     Text,
     TextColorMark,
     UnderlineMark,
+    UnknownInline,
     UnknownMark,
 )
 
@@ -378,6 +379,22 @@ class TestInlineNodes:
         mi = node.content[0]
         assert isinstance(mi, MediaInline)
         assert mi.id == "f1"
+
+    def test_unknown_inline(self):
+        raw = {
+            "type": "someFutureInline",
+            "attrs": {"y": 2},
+            "marks": [{"type": "strong"}],
+        }
+        node = _rt1(
+            Paragraph(
+                content=[Text(text="a "), UnknownInline(raw=raw), Text(text=" b")]
+            )
+        )
+        assert isinstance(node, Paragraph)
+        u = node.content[1]
+        assert isinstance(u, UnknownInline)
+        assert u.raw == raw
 
     def test_special_chars_in_text(self):
         for char in ["*", "_", "[", "]", "`", "\\", "<", ">", "#", "~"]:

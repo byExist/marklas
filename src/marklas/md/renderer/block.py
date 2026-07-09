@@ -999,6 +999,8 @@ def _render_inline(node: ast.Inline) -> str:
             return _render_media_inline(node)
         case ast.InlineExtension():
             return _render_inline_extension(node)
+        case ast.UnknownInline():
+            return _render_unknown_inline(node)
         case _:
             raise ValueError(f"Unknown inline: {type(node).__name__}")
 
@@ -1136,6 +1138,10 @@ def _render_inline_extension(node: ast.InlineExtension) -> str:
         }
     )
     return el("span", "", adf="inlineExtension", params=params)
+
+
+def _render_unknown_inline(node: ast.UnknownInline) -> str:
+    return el("span", "", adf="unknownInline", params=build_params(node.raw))
 
 
 # ── Mark rendering ─────────────────────────────────────────────────────────────

@@ -195,6 +195,15 @@ class InlineExtension(Node):
     marks: Sequence[Mark] = field(default_factory=list[Mark])
 
 
+@dataclass
+class UnknownInline(Node):
+    raw: dict[str, Any]
+
+    @property
+    def type(self) -> str:
+        return self.raw.get("type", "")
+
+
 # ── Inline Type Aliases ───────────────────────────────────────────────────────
 
 Inline: TypeAlias = Union[
@@ -208,6 +217,7 @@ Inline: TypeAlias = Union[
     Placeholder,
     MediaInline,
     InlineExtension,
+    UnknownInline,
 ]
 
 CaptionContent: TypeAlias = Union[
@@ -219,6 +229,7 @@ CaptionContent: TypeAlias = Union[
     Status,
     InlineCard,
     Placeholder,
+    UnknownInline,
 ]
 
 

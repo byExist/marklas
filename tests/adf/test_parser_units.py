@@ -208,5 +208,15 @@ class TestParseInlinesWithNewlines:
 
 
 class TestParseInlineUnknown:
-    def test_unknown_inline_returns_none(self) -> None:
-        assert _parse_inline({"type": "ghostInline"}) is None
+    def test_unknown_inline_preserved(self) -> None:
+        raw = {
+            "type": "ghostInline",
+            "attrs": {"foo": "bar"},
+            "marks": [{"type": "strong"}],
+        }
+        assert _parse_inline(raw) == ast.UnknownInline(raw=raw)
+
+    def test_unknown_inline_without_attrs(self) -> None:
+        assert _parse_inline({"type": "ghostInline"}) == ast.UnknownInline(
+            raw={"type": "ghostInline"}
+        )
