@@ -25,7 +25,7 @@ from typing import Any
 from marklas import ast
 
 from .ir import HtmlPaired, HtmlVoid, Token
-from .normalize import get_params, inline_parser, normalize_inlines
+from .normalize import get_params, inline_parser, media_border_marks, normalize_inlines
 
 
 # Reuse the package-level mistune instance's inline parser so the same set
@@ -351,7 +351,7 @@ def _build_placeholder(content: str) -> ast.Placeholder:
 
 def _build_media_inline(attrs: Mapping[str, str]) -> ast.MediaInline:
     p = get_params(attrs)
-    return ast.MediaInline(
+    media = ast.MediaInline(
         id=p.get("id", ""),
         collection=p.get("collection", ""),
         type=p.get("type"),
@@ -360,6 +360,10 @@ def _build_media_inline(attrs: Mapping[str, str]) -> ast.MediaInline:
         height=p.get("height"),
         data=p.get("data"),
     )
+    border = media_border_marks(p)
+    if border:
+        media.marks = border
+    return media
 
 
 def _build_inline_extension(attrs: Mapping[str, str]) -> ast.InlineExtension:

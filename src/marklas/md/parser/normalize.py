@@ -435,3 +435,12 @@ def parse_block_marks(params: dict[str, Any]) -> list[ast.Mark]:
                 ast.UnknownMark(type=um.get("type", ""), attrs=um.get("attrs"))
             )
     return marks
+
+
+def media_border_marks(params: dict[str, Any]) -> list[ast.BorderMark]:
+    """Recover the BorderMark folded into a media node's own params.
+
+    Shared by `_build_media` (Media) and `_build_media_inline` (MediaInline):
+    both encode border as borderSize/borderColor in the media span's params.
+    """
+    return [m for m in parse_block_marks(params) if isinstance(m, ast.BorderMark)]

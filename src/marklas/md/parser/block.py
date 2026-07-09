@@ -58,6 +58,7 @@ from .normalize import (
     block_html_to_inline,
     get_params,
     inline_content_text,
+    media_border_marks,
     normalize_blocks,
     normalize_inlines,
     parse_block_marks,
@@ -583,11 +584,17 @@ def build_media_single(attrs: Mapping[str, str], inner: list[Token]) -> ast.Medi
         for item in normalized:
             if isinstance(item, HtmlPaired):
                 _collect_media_items(item, content)
+    # MediaSingle node-level link → linkHref/linkTitle params (rendered by
+    # `_render_media_single`); distinct from a link on the leaf media child.
+    marks: list[ast.LinkMark] = []
+    if "linkHref" in p:
+        marks.append(ast.LinkMark(href=p["linkHref"], title=p.get("linkTitle")))
     return ast.MediaSingle(
         content=content,
         width=p.get("width"),
         layout=p.get("layout"),
         width_type=p.get("widthType"),
+        marks=marks,
     )
 
 
@@ -648,7 +655,7 @@ def _build_media(attrs: Mapping[str, str]) -> ast.Media:
         width=p.get("width"),
         url=p.get("url"),
     )
-    border_marks = [m for m in parse_block_marks(p) if isinstance(m, ast.BorderMark)]
+    border_marks = media_border_marks(p)
     if border_marks:
         media.marks = border_marks
     return media

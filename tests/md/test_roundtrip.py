@@ -12,6 +12,7 @@ from marklas.ast import (
     AnnotationMark,
     BlockCard,
     Blockquote,
+    BorderMark,
     BulletList,
     CodeBlock,
     CodeMark,
@@ -540,7 +541,7 @@ class TestMedia:
         assert isinstance(node, MediaGroup)
         assert len(node.content) == 2
 
-    def _media_mark_rt(self, mark: LinkMark | AnnotationMark):
+    def _media_mark_rt(self, mark: LinkMark | AnnotationMark | BorderMark):
         node = _rt1(
             MediaSingle(
                 content=[Media(type="file", id="i", collection="c", marks=[mark])]
@@ -562,7 +563,11 @@ class TestMedia:
         marks = self._media_mark_rt(AnnotationMark(id="a1"))
         assert isinstance(marks[0], AnnotationMark)
 
-    def _media_inline_mark_rt(self, mark: LinkMark | AnnotationMark):
+    def test_media_border_mark(self):
+        marks = self._media_mark_rt(BorderMark(size=2, color="#000"))
+        assert isinstance(marks[0], BorderMark)
+
+    def _media_inline_mark_rt(self, mark: LinkMark | AnnotationMark | BorderMark):
         node = _rt1(
             Paragraph(
                 content=[MediaInline(id="i", collection="c", type="file", marks=[mark])]
@@ -581,6 +586,10 @@ class TestMedia:
         marks = self._media_inline_mark_rt(AnnotationMark(id="a1"))
         assert isinstance(marks[0], AnnotationMark)
 
+    def test_media_inline_border_mark(self):
+        marks = self._media_inline_mark_rt(BorderMark(size=2, color="#000"))
+        assert isinstance(marks[0], BorderMark)
+
     def test_media_multi_mark_order_preserved(self):
         node = _rt1(
             MediaSingle(
@@ -598,6 +607,17 @@ class TestMedia:
         media = node.content[0]
         assert isinstance(media, Media)
         assert [type(m) for m in media.marks] == [LinkMark, AnnotationMark]
+
+    def test_media_single_node_link_mark(self):
+        node = _rt1(
+            MediaSingle(
+                layout="center",
+                marks=[LinkMark(href="https://ms.com")],
+                content=[Media(type="file", id="y", collection="c")],
+            )
+        )
+        assert isinstance(node, MediaSingle)
+        assert isinstance(node.marks[0], LinkMark)
 
 
 # ── TaskList ─────────────────────────────────────────────────────────────────
