@@ -627,17 +627,17 @@ def _render_media(node: ast.Media) -> str:
             params_dict["borderColor"] = m.color
     params = build_params(params_dict)
     result = el("span", display, adf="media", params=params)
-    for m in node.marks:
-        if isinstance(m, ast.LinkMark):
-            result = el("a", result, href=m.href, title=m.title)
-        elif isinstance(m, ast.AnnotationMark):
-            result = el(
-                "span",
-                result,
-                adf="annotation",
-                params=build_params({"id": m.id}),
-            )
-    return result
+    return _wrap_media_marks(result, node.marks)
+
+
+def _wrap_media_marks(content: str, marks: Sequence[ast.Mark]) -> str:
+    """Wrap `content` in a media node's link/annotation marks (shared by block
+    and inline media). BorderMark is params, handled by the caller.
+    """
+    for m in marks:
+        if isinstance(m, (ast.LinkMark, ast.AnnotationMark)):
+            content = _wrap_html_mark(content, m)
+    return content
 
 
 def _render_caption(node: ast.Caption) -> str:
@@ -1121,17 +1121,7 @@ def _render_media_inline(node: ast.MediaInline) -> str:
             params_dict["borderColor"] = m.color
     params = build_params(params_dict)
     result = el("span", display, adf="mediaInline", params=params)
-    for m in node.marks:
-        if isinstance(m, ast.LinkMark):
-            result = el("a", result, href=m.href, title=m.title)
-        elif isinstance(m, ast.AnnotationMark):
-            result = el(
-                "span",
-                result,
-                adf="annotation",
-                params=build_params({"id": m.id}),
-            )
-    return result
+    return _wrap_media_marks(result, node.marks)
 
 
 def _render_inline_extension(node: ast.InlineExtension) -> str:
@@ -1217,6 +1207,11 @@ def _wrap_html_mark(text: str, mark: ast.Mark) -> str:
                 adf="unknownMark",
                 params=build_params({"type": type_, "attrs": attrs}),
             )
+        case ast.LinkMark(href=href, title=title):
+            # Only reached for media (text LinkMarks render as markdown
+            # `[](url)` in `_apply_marks`). `adf=link` keeps parse from
+            # stripping it as adf-less HTML.
+            return el("a", text, adf="link", href=href, title=title)
         case _:
             return text
 

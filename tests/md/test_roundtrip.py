@@ -540,6 +540,65 @@ class TestMedia:
         assert isinstance(node, MediaGroup)
         assert len(node.content) == 2
 
+    def _media_mark_rt(self, mark: LinkMark | AnnotationMark):
+        node = _rt1(
+            MediaSingle(
+                content=[Media(type="file", id="i", collection="c", marks=[mark])]
+            )
+        )
+        assert isinstance(node, MediaSingle)
+        media = node.content[0]
+        assert isinstance(media, Media)
+        return media.marks
+
+    def test_media_link_mark(self):
+        marks = self._media_mark_rt(LinkMark(href="https://ex.com", title="t"))
+        link = marks[0]
+        assert isinstance(link, LinkMark)
+        assert link.href == "https://ex.com"
+        assert link.title == "t"
+
+    def test_media_annotation_mark(self):
+        marks = self._media_mark_rt(AnnotationMark(id="a1"))
+        assert isinstance(marks[0], AnnotationMark)
+
+    def _media_inline_mark_rt(self, mark: LinkMark | AnnotationMark):
+        node = _rt1(
+            Paragraph(
+                content=[MediaInline(id="i", collection="c", type="file", marks=[mark])]
+            )
+        )
+        assert isinstance(node, Paragraph)
+        media = node.content[0]
+        assert isinstance(media, MediaInline)
+        return media.marks
+
+    def test_media_inline_link_mark(self):
+        marks = self._media_inline_mark_rt(LinkMark(href="https://ex.com"))
+        assert isinstance(marks[0], LinkMark)
+
+    def test_media_inline_annotation_mark(self):
+        marks = self._media_inline_mark_rt(AnnotationMark(id="a1"))
+        assert isinstance(marks[0], AnnotationMark)
+
+    def test_media_multi_mark_order_preserved(self):
+        node = _rt1(
+            MediaSingle(
+                content=[
+                    Media(
+                        type="file",
+                        id="i",
+                        collection="c",
+                        marks=[LinkMark(href="https://ex.com"), AnnotationMark(id="a")],
+                    )
+                ]
+            )
+        )
+        assert isinstance(node, MediaSingle)
+        media = node.content[0]
+        assert isinstance(media, Media)
+        assert [type(m) for m in media.marks] == [LinkMark, AnnotationMark]
+
 
 # ── TaskList ─────────────────────────────────────────────────────────────────
 

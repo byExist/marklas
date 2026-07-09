@@ -369,11 +369,11 @@ class TestSplitNestedTaskLists:
 
 class TestCollectMediaItems:
     def test_media_with_outer_link_mark(self) -> None:
-        # <a href="..."> wrapping <span adf="media"> — the wrapping LinkMark
-        # accumulates onto the leaf Media.
+        # <a adf="link" href="..."> wrapping <span adf="media"> — the wrapping
+        # LinkMark accumulates onto the leaf Media.
         wrapped = HtmlPaired(
             tag="a",
-            attrs={"href": "http://x"},
+            attrs={"adf": "link", "href": "http://x"},
             inner=[
                 HtmlPaired(
                     tag="span",
@@ -432,7 +432,9 @@ class TestCollectMediaItems:
 
 class TestMediaWrappingMark:
     def test_link_mark_extraction(self) -> None:
-        wrapped = HtmlPaired(tag="a", attrs={"href": "h", "title": "t"}, inner=[])
+        wrapped = HtmlPaired(
+            tag="a", attrs={"adf": "link", "href": "h", "title": "t"}, inner=[]
+        )
         mark = _media_wrapping_mark(wrapped)
         assert isinstance(mark, ast.LinkMark)
         assert mark.href == "h"

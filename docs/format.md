@@ -189,7 +189,7 @@ Cell: `<ul adf="taskList"><li adf="taskItem" params='{"state":"TODO"}'>text</li>
 - Fallback text: `📎 {alt or "attachment"} ({id})`.
 - `type="external"` → `url` in media params.
 - `Caption` → `<figcaption adf="caption">`, omitted when absent.
-- `Media.marks`: `LinkMark` → `<a>` wrapper around `<span>`. `AnnotationMark` → `<span adf="annotation">` wrapper. `BorderMark` → merged into media params.
+- `Media.marks`: `LinkMark` → `<a adf="link">` wrapper around `<span>`. `AnnotationMark` → `<span adf="annotation">` wrapper. `BorderMark` → merged into media params.
 - `MediaSingle.marks` (`LinkMark` only) → merged into figure params as `linkHref`/`linkTitle`.
 
 `MediaGroup` uses `<div adf="mediaGroup">` containing one or more `<span adf="media">` children.
@@ -311,7 +311,7 @@ Inner text is wrapped in a backtick codespan so plain-Markdown viewers render it
 
 `<span adf="mediaInline" params='{"id":"...","collection":"...","type":"...","alt":"...","width":...,"height":...}'>📎 fallback</span>`
 
-Fallback text and `marks` behavior identical to inline `Media`. `marks`: `LinkMark` → `<a>` wrapper, `AnnotationMark` → `<span adf="annotation">` wrapper, `BorderMark` → merged into params.
+Fallback text and `marks` behavior identical to inline `Media`. `marks`: `LinkMark` → `<a adf="link">` wrapper, `AnnotationMark` → `<span adf="annotation">` wrapper, `BorderMark` → merged into params.
 
 ### InlineExtension
 

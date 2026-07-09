@@ -32,7 +32,12 @@ from typing import Any, cast
 from marklas import ast
 
 from .cell import group_inline_html as _group_cell_inline_html, parse_cell_content
-from .inline import parse_inlines, parse_normalized_inlines, reparse_text_inlines
+from .inline import (
+    inline_mark_from,
+    parse_inlines,
+    parse_normalized_inlines,
+    reparse_text_inlines,
+)
 from .ir import (
     HtmlPaired,
     HtmlVoid,
@@ -595,13 +600,15 @@ def _collect_media_items(
 
     Media with marks arrives nested inside one or more inline-mark
     wrappers (``<span adf="annotation">…</span>`` for AnnotationMark,
-    ``<a href=…>…</a>`` for LinkMark). Unwrap them and accumulate the
-    marks onto the leaf media node.
+    ``<a adf="link" href=…>…</a>`` for LinkMark). Unwrap them and accumulate
+    the marks onto the leaf media node.
     """
     if item.adf_type == "media":
         media = _build_media(item.attrs)
         if outer_marks:
-            media.marks = [*media.marks, *outer_marks]
+            # outer_marks is outermost-first, but the renderer wraps the first
+            # mark innermost — reverse to restore the original marks order.
+            media.marks = [*media.marks, *reversed(outer_marks)]
         out.append(media)
         return
     if item.adf_type == "caption":
@@ -619,18 +626,14 @@ def _collect_media_items(
 def _media_wrapping_mark(
     item: HtmlPaired,
 ) -> ast.LinkMark | ast.AnnotationMark | None:
-    """Extract the ADF mark from an HTML element that wraps a media node."""
-    if item.adf_type == "annotation":
-        p = get_params(item.attrs)
-        return ast.AnnotationMark(
-            id=p.get("id", ""),
-            annotation_type=p.get("annotationType", "inlineComment"),
-        )
-    if item.tag == "a" and not item.adf_type:
-        return ast.LinkMark(
-            href=item.attrs.get("href", ""),
-            title=item.attrs.get("title"),
-        )
+    """Extract the ADF mark from an HTML element that wraps a media node.
+
+    Reuses the shared `inline_mark_from` recognizer; media accepts only the
+    link/annotation wrappers, so anything else is ignored here.
+    """
+    mark = inline_mark_from(item.tag, item.adf_type, item.attrs)
+    if isinstance(mark, (ast.LinkMark, ast.AnnotationMark)):
+        return mark
     return None
 
 

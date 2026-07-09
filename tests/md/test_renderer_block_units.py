@@ -210,7 +210,7 @@ class TestMediaMarks:
         )
         # Drive via mediaSingle.
         result = render_block(ast.MediaSingle(content=[media]))
-        assert '<a href="http://x"' in result
+        assert '<a adf="link" href="http://x"' in result
 
     def test_media_with_annotation_mark(self) -> None:
         media = ast.Media(
@@ -575,7 +575,7 @@ class TestMediaInlineMarks:
             marks=[ast.LinkMark(href="http://x")],
         )
         result = _render_inline(node)
-        assert '<a href="http://x"' in result
+        assert '<a adf="link" href="http://x"' in result
 
     def test_media_inline_with_annotation_mark(self) -> None:
         node = ast.MediaInline(

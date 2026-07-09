@@ -223,6 +223,7 @@ def _build_paired_inline(
             | "subSup"
             | "annotation"
             | "unknownMark"
+            | "link"
         ):
             return _apply_html_mark(
                 token.tag, token.adf_type, token.attrs, token.inner, parent_marks
@@ -236,6 +237,52 @@ def _build_paired_inline(
             return [text]
 
 
+def inline_mark_from(
+    tag: str, adf_type: str, attrs: Mapping[str, str]
+) -> ast.Mark | None:
+    """Map an HTML wrapper element to the ADF Mark it encodes.
+
+    The single "wrapper → Mark" recognizer, shared by `_apply_html_mark`
+    (text/inline media) and block-media unwrapping in `block.py`.
+    """
+    match adf_type:
+        case "underline":
+            return ast.UnderlineMark()
+        case "textColor":
+            return ast.TextColorMark(color=get_params(attrs).get("color", ""))
+        case "bgColor":
+            return ast.BackgroundColorMark(color=get_params(attrs).get("color", ""))
+        case "subSup":
+            return ast.SubSupMark(type="sub" if tag == "sub" else "sup")
+        case "annotation":
+            p = get_params(attrs)
+            return ast.AnnotationMark(
+                id=p.get("id", ""),
+                annotation_type=p.get("annotationType", "inlineComment"),
+            )
+        case "unknownMark":
+            p = get_params(attrs)
+            return ast.UnknownMark(type=p.get("type", ""), attrs=p.get("attrs"))
+        case "link":
+            return ast.LinkMark(href=attrs.get("href", ""), title=attrs.get("title"))
+        case _:
+            return None
+
+
+def _attach_inline_mark(node: ast.Inline, mark: ast.Mark) -> None:
+    """Append a wrapping mark to an inline node, respecting its schema.
+
+    Text accepts any mark; MediaInline accepts only the media mark subset.
+    Other inline nodes carry no marks (a wrapper around them is a no-op).
+    """
+    if isinstance(node, ast.Text):
+        node.marks = [*node.marks, mark]
+    elif isinstance(node, ast.MediaInline) and isinstance(
+        mark, (ast.LinkMark, ast.AnnotationMark, ast.BorderMark)
+    ):
+        node.marks = [*node.marks, mark]
+
+
 def _apply_html_mark(
     tag: str,
     adf_type: str,
@@ -243,37 +290,18 @@ def _apply_html_mark(
     inner: list[Token],
     parent_marks: list[ast.Mark],
 ) -> list[ast.Inline]:
-    """Wrap inner content with an HTML-encoded mark (underline, textColor, ...)."""
-    mark: ast.Mark
-    match adf_type:
-        case "underline":
-            mark = ast.UnderlineMark()
-        case "textColor":
-            mark = ast.TextColorMark(color=get_params(attrs).get("color", ""))
-        case "bgColor":
-            mark = ast.BackgroundColorMark(color=get_params(attrs).get("color", ""))
-        case "subSup":
-            mark = ast.SubSupMark(type="sub" if tag == "sub" else "sup")
-        case "annotation":
-            p = get_params(attrs)
-            mark = ast.AnnotationMark(
-                id=p.get("id", ""),
-                annotation_type=p.get("annotationType", "inlineComment"),
-            )
-        case "unknownMark":
-            p = get_params(attrs)
-            mark = ast.UnknownMark(type=p.get("type", ""), attrs=p.get("attrs"))
-        case _:
-            content = inline_text(inner)
-            text = ast.Text(text=content)
-            if parent_marks:
-                text.marks = list(parent_marks)
-            return [text]
+    """Wrap inner content with an HTML-encoded mark (underline, link, ...)."""
+    mark = inline_mark_from(tag, adf_type, attrs)
+    if mark is None:
+        content = inline_text(inner)
+        text = ast.Text(text=content)
+        if parent_marks:
+            text.marks = list(parent_marks)
+        return [text]
 
     inlines = _flatten(inner, parent_marks)
     for node in inlines:
-        if isinstance(node, ast.Text):
-            node.marks = [*node.marks, mark]
+        _attach_inline_mark(node, mark)
     return inlines
 
 
