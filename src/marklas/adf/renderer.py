@@ -18,20 +18,17 @@ def render(doc: ast.Doc) -> dict[str, Any]:
     return {
         "type": "doc",
         "version": doc.version,
-        "content": _render_children(doc.content, render_block),
+        "content": _render_children(doc.content),
     }
 
 
 # ── Helpers ──────────────────────────────────────────────────────────────────
 
 
-def _render_children(
-    nodes: Sequence[ast.Node],
-    render_fn: Any,
-) -> list[dict[str, Any]]:
+def _render_children(nodes: Sequence[ast.Node]) -> list[dict[str, Any]]:
     result: list[dict[str, Any]] = []
     for node in nodes:
-        rendered = render_fn(node)
+        rendered = render_block(node)
         if rendered is not None:
             result.append(rendered)
     return result
@@ -219,7 +216,7 @@ def _render_code_block(node: ast.CodeBlock) -> dict[str, Any]:
 def render_blockquote(node: ast.Blockquote) -> dict[str, Any]:
     return {
         "type": "blockquote",
-        "content": _render_children(node.content, render_block),
+        "content": _render_children(node.content),
     }
 
 
@@ -247,7 +244,7 @@ def _render_rule() -> dict[str, Any]:
 def _render_list_item(node: ast.ListItem) -> dict[str, Any]:
     return {
         "type": "listItem",
-        "content": _render_children(node.content, render_block),
+        "content": _render_children(node.content),
     }
 
 
@@ -311,7 +308,7 @@ def _render_table_cell(node: ast.TableCell | ast.TableHeader) -> dict[str, Any]:
     cell_type = "tableHeader" if isinstance(node, ast.TableHeader) else "tableCell"
     result: dict[str, Any] = {
         "type": cell_type,
-        "content": _render_children(node.content, render_block),
+        "content": _render_children(node.content),
     }
     attrs = _omit_none(
         {
@@ -341,14 +338,14 @@ def _render_panel(node: ast.Panel) -> dict[str, Any]:
     return {
         "type": "panel",
         "attrs": attrs,
-        "content": _render_children(node.content, render_block),
+        "content": _render_children(node.content),
     }
 
 
 def _render_expand(node: ast.Expand) -> dict[str, Any]:
     result: dict[str, Any] = {
         "type": "expand",
-        "content": _render_children(node.content, render_block),
+        "content": _render_children(node.content),
     }
     if node.title:
         result["attrs"] = {"title": node.title}
@@ -359,7 +356,7 @@ def _render_nested_expand(node: ast.NestedExpand) -> dict[str, Any]:
     result: dict[str, Any] = {
         "type": "nestedExpand",
         "attrs": {},
-        "content": _render_children(node.content, render_block),
+        "content": _render_children(node.content),
     }
     if node.title:
         result["attrs"]["title"] = node.title
@@ -458,7 +455,7 @@ def _render_task_item(node: ast.TaskItem | ast.BlockTaskItem) -> dict[str, Any]:
     if isinstance(node, ast.TaskItem):
         content = _render_inlines(node.content)
     else:
-        content = _render_children(node.content, render_block)
+        content = _render_children(node.content)
     if content:
         result["content"] = content
     return result
@@ -495,7 +492,7 @@ def _render_layout_column(node: ast.LayoutColumn) -> dict[str, Any]:
     return {
         "type": "layoutColumn",
         "attrs": {"width": node.width},
-        "content": _render_children(node.content, render_block),
+        "content": _render_children(node.content),
     }
 
 
@@ -526,7 +523,7 @@ def _render_bodied_extension(node: ast.BodiedExtension) -> dict[str, Any]:
     result: dict[str, Any] = {
         "type": "bodiedExtension",
         "attrs": attrs,
-        "content": _render_children(node.content, render_block),
+        "content": _render_children(node.content),
     }
     return _with_marks(result, node.marks)
 
@@ -543,7 +540,7 @@ def _render_bodied_sync_block(node: ast.BodiedSyncBlock) -> dict[str, Any]:
     result: dict[str, Any] = {
         "type": "bodiedSyncBlock",
         "attrs": {"resourceId": node.resource_id},
-        "content": _render_children(node.content, render_block),
+        "content": _render_children(node.content),
     }
     return _with_marks(result, node.marks)
 
