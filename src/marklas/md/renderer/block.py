@@ -208,6 +208,11 @@ def _block_marks_data(marks: Sequence[ast.Mark]) -> str | None:
     return _data("marks", build_params(d))
 
 
+def _with_marks_prefix(prefix: str | None, result: str) -> str:
+    """Prepend an optional block-marks `<data>` prefix to a rendered block."""
+    return f"{prefix}\n\n{result}" if prefix else result
+
+
 def block_marks_params(marks: Sequence[ast.Mark]) -> dict[str, Any]:
     """Block mark fields as dict for cell context params merging."""
     d: dict[str, Any] = {}
@@ -353,10 +358,7 @@ def _render_paragraph_block(node: ast.Paragraph) -> str:
     if not content.strip():
         if _is_plain():
             return marks_prefix or ""
-        result = "<p></p>"
-        if marks_prefix:
-            return f"{marks_prefix}\n\n{result}"
-        return result
+        return _with_marks_prefix(marks_prefix, "<p></p>")
     # Strip leading whitespace — CommonMark trims it on parse anyway, and
     # keeping it would make mistune absorb the paragraph as indented lazy-
     # continuation content of any preceding list.
@@ -365,9 +367,7 @@ def _render_paragraph_block(node: ast.Paragraph) -> str:
     # ("4. Setup guide", "- item") isn't reinterpreted as a list.
     result = _ORDERED_LIST_MARKER_RE.sub(r"\1\2\\\3\4", result)
     result = _BULLET_LIST_MARKER_RE.sub(r"\1\\\2\3", result)
-    if marks_prefix:
-        return f"{marks_prefix}\n\n{result}"
-    return result
+    return _with_marks_prefix(marks_prefix, result)
 
 
 def _render_heading(node: ast.Heading) -> str:
@@ -385,9 +385,7 @@ def _render_heading_block(node: ast.Heading) -> str:
     content = render_inlines(inlines)
     marks_prefix = _block_marks_data(node.marks)
     result = f"{'#' * node.level} {content}"
-    if marks_prefix:
-        return f"{marks_prefix}\n\n{result}"
-    return result
+    return _with_marks_prefix(marks_prefix, result)
 
 
 def _render_code_block(node: ast.CodeBlock) -> str:
@@ -402,9 +400,7 @@ def _render_code_block_block(node: ast.CodeBlock) -> str:
     fence = _code_fence(code)
     lang = node.language or ""
     result = f"{fence}{lang}\n{code}\n{fence}"
-    if marks_prefix:
-        return f"{marks_prefix}\n\n{result}"
-    return result
+    return _with_marks_prefix(marks_prefix, result)
 
 
 def _render_blockquote(node: ast.Blockquote) -> str:
@@ -510,9 +506,7 @@ def _render_expand_block(node: ast.Expand) -> str:
     content = "\n\n".join(render_blocks(node.content))
     inner = f"{summary}\n\n{content}" if summary else content
     result = block_el("details", inner, adf="expand")
-    if marks_prefix:
-        return f"{marks_prefix}\n\n{result}"
-    return result
+    return _with_marks_prefix(marks_prefix, result)
 
 
 def _render_nested_expand(node: ast.NestedExpand) -> str:
@@ -676,9 +670,7 @@ def _render_layout_section(node: ast.LayoutSection) -> str:
     if _in_cell():
         return result
     marks_prefix = _block_marks_data(node.marks)
-    if marks_prefix:
-        return f"{marks_prefix}\n\n{result}"
-    return result
+    return _with_marks_prefix(marks_prefix, result)
 
 
 def _render_layout_column(node: ast.LayoutColumn) -> str:
@@ -708,9 +700,7 @@ def _render_extension(node: ast.Extension) -> str:
     if _in_cell():
         return result
     marks_prefix = _block_marks_data(node.marks)
-    if marks_prefix:
-        return f"{marks_prefix}\n\n{result}"
-    return result
+    return _with_marks_prefix(marks_prefix, result)
 
 
 def _nested_table_visual(node: ast.Extension) -> str:
@@ -780,9 +770,7 @@ def _render_bodied_extension(node: ast.BodiedExtension) -> str:
     if _in_cell():
         return result
     marks_prefix = _block_marks_data(node.marks)
-    if marks_prefix:
-        return f"{marks_prefix}\n\n{result}"
-    return result
+    return _with_marks_prefix(marks_prefix, result)
 
 
 def _render_sync_block(node: ast.SyncBlock) -> str:
@@ -791,9 +779,7 @@ def _render_sync_block(node: ast.SyncBlock) -> str:
     if _in_cell():
         return result
     marks_prefix = _block_marks_data(node.marks)
-    if marks_prefix:
-        return f"{marks_prefix}\n\n{result}"
-    return result
+    return _with_marks_prefix(marks_prefix, result)
 
 
 def _render_bodied_sync_block(node: ast.BodiedSyncBlock) -> str:
@@ -808,9 +794,7 @@ def _render_bodied_sync_block(node: ast.BodiedSyncBlock) -> str:
     if _in_cell():
         return result
     marks_prefix = _block_marks_data(node.marks)
-    if marks_prefix:
-        return f"{marks_prefix}\n\n{result}"
-    return result
+    return _with_marks_prefix(marks_prefix, result)
 
 
 def _render_unknown_block(node: ast.UnknownBlock) -> str:
