@@ -779,7 +779,13 @@ def _render_bodied_extension(node: ast.BodiedExtension) -> str:
             "content": content_dicts,
         }
     )
-    return _data("bodiedExtension", params)
+    result = _data("bodiedExtension", params)
+    if _in_cell():
+        return result
+    marks_prefix = _block_marks_data(node.marks)
+    if marks_prefix:
+        return f"{marks_prefix}\n\n{result}"
+    return result
 
 
 def _render_sync_block(node: ast.SyncBlock) -> str:
@@ -801,7 +807,13 @@ def _render_bodied_sync_block(node: ast.BodiedSyncBlock) -> str:
             "content": content_dicts,
         }
     )
-    return _data("bodiedSyncBlock", params)
+    result = _data("bodiedSyncBlock", params)
+    if _in_cell():
+        return result
+    marks_prefix = _block_marks_data(node.marks)
+    if marks_prefix:
+        return f"{marks_prefix}\n\n{result}"
+    return result
 
 
 def _render_unknown_block(node: ast.UnknownBlock) -> str:

@@ -12,7 +12,10 @@ from marklas.ast import (
     AnnotationMark,
     BlockCard,
     Blockquote,
+    BodiedExtension,
+    BodiedSyncBlock,
     BorderMark,
+    BreakoutMark,
     BulletList,
     CodeBlock,
     CodeMark,
@@ -699,6 +702,29 @@ class TestExtension:
         node = _rt1(SyncBlock(resource_id="r1"))
         assert isinstance(node, SyncBlock)
         assert node.resource_id == "r1"
+
+    def test_bodied_extension_breakout_mark(self):
+        node = _rt1(
+            BodiedExtension(
+                extension_key="k",
+                extension_type="com.x",
+                content=[Paragraph(content=[Text(text="body")])],
+                marks=[BreakoutMark(mode="wide")],
+            )
+        )
+        assert isinstance(node, BodiedExtension)
+        assert any(isinstance(m, BreakoutMark) for m in node.marks)
+
+    def test_bodied_sync_block_breakout_mark(self):
+        node = _rt1(
+            BodiedSyncBlock(
+                resource_id="r1",
+                content=[Paragraph(content=[Text(text="body")])],
+                marks=[BreakoutMark(mode="full-width")],
+            )
+        )
+        assert isinstance(node, BodiedSyncBlock)
+        assert any(isinstance(m, BreakoutMark) for m in node.marks)
 
 
 # ── Block marks ──────────────────────────────────────────────────────────────
