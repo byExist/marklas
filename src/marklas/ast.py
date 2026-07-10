@@ -388,15 +388,32 @@ class Table(Node):
                 while (r, c) in occupied:
                     c += 1
                 yield r, c, ci, cell
-                cs = cell.colspan or 1
-                rs = cell.rowspan or 1
-                for dr in range(rs):
-                    rr = r + dr
-                    if rr >= num_rows:
-                        break
-                    for dc in range(cs):
-                        occupied.add((rr, c + dc))
-                c += cs
+                c += self.mark_cell_span(occupied, r, c, cell, num_rows)
+
+    @staticmethod
+    def mark_cell_span(
+        occupied: set[tuple[int, int]],
+        r: int,
+        c: int,
+        cell: TableCell,
+        num_rows: int,
+    ) -> int:
+        """Mark the grid slots a cell claims (its ``colspan × rowspan``
+        footprint from ``(r, c)``) into ``occupied``; return the colspan so the
+        caller can advance its column cursor. Rows past the table are skipped.
+
+        Shared by :meth:`iter_cells` and the parser's ``_sparsify_rows`` so both
+        agree on grid geometry.
+        """
+        cs = cell.colspan or 1
+        rs = cell.rowspan or 1
+        for dr in range(rs):
+            rr = r + dr
+            if rr >= num_rows:
+                break
+            for dc in range(cs):
+                occupied.add((rr, c + dc))
+        return cs
 
 
 @dataclass

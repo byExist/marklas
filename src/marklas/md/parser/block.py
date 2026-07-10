@@ -848,16 +848,8 @@ def _sparsify_rows(table: ast.Table) -> None:
             if (r, c) in occupied and _is_empty_cell(cell):
                 c += 1
                 continue
-            cs = cell.colspan or 1
-            rs = cell.rowspan or 1
             kept.append(cell)
-            for dr in range(rs):
-                rr = r + dr
-                if rr >= num_rows:
-                    break
-                for dc in range(cs):
-                    occupied.add((rr, c + dc))
-            c += cs
+            c += ast.Table.mark_cell_span(occupied, r, c, cell, num_rows)
         row.content = kept
 
 
