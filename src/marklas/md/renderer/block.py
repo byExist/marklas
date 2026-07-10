@@ -12,6 +12,7 @@ from datetime import UTC, datetime
 from typing import Any, Generator
 
 from marklas import ast
+from marklas.md import blockmark_keys as keys
 
 from . import cell
 
@@ -219,30 +220,42 @@ def block_marks_params(marks: Sequence[ast.Mark]) -> dict[str, Any]:
     for m in marks:
         match m:
             case ast.AlignmentMark(align=align):
-                d["align"] = align
+                d[keys.ALIGN] = align
             case ast.IndentationMark(level=level):
-                d["indent"] = level
+                d[keys.INDENT] = level
             case ast.BreakoutMark(mode=mode, width=width):
-                d["breakoutMode"] = mode
+                d[keys.BREAKOUT_MODE] = mode
                 if width is not None:
-                    d["breakoutWidth"] = width
+                    d[keys.BREAKOUT_WIDTH] = width
             case ast.DataConsumerMark(sources=sources):
-                d["dataConsumerSources"] = sources
+                d[keys.DATA_CONSUMER_SOURCES] = sources
             case ast.BorderMark(size=size, color=color):
-                d["borderSize"] = size
-                d["borderColor"] = color
+                d[keys.BORDER_SIZE] = size
+                d[keys.BORDER_COLOR] = color
             case ast.FontSizeMark(size=fsize):
-                d["fontSize"] = fsize
+                d[keys.FONT_SIZE] = fsize
             case ast.UnknownMark(type=type_, attrs=attrs):
                 entry = (
                     {"type": type_}
                     if attrs is None
                     else {"type": type_, "attrs": attrs}
                 )
-                d.setdefault("unknownMarks", []).append(entry)
+                d.setdefault(keys.UNKNOWN_MARKS, []).append(entry)
             case _:
                 pass
     return d
+
+
+def _apply_border_params(
+    params_dict: dict[str, Any], marks: Sequence[ast.Mark]
+) -> None:
+    """Fold a media node's BorderMark into its `params` dict (border rides in
+    params, not as a wrapping mark). Shared by the two media renderers.
+    """
+    for m in marks:
+        if isinstance(m, ast.BorderMark):
+            params_dict[keys.BORDER_SIZE] = m.size
+            params_dict[keys.BORDER_COLOR] = m.color
 
 
 # ── Block rendering ────────────────────────────────────────────────────────────
@@ -612,10 +625,7 @@ def _render_media(node: ast.Media) -> str:
         "height": node.height,
         "url": node.url,
     }
-    for m in node.marks:
-        if isinstance(m, ast.BorderMark):
-            params_dict["borderSize"] = m.size
-            params_dict["borderColor"] = m.color
+    _apply_border_params(params_dict, node.marks)
     params = build_params(params_dict)
     result = el("span", display, adf="media", params=params)
     return _wrap_media_marks(result, node.marks)
@@ -1108,10 +1118,7 @@ def _render_media_inline(node: ast.MediaInline) -> str:
     }
     if node.data:
         params_dict["data"] = node.data
-    for m in node.marks:
-        if isinstance(m, ast.BorderMark):
-            params_dict["borderSize"] = m.size
-            params_dict["borderColor"] = m.color
+    _apply_border_params(params_dict, node.marks)
     params = build_params(params_dict)
     result = el("span", display, adf="mediaInline", params=params)
     return _wrap_media_marks(result, node.marks)

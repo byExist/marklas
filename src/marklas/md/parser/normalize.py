@@ -35,6 +35,7 @@ from typing import Any
 import mistune
 
 from marklas import ast
+from marklas.md import blockmark_keys as keys
 
 from .ir import HtmlPaired, HtmlVoid, Token
 
@@ -409,28 +410,30 @@ def attach_marks(node: ast.Node, marks: list[ast.Mark]) -> None:
 def parse_block_marks(params: dict[str, Any]) -> list[ast.Mark]:
     """Convert a `<div adf="marks" params="...">` params dict into AST marks."""
     marks: list[ast.Mark] = []
-    if "align" in params:
-        marks.append(ast.AlignmentMark(align=params["align"]))
-    if "indent" in params:
-        marks.append(ast.IndentationMark(level=params["indent"]))
-    if "breakoutMode" in params:
+    if keys.ALIGN in params:
+        marks.append(ast.AlignmentMark(align=params[keys.ALIGN]))
+    if keys.INDENT in params:
+        marks.append(ast.IndentationMark(level=params[keys.INDENT]))
+    if keys.BREAKOUT_MODE in params:
         marks.append(
             ast.BreakoutMark(
-                mode=params["breakoutMode"], width=params.get("breakoutWidth")
+                mode=params[keys.BREAKOUT_MODE],
+                width=params.get(keys.BREAKOUT_WIDTH),
             )
         )
-    if "dataConsumerSources" in params:
-        marks.append(ast.DataConsumerMark(sources=params["dataConsumerSources"]))
-    if "borderSize" in params:
+    if keys.DATA_CONSUMER_SOURCES in params:
+        marks.append(ast.DataConsumerMark(sources=params[keys.DATA_CONSUMER_SOURCES]))
+    if keys.BORDER_SIZE in params:
         marks.append(
             ast.BorderMark(
-                size=params["borderSize"], color=params.get("borderColor", "")
+                size=params[keys.BORDER_SIZE],
+                color=params.get(keys.BORDER_COLOR, ""),
             )
         )
-    if "fontSize" in params:
-        marks.append(ast.FontSizeMark(size=params["fontSize"]))
-    if "unknownMarks" in params:
-        for um in params["unknownMarks"]:
+    if keys.FONT_SIZE in params:
+        marks.append(ast.FontSizeMark(size=params[keys.FONT_SIZE]))
+    if keys.UNKNOWN_MARKS in params:
+        for um in params[keys.UNKNOWN_MARKS]:
             marks.append(
                 ast.UnknownMark(type=um.get("type", ""), attrs=um.get("attrs"))
             )
