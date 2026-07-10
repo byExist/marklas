@@ -72,7 +72,7 @@ def render_bullet_list(node: ast.BulletList) -> str:
 
 
 def render_ordered_list(node: ast.OrderedList) -> str:
-    start = node.order or 1
+    start = node.order if node.order is not None else 1
     items = "".join(block.el("li", _li_content(item.content)) for item in node.content)
     return block.el("ol", items, start=start if start != 1 else None)
 

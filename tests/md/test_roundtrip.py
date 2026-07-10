@@ -154,6 +154,18 @@ class TestBlocks:
         assert isinstance(node, OrderedList)
         assert node.order == 3
 
+    def test_ordered_list_order_zero(self):
+        node = _rt1(
+            OrderedList(
+                order=0,
+                content=[
+                    ListItem(content=[Paragraph(content=[Text(text="item")])]),
+                ],
+            )
+        )
+        assert isinstance(node, OrderedList)
+        assert node.order == 0
+
     def test_rule(self):
         node = _rt1(Rule())
         assert isinstance(node, Rule)

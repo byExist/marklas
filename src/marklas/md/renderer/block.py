@@ -447,7 +447,7 @@ def _render_ordered_list(node: ast.OrderedList) -> str:
 
 
 def _render_ordered_list_block(node: ast.OrderedList) -> str:
-    start = node.order or 1
+    start = node.order if node.order is not None else 1
     sep = "\n\n" if _is_list_loose(node.content) else "\n"
     parts = [
         _render_list_item(item, f"{start + i}. ") for i, item in enumerate(node.content)
