@@ -455,9 +455,12 @@ def _render_ordered_list_block(node: ast.OrderedList) -> str:
     return sep.join(parts)
 
 
-def _render_list_item(node: ast.ListItem, marker: str) -> str:
+def _render_marked_block(marker: str, children: Sequence[ast.Node]) -> str:
+    """Render `children` as a marker-prefixed block (list item / task item):
+    first line gets the marker, continuation lines get a matching indent.
+    """
     indent = " " * len(marker)
-    parts = render_blocks(node.content)
+    parts = render_blocks(children)
     if not parts:
         return marker.rstrip()
     body = "\n\n".join(parts)
@@ -466,6 +469,10 @@ def _render_list_item(node: ast.ListItem, marker: str) -> str:
     if len(lines) > 1:
         result += "\n" + "\n".join(indent + line if line else "" for line in lines[1:])
     return result
+
+
+def _render_list_item(node: ast.ListItem, marker: str) -> str:
+    return _render_marked_block(marker, node.content)
 
 
 def _render_rule() -> str:
@@ -556,17 +563,7 @@ def _render_task_item(node: ast.TaskItem) -> str:
 
 def _render_block_task_item(node: ast.BlockTaskItem) -> str:
     checkbox = "[x]" if node.state == "DONE" else "[ ]"
-    marker = f"- {checkbox} "
-    indent = " " * len(marker)
-    parts = render_blocks(node.content)
-    if not parts:
-        return marker.rstrip()
-    body = "\n\n".join(parts)
-    lines = body.split("\n")
-    result = marker + lines[0]
-    if len(lines) > 1:
-        result += "\n" + "\n".join(indent + line if line else "" for line in lines[1:])
-    return result
+    return _render_marked_block(f"- {checkbox} ", node.content)
 
 
 def _render_decision_list(node: ast.DecisionList) -> str:
