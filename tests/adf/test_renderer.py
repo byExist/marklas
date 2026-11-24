@@ -723,6 +723,11 @@ class TestInlines:
         result = _r1(Doc(content=[Paragraph(content=[Text(text="hello")])]))
         assert result["content"] == [{"type": "text", "text": "hello"}]
 
+    def test_empty_text_omitted(self):
+        # ADF requires non-empty text; Jira answers 400 to an empty text node.
+        result = _r1(Doc(content=[Paragraph(content=[Text(text="")])]))
+        assert result == {"type": "paragraph"}
+
     def test_hard_break(self):
         result = _r1(
             Doc(
