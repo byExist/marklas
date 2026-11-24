@@ -17,12 +17,9 @@ class TestParseCellContent:
     def test_empty_tokens_yields_empty_paragraph(self) -> None:
         assert parse_cell_content([]) == [ast.Paragraph(content=[])]
 
-    def test_no_block_yield_empty_paragraph(self) -> None:
-        # A token stream that yields no block-level nodes after promotion
-        # still produces a fallback empty paragraph. A plain inline_html
-        # closing tag is dropped and leaves no blocks behind.
+    def test_adfless_html_kept_as_text(self) -> None:
         result = parse_cell_content([{"type": "inline_html", "raw": "</span>"}])
-        assert result == [ast.Paragraph(content=[])]
+        assert result == [ast.Paragraph(content=[ast.Text(text="</span>")])]
 
 
 class TestUnescapeCodespanPipes:

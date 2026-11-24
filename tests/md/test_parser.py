@@ -1329,6 +1329,18 @@ class TestImage:
         assert isinstance(node, Paragraph)
 
 
+# ── Raw MD: HTML without adf ─────────────────────────────────────────────────
+
+
+class TestHtmlWithoutAdf:
+    def test_kept_as_text(self):
+        doc = parse("Set it per <tenant-id> or <b>bold</b>.\n\n<tenant-id>\n")
+        assert doc.content == [
+            Paragraph(content=[Text(text="Set it per <tenant-id> or <b>bold</b>.")]),
+            Paragraph(content=[Text(text="<tenant-id>")]),
+        ]
+
+
 # ── Params Escape ──────────────────────────────────────────────────────────────
 
 

@@ -118,14 +118,12 @@ class TestNormalizeBlocks:
         out = normalize_blocks([already])
         assert out == [already]
 
-    def test_closing_block_html_dropped(self) -> None:
-        # An orphan closing block_html token is simply skipped.
-        out = normalize_blocks([{"type": "block_html", "raw": "</aside>"}])
-        assert out == []
-
-    def test_adfless_raw_block_html_dropped(self) -> None:
-        out = normalize_blocks([{"type": "block_html", "raw": "<aside>"}])
-        assert out == []
+    @pytest.mark.parametrize("raw", ["</aside>", "<aside>"])
+    def test_adfless_block_html_kept_as_text(self, raw: str) -> None:
+        out = normalize_blocks([{"type": "block_html", "raw": raw}])
+        assert out == [
+            {"type": "paragraph", "children": [{"type": "inline_html", "raw": raw}]}
+        ]
 
     def test_opening_with_adf_but_no_close_dropped(self) -> None:
         out = normalize_blocks([{"type": "block_html", "raw": '<aside adf="panel">'}])
@@ -133,9 +131,9 @@ class TestNormalizeBlocks:
 
 
 class TestNormalizeInlines:
-    def test_closing_inline_html_dropped(self) -> None:
+    def test_closing_inline_html_kept_as_text(self) -> None:
         out = normalize_inlines([{"type": "inline_html", "raw": "</span>"}])
-        assert out == []
+        assert out == [{"type": "text", "raw": "</span>"}]
 
     def test_unmatched_open_inline_html_dropped(self) -> None:
         out = normalize_inlines(

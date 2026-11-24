@@ -240,6 +240,11 @@ def block_html_to_inline(tokens: list[Token]) -> list[dict[str, Any]]:
 # ── Normalize: block-level ────────────────────────────────────────────────────
 
 
+def _text_block(raw: str) -> dict[str, Any]:
+    """HTML that isn't marklas markup is text the author wrote (e.g. "<tenant-id>")."""
+    return {"type": "paragraph", "children": inline_parser(raw, {})}
+
+
 def normalize_blocks(tokens: Sequence[Token]) -> list[Token]:
     """Pair block_html into HtmlPaired/HtmlVoid; pass other tokens through.
 
@@ -275,6 +280,7 @@ def normalize_blocks(tokens: Sequence[Token]) -> list[Token]:
             tag, attrs, closing = parse_tag(raw)
 
             if closing:
+                result.append(_text_block(raw))
                 i += 1
                 continue
 
@@ -306,11 +312,13 @@ def normalize_blocks(tokens: Sequence[Token]) -> list[Token]:
                         [{"type": "text", "raw": inner_text}] if inner_text else []
                     )
                     result.append(HtmlPaired(tag="p", attrs=attrs, inner=inner_tokens))
+                else:
+                    result.append(_text_block(raw))
                 i += 1
                 continue
 
             if not has_adf(attrs):
-                # adf-less raw HTML at the top level: not part of our convention
+                result.append(_text_block(raw))
                 i += 1
                 continue
 
@@ -376,6 +384,8 @@ def normalize_inlines(tokens: list[dict[str, Any]]) -> list[Token]:
                 continue
 
             if closing or not has_adf(attrs):
+                # Not marklas markup, so it is text the author wrote (e.g. "<tenant-id>").
+                result.append({"type": "text", "raw": raw})
                 i += 1
                 continue
 
