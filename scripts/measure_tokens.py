@@ -5,7 +5,7 @@ marklas, and reports the sum-based token counts and reduction ratios
 that the README's "Token Efficiency" table is sourced from.
 
 Usage:
-    python scripts/measure_tokens.py [--samples sample/]
+    python scripts/measure_tokens.py --samples <dir>
 """
 
 from __future__ import annotations
@@ -26,8 +26,8 @@ def main() -> None:
     ap.add_argument(
         "--samples",
         type=Path,
-        default=Path("sample"),
-        help="Directory containing *-adf.json files (default: sample/)",
+        required=True,
+        help="Directory containing *-adf.json files",
     )
     ap.add_argument(
         "--model",
