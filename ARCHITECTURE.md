@@ -55,7 +55,7 @@ When the input has no `adf=` attributes, the parser treats it as plain Markdown:
 | `![alt](url)` solo | `MediaSingle > Media(type="external")` |
 | `![alt](url)` inline | unsupported (ADF has no inline external image) |
 | `SoftBreak` | space |
-| HTML without `adf=` | ignored (content too) |
+| HTML without `adf=` | kept as literal text |
 
 ## Lossy Items
 

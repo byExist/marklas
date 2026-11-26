@@ -578,7 +578,10 @@ def _render_inline(node: ast.Inline) -> dict[str, Any]:
 
 
 def _render_inlines(nodes: Sequence[ast.Inline]) -> list[dict[str, Any]]:
-    return [_render_inline(n) for n in nodes]
+    # ADF has no empty text node; Jira rejects one.
+    return [
+        _render_inline(n) for n in nodes if not (isinstance(n, ast.Text) and not n.text)
+    ]
 
 
 # ── Inline renderers ────────────────────────────────────────────────────────
