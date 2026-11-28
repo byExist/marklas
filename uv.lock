@@ -185,7 +185,7 @@ dev = [
 
 [package.metadata]
 requires-dist = [
-    { name = "mistune", specifier = ">=3.2" },
+    { name = "mistune", specifier = ">=3.2,<3.5" },
     { name = "pyright", marker = "extra == 'dev'", specifier = ">=1.1.400" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8.0.0" },
 ]
